@@ -104,6 +104,8 @@ export default function ProvidersPage() {
   const [showAddCompatibleModal, setShowAddCompatibleModal] = useState(false);
   const [showAddAnthropicCompatibleModal, setShowAddAnthropicCompatibleModal] =
     useState(false);
+  const [showAddMoonshotCompatibleModal, setShowAddMoonshotCompatibleModal] =
+    useState(false);
   const [testingMode, setTestingMode] = useState(null);
   const [testResults, setTestResults] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -412,7 +414,7 @@ export default function ProvidersPage() {
         </div>
       )}
 
-      {/* Custom Providers (OpenAI/Anthropic Compatible) — dynamic */}
+      {/* Custom Providers (OpenAI/Anthropic/MoonshotAI Compatible) — dynamic */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
@@ -436,13 +438,22 @@ export default function ProvidersPage() {
             >
               Add OpenAI Compatible
             </Button>
+              <Button
+              size="sm"
+              variant="secondary"
+              icon="add"
+              onClick={() => setShowAddMoonshotCompatibleModal(true)}
+              className="w-full sm:w-auto"
+              >
+              Add MoonshotAI Compatible
+              </Button>
           </div>
         </div>
         {compatibleProviders.length === 0 &&
         anthropicCompatibleProviders.length === 0 ? (
           <div className="flex items-center justify-center gap-2 py-2 border border-dashed border-border rounded-xl text-text-muted text-sm">
             <span className="material-symbols-outlined text-[18px]">extension</span>
-            <span>No custom providers — use buttons above to add OpenAI/Anthropic compatible endpoints</span>
+            <span>No custom providers — use buttons above to add OpenAI/Anthropic/MoonshotAI compatible endpoints</span>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
@@ -661,6 +672,15 @@ export default function ProvidersPage() {
           setShowAddAnthropicCompatibleModal(false);
         }}
       />
+        <AddCompatibleModal
+        variant="moonshot"
+        isOpen={showAddMoonshotCompatibleModal}
+        onClose={() => setShowAddMoonshotCompatibleModal(false)}
+        onCreated={(node) => {
+        setProviderNodes((prev) => [...prev, node]);
+        setShowAddMoonshotCompatibleModal(false);
+        }}
+        />
 
       {/* Test Results Modal */}
       {testResults && (

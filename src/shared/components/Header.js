@@ -230,7 +230,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
         {showMenuButton && (
           <button
             onClick={onMenuClick}
-            className="text-text-main hover:text-primary transition-colors"
+            className="flex items-center justify-center p-1.5 rounded-[10px] text-text-main hover:text-primary hover:bg-surface-2 transition-colors"
           >
             <span className="material-symbols-outlined">menu</span>
           </button>
@@ -279,21 +279,25 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
           </div>
         ) : title ? (
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               {icon && (
-                <span className="material-symbols-outlined text-primary text-xl lg:text-2xl">
-                  {icon}
-                </span>
+                <div className="hidden sm:flex items-center justify-center size-8 rounded-[10px] bg-brand-500/10 border border-brand-500/20">
+                  <span className="material-symbols-outlined text-primary text-lg">
+                    {icon}
+                  </span>
+                </div>
               )}
-              <h1 className="text-base lg:text-2xl font-semibold tracking-tight truncate">
-                {translate(title)}
-              </h1>
+              <div className="min-w-0">
+                <h1 className="text-base lg:text-2xl font-semibold tracking-tight truncate">
+                  {translate(title)}
+                </h1>
+                {description && (
+                  <p className="hidden lg:block text-sm text-text-muted truncate">
+                    {translate(description)}
+                  </p>
+                )}
+              </div>
             </div>
-            {description && (
-              <p className="hidden lg:block text-sm text-text-muted truncate">
-                {translate(description)}
-              </p>
-            )}
           </div>
         ) : null}
       </div>
@@ -317,7 +321,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
           href="https://github.com/serenhope/9router"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center p-2 rounded-lg text-text-muted hover:text-text-main hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+          className="flex items-center justify-center p-2 rounded-[10px] text-text-muted hover:text-text-main hover:bg-surface-2 transition-all"
           title="GitHub Repository"
           aria-label="GitHub Repository"
         >

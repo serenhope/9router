@@ -42,6 +42,36 @@ const systemItems = [
   { href: "/dashboard/skills", label: "Skills", icon: "extension" },
 ];
 
+function NavLink({ href, icon, label, active, onClick, sub = false }) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={cn(
+        "relative flex items-center gap-3 rounded-[10px] transition-all group",
+        sub ? "pl-7 pr-3 py-[6px]" : "px-3 py-[7px]",
+        active
+          ? "bg-primary/10 text-primary font-semibold"
+          : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+      )}
+    >
+      {active && (
+        <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-primary" />
+      )}
+      <span
+        className={cn(
+          "material-symbols-outlined",
+          sub ? "text-[16px]" : "text-[18px]",
+          active ? "fill-1 text-primary" : "group-hover:text-primary transition-colors"
+        )}
+      >
+        {icon}
+      </span>
+      <span className="text-[13px] font-medium">{label}</span>
+    </Link>
+  );
+}
+
 export default function Sidebar({ onClose }) {
   const pathname = usePathname();
   const [mediaOpen, setMediaOpen] = useState(false);
@@ -161,27 +191,14 @@ export default function Sidebar({ onClose }) {
         {/* Navigation */}
         <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
           {navItems.map((item) => (
-            <Link
+            <NavLink
               key={item.href}
               href={item.href}
+              icon={item.icon}
+              label={item.label}
+              active={isActive(item.href)}
               onClick={onClose}
-              className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive(item.href)
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
-            >
-              <span
-                className={cn(
-                  "material-symbols-outlined text-[18px]",
-                  isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
-                )}
-              >
-                {item.icon}
-              </span>
-              <span className="text-[13px] font-medium">{item.label}</span>
-            </Link>
+            />
           ))}
 
           {/* Experiment section */}
@@ -190,27 +207,14 @@ export default function Sidebar({ onClose }) {
               Experiment
             </p>
             {experimentItems.map((item) => (
-              <Link
+              <NavLink
                 key={item.href}
                 href={item.href}
+                icon={item.icon}
+                label={item.label}
+                active={isActive(item.href)}
                 onClick={onClose}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                  isActive(item.href)
-                    ? "bg-primary/10 text-primary"
-                    : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                )}
-              >
-                <span
-                  className={cn(
-                    "material-symbols-outlined text-[18px]",
-                    isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
-                  )}
-                >
-                  {item.icon}
-                </span>
-                <span className="text-[13px] font-medium">{item.label}</span>
-              </Link>
+              />
             ))}
           </div>
 
@@ -224,12 +228,15 @@ export default function Sidebar({ onClose }) {
             <button
               onClick={() => setMediaOpen((v) => !v)}
               className={cn(
-                "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                "relative w-full flex items-center gap-3 px-3 py-[7px] rounded-[10px] transition-all group",
                 pathname.startsWith("/dashboard/media-providers")
                   ? "bg-primary/10 text-primary"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
               )}
             >
+              {pathname.startsWith("/dashboard/media-providers") && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-primary" />
+              )}
               <span className="material-symbols-outlined text-[18px]">perm_media</span>
               <span className="text-[13px] font-medium flex-1 text-left">Media Providers</span>
               <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
@@ -239,111 +246,62 @@ export default function Sidebar({ onClose }) {
             {mediaOpen && (
               <div className="pl-4">
                 {MEDIA_PROVIDER_KINDS.filter((k) => VISIBLE_MEDIA_KINDS.includes(k.id)).map((kind) => (
-                  <Link
+                  <NavLink
                     key={kind.id}
                     href={`/dashboard/media-providers/${kind.id}`}
+                    icon={kind.icon}
+                    label={kind.label}
+                    active={pathname.startsWith(`/dashboard/media-providers/${kind.id}`)}
                     onClick={onClose}
-                    className={cn(
-                      "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
-                      pathname.startsWith(`/dashboard/media-providers/${kind.id}`)
-                        ? "bg-primary/10 text-primary"
-                        : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                    )}
-                  >
-                    <span className="material-symbols-outlined text-[16px]">{kind.icon}</span>
-                    <span className="text-sm">{kind.label}</span>
-                  </Link>
+                    sub
+                  />
                 ))}
-                <Link
+                <NavLink
                   key={COMBINED_WEB_ITEM.id}
                   href={COMBINED_WEB_ITEM.href}
+                  icon={COMBINED_WEB_ITEM.icon}
+                  label={COMBINED_WEB_ITEM.label}
+                  active={pathname.startsWith(COMBINED_WEB_ITEM.href)}
                   onClick={onClose}
-                  className={cn(
-                    "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
-                    pathname.startsWith(COMBINED_WEB_ITEM.href)
-                      ? "bg-primary/10 text-primary"
-                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                  )}
-                >
-                  <span className="material-symbols-outlined text-[16px]">{COMBINED_WEB_ITEM.icon}</span>
-                  <span className="text-sm">{COMBINED_WEB_ITEM.label}</span>
-                </Link>
+                  sub
+                />
               </div>
             )}
 
             {systemItems.map((item) => (
-              <Link
+              <NavLink
                 key={item.href}
                 href={item.href}
+                icon={item.icon}
+                label={item.label}
+                active={isActive(item.href)}
                 onClick={onClose}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                  isActive(item.href)
-                    ? "bg-primary/10 text-primary"
-                    : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                )}
-              >
-                <span
-                  className={cn(
-                    "material-symbols-outlined text-[18px]",
-                    isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
-                  )}
-                >
-                  {item.icon}
-                </span>
-                <span className="text-[13px] font-medium">{item.label}</span>
-              </Link>
+              />
             ))}
 
             {/* Debug items (inside System section, before Settings) */}
             {debugItems.map((item) => {
-              const show = item.href !== "/dashboard/translator" || enableTranslator;
+              const show = item.href !== '/dashboard/translator' || enableTranslator;
               return show ? (
-                <Link
+                <NavLink
                   key={item.href}
                   href={item.href}
+                  icon={item.icon}
+                  label={item.label}
+                  active={isActive(item.href)}
                   onClick={onClose}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                    isActive(item.href)
-                      ? "bg-primary/10 text-primary"
-                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "material-symbols-outlined text-[18px]",
-                      isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
-                    )}
-                  >
-                    {item.icon}
-                  </span>
-                  <span className="text-[13px] font-medium">{item.label}</span>
-                </Link>
+                />
               ) : null;
             })}
 
             {/* Settings */}
-            <Link
-              href="/dashboard/profile"
+            <NavLink
+              href='/dashboard/profile'
+              icon='settings'
+              label='Settings'
+              active={isActive('/dashboard/profile')}
               onClick={onClose}
-              className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive("/dashboard/profile")
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
-            >
-              <span
-                className={cn(
-                  "material-symbols-outlined text-[18px]",
-                  isActive("/dashboard/profile") ? "fill-1" : "group-hover:text-primary transition-colors"
-                )}
-              >
-                settings
-              </span>
-              <span className="text-[13px] font-medium">Settings</span>
-            </Link>
+            />
           </div>
         </nav>
 
