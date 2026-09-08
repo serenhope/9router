@@ -39,6 +39,9 @@ export async function PUT(request, { params }) {
     if (body.rpmLimit !== undefined) updateData.rpmLimit = Number(body.rpmLimit);
     if (body.tpmLimit !== undefined) updateData.tpmLimit = Number(body.tpmLimit);
     if (body.ipWhitelist !== undefined) updateData.ipWhitelist = body.ipWhitelist;
+ if (body.expiresAt !== undefined) updateData.expiresAt = body.expiresAt || null;
+ if (body.systemPrompt !== undefined) updateData.systemPrompt = body.systemPrompt;
+ if (body.budgetGroupId !== undefined) updateData.budgetGroupId = body.budgetGroupId;
 
     const updated = await updateApiKey(id, updateData);
 

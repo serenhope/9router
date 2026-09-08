@@ -35,6 +35,19 @@ const RESET_INTERVAL_OPTIONS = [
   { value: "custom", label: "Custom Interval..." },
 ];
 
+function generateSnippet(lang, apiKey, baseUrl) {
+  const url = `${baseUrl}/v1/chat/completions`;
+  const model = "gpt-4";
+  if (lang === "curl") return `curl -X POST "${url}" \\
+  -H "Authorization: Bearer ${apiKey}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model":"${model}","messages":[{"role":"user","content":"Hello"}]}'`;
+  if (lang === "python") return `import requests\n\nresp = requests.post("${url}",\n headers={"Authorization": "Bearer ${apiKey}", "Content-Type": "application/json"},\n json={"model": "${model}", "messages": [{"role": "user", "content": "Hello"}]}\n)\nprint(resp.json())`;
+  if (lang === "node") return `const resp = await fetch("${url}", {\n method: "POST",\n headers: { "Authorization": "Bearer ${apiKey}", "Content-Type": "application/json" },\n body: JSON.stringify({ model: "${model}", messages: [{ role: "user", content: "Hello" }] })\n});\nconst data = await resp.json();\nconsole.log(data);`;
+  if (lang === "go") return `package main\n\nimport (\n\t"bytes"\n\t"fmt"\n\t"io"\n\t"net/http"\n)\n\nfunc main() {\n\tbody := []byte(\`{"model":"${model}","messages":[{"role":"user","content":"Hello"}]}\`)\n\treq, _ := http.NewRequest("POST", "${url}", bytes.NewBuffer(body))\n\treq.Header.Set("Authorization", "Bearer ${apiKey}")\n\treq.Header.Set("Content-Type", "application/json")\n\tresp, _ := http.DefaultClient.Do(req)\n\tdefer resp.Body.Close()\n\tb, _ := io.ReadAll(resp.Body)\n\tfmt.Println(string(b))\n}`;
+  return "";
+}
+
 export default function APIPageClient({ machineId }) {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -47,6 +60,9 @@ export default function APIPageClient({ machineId }) {
   const [newKeyRpm, setNewKeyRpm] = useState("");
   const [newKeyTpm, setNewKeyTpm] = useState("");
   const [newKeyIpWhitelist, setNewKeyIpWhitelist] = useState("");
+  const [newKeyExpiresAt, setNewKeyExpiresAt] = useState("");
+  const [newKeySystemPrompt, setNewKeySystemPrompt] = useState("");
+  const [newKeyBudgetGroupId, setNewKeyBudgetGroupId] = useState("");
   const [editingKey, setEditingKey] = useState(null);
   const [editName, setEditName] = useState("");
   const [editLimit, setEditLimit] = useState("");
@@ -56,12 +72,20 @@ export default function APIPageClient({ machineId }) {
   const [editRpm, setEditRpm] = useState("");
   const [editTpm, setEditTpm] = useState("");
   const [editIpWhitelist, setEditIpWhitelist] = useState("");
+  const [editExpiresAt, setEditExpiresAt] = useState("");
+  const [editSystemPrompt, setEditSystemPrompt] = useState("");
+  const [editBudgetGroupId, setEditBudgetGroupId] = useState("");
   const [activeProviders, setActiveProviders] = useState([]);
   const [modelAliases, setModelAliases] = useState({});
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [pickerTarget, setPickerTarget] = useState(null); // 'create' | 'edit'
   const [createdKey, setCreatedKey] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
+  const [budgetGroups, setBudgetGroups] = useState([]);
+  const [showAuditModal, setShowAuditModal] = useState(false);
+  const [auditIssues, setAuditIssues] = useState([]);
+  const [showSnippetModal, setShowSnippetModal] = useState(null); // key object or null
+  const [snippetLang, setSnippetLang] = useState("curl");
 
   const [requireApiKey, setRequireApiKey] = useState(false);
   const [requireLogin, setRequireLogin] = useState(true);
@@ -319,6 +343,8 @@ export default function APIPageClient({ machineId }) {
       };
 
       fetchProvidersAndAliases();
+      
+      fetch("/api/budget-groups").then(r => r.json()).then(d => setBudgetGroups(d.groups || [])).catch(() => {});
 
       let existing = await fetchKeys();
       // Auto-provision a default key for first-time users so the endpoint works out of the box.
@@ -739,6 +765,9 @@ export default function APIPageClient({ machineId }) {
           rpmLimit: newKeyRpm ? Number(newKeyRpm) : 0,
           tpmLimit: newKeyTpm ? Number(newKeyTpm) : 0,
           ipWhitelist: newKeyIpWhitelist.trim(),
+          expiresAt: newKeyExpiresAt || null,
+          systemPrompt: newKeySystemPrompt.trim(),
+          budgetGroupId: newKeyBudgetGroupId || "",
         }),
       });
       const data = await res.json();
@@ -755,6 +784,9 @@ export default function APIPageClient({ machineId }) {
         setNewKeyTpm("");
         setNewKeyIpWhitelist("");
         setShowAddModal(false);
+        setNewKeyExpiresAt("");
+        setNewKeySystemPrompt("");
+        setNewKeyBudgetGroupId("");
       }
     } catch (error) {
       console.log("Error creating key:", error);
@@ -1118,6 +1150,20 @@ export default function APIPageClient({ machineId }) {
           <Button icon="add" onClick={() => setShowAddModal(true)}>
             Create Key
           </Button>
+      <Button
+        variant="ghost"
+        icon="security"
+        onClick={async () => {
+          try {
+            const res = await fetch("/api/keys/audit");
+            const data = await res.json();
+            setAuditIssues(data.issues || []);
+            setShowAuditModal(true);
+          } catch {}
+        }}
+      >
+        Security Audit
+      </Button>
         </div>
 
         <div className="flex items-center justify-between pb-4 mb-4 border-b border-border">
@@ -1235,6 +1281,9 @@ export default function APIPageClient({ machineId }) {
                       setEditRpm(key.rpmLimit ? String(key.rpmLimit) : "");
                       setEditTpm(key.tpmLimit ? String(key.tpmLimit) : "");
                       setEditIpWhitelist(key.ipWhitelist || "");
+                      setEditExpiresAt(key.expiresAt || "");
+                      setEditSystemPrompt(key.systemPrompt || "");
+                      setEditBudgetGroupId(key.budgetGroupId || "");
                     }}
                     className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
                     title="Edit key settings & quota"
@@ -1267,6 +1316,28 @@ export default function APIPageClient({ machineId }) {
                     }}
                     title={key.isActive ? "Pause key" : "Resume key"}
                   />
+          <button
+            onClick={async () => {
+              try {
+                const res = await fetch(`/api/keys/${key.id}/clone`, { method: "POST" });
+                const data = await res.json();
+                if (data.key) {
+                  setKeys(prev => [...prev, data.key]);
+                }
+              } catch {}
+            }}
+            className="text-xs text-zinc-400 hover:text-zinc-200 p-2 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+            title="Clone this key"
+          >
+            Clone
+          </button>
+          <button
+            onClick={() => { setShowSnippetModal(key); setSnippetLang("curl"); }}
+            className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
+            title="Code snippet"
+          >
+            <span className="material-symbols-outlined text-[18px]">code</span>
+          </button>
                   <button
                     onClick={() => handleDeleteKey(key.id)}
                     className="p-2 hover:bg-red-500/10 rounded text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
@@ -1387,6 +1458,42 @@ export default function APIPageClient({ machineId }) {
             placeholder="e.g. 192.168.1.1, 103.20.10.5 (Leave empty to allow all)"
             hint="Leave empty to allow access from any IP address"
           />
+
+      {Number(newKeyLimit) > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-text-main">Expiry Date</label>
+          <input
+            type="datetime-local"
+            value={newKeyExpiresAt}
+            onChange={(e) => setNewKeyExpiresAt(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+          />
+          <p className="text-xs text-text-muted">Key expires after this date (optional)</p>
+        </div>
+      )}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-text-main">System Prompt</label>
+        <textarea
+          value={newKeySystemPrompt}
+          onChange={(e) => setNewKeySystemPrompt(e.target.value)}
+          rows={3}
+          placeholder="Custom system prompt injected into every request..."
+          className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none"
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-text-main">Shared Budget Group (optional)</label>
+        <select
+          value={newKeyBudgetGroupId}
+          onChange={(e) => setNewKeyBudgetGroupId(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+        >
+          <option value="">None</option>
+          {budgetGroups.map(g => (
+            <option key={g.id} value={g.id}>{g.name}</option>
+          ))}
+        </select>
+      </div>
           <div className="flex gap-2 mt-2">
             <Button onClick={handleCreateKey} fullWidth disabled={!newKeyName.trim()}>
               Create
@@ -1509,6 +1616,42 @@ export default function APIPageClient({ machineId }) {
             placeholder="e.g. 192.168.1.1, 103.20.10.5 (Leave empty to allow all)"
             hint="Leave empty to allow access from any IP address"
           />
+
+      {Number(editLimit) > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-text-main">Expiry Date</label>
+          <input
+            type="datetime-local"
+            value={editExpiresAt}
+            onChange={(e) => setEditExpiresAt(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+          />
+          <p className="text-xs text-text-muted">Key expires after this date (optional)</p>
+        </div>
+      )}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-text-main">System Prompt</label>
+        <textarea
+          value={editSystemPrompt}
+          onChange={(e) => setEditSystemPrompt(e.target.value)}
+          rows={3}
+          placeholder="Custom system prompt injected into every request..."
+          className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none"
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-text-main">Shared Budget Group (optional)</label>
+        <select
+          value={editBudgetGroupId}
+          onChange={(e) => setEditBudgetGroupId(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+        >
+          <option value="">None</option>
+          {budgetGroups.map(g => (
+            <option key={g.id} value={g.id}>{g.name}</option>
+          ))}
+        </select>
+      </div>
           <div className="flex gap-2 mt-2">
             <Button
               onClick={() => {
@@ -1526,6 +1669,9 @@ export default function APIPageClient({ machineId }) {
                   rpmLimit: editRpm ? Number(editRpm) : 0,
                   tpmLimit: editTpm ? Number(editTpm) : 0,
                   ipWhitelist: editIpWhitelist.trim(),
+                  expiresAt: editExpiresAt || null,
+                  systemPrompt: editSystemPrompt.trim(),
+                  budgetGroupId: editBudgetGroupId || "",
                 });
               }}
               fullWidth
@@ -1739,7 +1885,101 @@ export default function APIPageClient({ machineId }) {
         </div>
       </Modal>
 
-      {/* Confirm Modal */}
+      {/* Snippet Modal */}
+<Modal
+  isOpen={!!showSnippetModal}
+  title="Code Snippet"
+  onClose={() => setShowSnippetModal(null)}
+>
+  <div className="flex flex-col gap-4">
+    <div className="flex gap-2">
+      {["curl", "python", "node", "go"].map(lang => (
+        <button
+          key={lang}
+          onClick={() => setSnippetLang(lang)}
+          className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+            snippetLang === lang
+              ? "bg-primary text-white"
+              : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+          }`}
+        >
+          {lang === "node" ? "Node.js" : lang === "curl" ? "cURL" : lang === "go" ? "Go" : "Python"}
+        </button>
+      ))}
+    </div>
+    <pre className="bg-zinc-950 border border-zinc-700 rounded-lg p-4 text-sm text-zinc-200 font-mono overflow-x-auto whitespace-pre-wrap break-all">
+      {showSnippetModal && generateSnippet(snippetLang, showSnippetModal.key, typeof window !== "undefined" ? window.location.origin : "")}
+    </pre>
+    <Button
+      onClick={() => {
+        if (showSnippetModal) {
+          const text = generateSnippet(snippetLang, showSnippetModal.key, typeof window !== "undefined" ? window.location.origin : "");
+          navigator.clipboard.writeText(text);
+        }
+      }}
+      icon="content_copy"
+      fullWidth
+    >
+      Copy to Clipboard
+    </Button>
+  </div>
+</Modal>
+
+{/* Audit Modal */}
+<Modal
+  isOpen={showAuditModal}
+  title="Security Audit"
+  onClose={() => setShowAuditModal(false)}
+>
+  <div className="flex flex-col gap-4">
+    {auditIssues.length === 0 ? (
+      <div className="text-center py-8">
+        <span className="material-symbols-outlined text-4xl text-green-500 mb-2">check_circle</span>
+        <p className="text-sm text-text-muted">No security issues found. All keys look good!</p>
+      </div>
+    ) : (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-zinc-700">
+              <th className="text-left py-2 px-3 text-zinc-400 font-medium">Key Name</th>
+              <th className="text-left py-2 px-3 text-zinc-400 font-medium">Key</th>
+              <th className="text-left py-2 px-3 text-zinc-400 font-medium">Risk Level</th>
+              <th className="text-left py-2 px-3 text-zinc-400 font-medium">Issues</th>
+            </tr>
+          </thead>
+          <tbody>
+            {auditIssues.map((issue, i) => (
+              <tr key={i} className="border-b border-zinc-800">
+                <td className="py-2 px-3 text-zinc-200">{issue.name}</td>
+                <td className="py-2 px-3 text-zinc-400 font-mono text-xs">{issue.maskedKey}</td>
+                <td className="py-2 px-3">
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                    issue.risk === "high" ? "bg-red-500/20 text-red-400" :
+                    issue.risk === "medium" ? "bg-yellow-500/20 text-yellow-400" :
+                    "bg-green-500/20 text-green-400"
+                  }`}>
+                    {issue.risk}
+                  </span>
+                </td>
+                <td className="py-2 px-3 text-zinc-300 text-xs">
+                  <ul className="list-disc list-inside space-y-0.5">
+                    {(issue.issues || []).map((iss, j) => (
+                      <li key={j}>{iss}</li>
+                    ))}
+                  </ul>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+    <Button onClick={() => setShowAuditModal(false)} fullWidth>Close</Button>
+  </div>
+</Modal>
+
+{/* Confirm Modal */}
       <ConfirmModal
         isOpen={!!confirmState}
         onClose={() => setConfirmState(null)}

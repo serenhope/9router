@@ -29,7 +29,9 @@ export {
 
 // API keys
 export {
-  getApiKeys, getApiKeyById, createApiKey, updateApiKey, deleteApiKey, validateApiKey, recordApiKeyUsageInWindow,
+  getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey, recordApiKeyUsageInWindow,
+  getBudgetGroups, getBudgetGroupById, createBudgetGroup, updateBudgetGroup, deleteBudgetGroup, incrementBudgetGroupUsage,
+  cloneApiKey, auditApiKeys,
 } from "./repos/apiKeysRepo.js";
 
 // Combos
@@ -93,7 +95,11 @@ export async function exportDb() {
       rpmLimit: r.rpmLimit,
       tpmLimit: r.tpmLimit,
       ipWhitelist: r.ipWhitelist,
+      expiresAt: r.expiresAt || null,
+      systemPrompt: r.systemPrompt || "",
+      budgetGroupId: r.budgetGroupId || "",
     })),
+    budgetGroups: db.all(`SELECT * FROM budgetGroups`),
     combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
     usageHistory: db.all(`SELECT * FROM usageHistory`),
     usageDaily: db.all(`SELECT * FROM usageDaily`),
@@ -135,7 +141,8 @@ export async function importDb(payload) {
     db.run(`DELETE FROM combos`);
     db.run(`DELETE FROM usageHistory`);
     db.run(`DELETE FROM usageDaily`);
-    db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'modelMasks', 'customModels', 'mitmAlias', 'pricing')`);
+    db.run(`DELETE FROM budgetGroups`);
+ db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'modelMasks', 'customModels', 'mitmAlias', 'pricing')`);
 
     // Settings
     if (payload.settings) {
@@ -174,9 +181,12 @@ export async function importDb(payload) {
       const rpmLimit = k.rpmLimit !== undefined ? Number(k.rpmLimit) : (prev.rpmLimit !== undefined ? Number(prev.rpmLimit) : 0);
       const tpmLimit = k.tpmLimit !== undefined ? Number(k.tpmLimit) : (prev.tpmLimit !== undefined ? Number(prev.tpmLimit) : 0);
       const ipWhitelist = k.ipWhitelist !== undefined ? k.ipWhitelist : (prev.ipWhitelist || "");
+ const expiresAt = k.expiresAt !== undefined ? k.expiresAt : (prev.expiresAt || null);
+ const systemPrompt = k.systemPrompt !== undefined ? k.systemPrompt : (prev.systemPrompt || "");
+ const budgetGroupId = k.budgetGroupId !== undefined ? k.budgetGroupId : (prev.budgetGroupId || "");
 
       db.run(
-        `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, createdAt, tokenLimit, usedTokens, resetInterval, lastResetAt, allowedModels, rpmLimit, tpmLimit, ipWhitelist) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, createdAt, tokenLimit, usedTokens, resetInterval, lastResetAt, allowedModels, rpmLimit, tpmLimit, ipWhitelist, expiresAt, systemPrompt, budgetGroupId) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           k.id,
           k.key,

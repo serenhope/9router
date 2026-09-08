@@ -307,6 +307,14 @@ export async function saveRequestUsage(entry) {
          const totalTokens = promptTokens + completionTokens;
          if (totalTokens > 0) {
             db.run(`UPDATE apiKeys SET usedTokens = COALESCE(usedTokens, 0) + ? WHERE key = ?`, [totalTokens, entry.apiKey]);
+      // Also increment budget group usage if key belongs to one (#34)
+      try {
+        const keyRow = db.get(`SELECT budgetGroupId FROM apiKeys WHERE key = ?`, [entry.apiKey]);
+        if (keyRow && keyRow.budgetGroupId) {
+          db.run(`UPDATE budgetGroups SET usedTokens = COALESCE(usedTokens, 0) + ?, updatedAt = ? WHERE id = ?`,
+            [totalTokens, new Date().toISOString(), keyRow.budgetGroupId]);
+        }
+      } catch { /* best-effort */ }
          }
          import("./apiKeysRepo.js").then(({ recordApiKeyUsageInWindow }) => {
            recordApiKeyUsageInWindow(entry.apiKey, totalTokens);

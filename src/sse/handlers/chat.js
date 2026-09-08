@@ -8,7 +8,7 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
-import { getSettings } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey } from "@/lib/localDb";
 import { getClientIp } from "@/lib/auth/loginLimiter";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
@@ -123,11 +123,37 @@ export async function handleChat(request, clientRawRequest = null) {
       log.warn("AUTH", `Model "${modelStr}" not allowed for this API key`);
       return errorResponse(HTTP_STATUS.FORBIDDEN, `Model "${modelStr}" is not allowed for this API key`);
     }
+ if (valid === "KEY_EXPIRED") {
+ log.warn("AUTH", "API key expired");
+ return errorResponse(HTTP_STATUS.FORBIDDEN, "API key has expired");
+ }
+ if (valid === "BUDGET_GROUP_EXCEEDED") {
+ log.warn("AUTH", "API key budget group exhausted");
+ return errorResponse(HTTP_STATUS.TOO_MANY_REQUESTS, "Shared budget group token limit exceeded");
+ }
     if (!valid && settings.requireApiKey) {
       log.warn("AUTH", "Invalid API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
     }
   }
+
+ // Per-key system prompt injection (#27)
+ if (apiKey) {
+ try {
+ const keyRecord = await getApiKeyByKey(apiKey);
+ if (keyRecord && keyRecord.systemPrompt && keyRecord.systemPrompt.trim()) {
+ const sp = keyRecord.systemPrompt;
+ if (Array.isArray(body.messages)) {
+ body.messages.unshift({ role: "system", content: sp });
+ } else if (typeof body.system === "string") {
+ body.system = sp + "\n\n" + body.system;
+ } else {
+ body.system = sp;
+ }
+ log.info("AUTH", "Per-key system prompt injected");
+ }
+ } catch { /* fail open */ }
+ }
 
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
   const userAgent = request?.headers?.get("user-agent") || "";

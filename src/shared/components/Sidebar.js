@@ -28,6 +28,10 @@ const navItems = [
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
 ];
 
+const analyticsItems = [
+  { href: "/dashboard/live", label: "Live Feed", icon: "bolt" },
+];
+
 const experimentItems = [
   { href: "/dashboard/arena", label: "Model Arena", icon: "swords" },
 ];
@@ -40,6 +44,7 @@ const debugItems = [
 const systemItems = [
   { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan" },
   { href: "/dashboard/skills", label: "Skills", icon: "extension" },
+  { href: "/dashboard/budget-groups", label: "Budget Groups", icon: "link" },
 ];
 
 function NavLink({ href, icon, label, active, onClick, sub = false }) {
@@ -201,7 +206,24 @@ export default function Sidebar({ onClose }) {
             />
           ))}
 
-          {/* Experiment section */}
+  
+        {/* Analytics section */}
+        <div className="pt-3 mt-2 space-y-0.5">
+          <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
+            Analytics
+          </p>
+          {analyticsItems.map((item) => (
+            <NavLink
+              key={item.href}
+              href={item.href}
+              icon={item.icon}
+              label={item.label}
+              active={isActive(item.href)}
+              onClick={onClose}
+            />
+          ))}
+        </div>
+        {/* Experiment section */}
           <div className="pt-3 mt-2 space-y-0.5">
             <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
               Experiment
