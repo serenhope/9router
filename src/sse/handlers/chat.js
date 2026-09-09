@@ -8,7 +8,7 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
-import { getSettings, getApiKeyByKey } from "@/lib/localDb";
+import { getSettings } from "@/lib/localDb";
 import { getClientIp } from "@/lib/auth/loginLimiter";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
@@ -136,24 +136,6 @@ export async function handleChat(request, clientRawRequest = null) {
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
     }
   }
-
- // Per-key system prompt injection (#27)
- if (apiKey) {
- try {
- const keyRecord = await getApiKeyByKey(apiKey);
- if (keyRecord && keyRecord.systemPrompt && keyRecord.systemPrompt.trim()) {
- const sp = keyRecord.systemPrompt;
- if (Array.isArray(body.messages)) {
- body.messages.unshift({ role: "system", content: sp });
- } else if (typeof body.system === "string") {
- body.system = sp + "\n\n" + body.system;
- } else {
- body.system = sp;
- }
- log.info("AUTH", "Per-key system prompt injected");
- }
- } catch { /* fail open */ }
- }
 
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
   const userAgent = request?.headers?.get("user-agent") || "";

@@ -28,12 +28,9 @@ const navItems = [
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
 ];
 
-const analyticsItems = [
-  { href: "/dashboard/live", label: "Live Feed", icon: "bolt" },
-];
-
-const experimentItems = [
-  { href: "/dashboard/arena", label: "Model Arena", icon: "swords" },
+const featurePlusItems = [
+ { href: "/dashboard/arena", label: "Model Arena", icon: "swords" },
+ { href: "/dashboard/live", label: "Live Feed", icon: "bolt" },
 ];
 
 const debugItems = [
@@ -207,28 +204,12 @@ export default function Sidebar({ onClose }) {
           ))}
 
   
-        {/* Analytics section */}
-        <div className="pt-3 mt-2 space-y-0.5">
-          <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
-            Analytics
-          </p>
-          {analyticsItems.map((item) => (
-            <NavLink
-              key={item.href}
-              href={item.href}
-              icon={item.icon}
-              label={item.label}
-              active={isActive(item.href)}
-              onClick={onClose}
-            />
-          ))}
-        </div>
-        {/* Experiment section */}
+        {/* Feature+ section */}
           <div className="pt-3 mt-2 space-y-0.5">
             <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
-              Experiment
+              Feature+
             </p>
-            {experimentItems.map((item) => (
+            {featurePlusItems.map((item) => (
               <NavLink
                 key={item.href}
                 href={item.href}

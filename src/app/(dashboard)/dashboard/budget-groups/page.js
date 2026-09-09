@@ -74,7 +74,7 @@ export default function BudgetGroupsPage() {
 
  return (
  <div className="flex min-w-0 flex-col gap-4 px-1 sm:px-0">
- <div className="flex items-center justify-between">
+ <div className="flex flex-wrap items-center justify-between gap-2">
  <div>
  <h1 className="text-lg font-semibold text-zinc-100">Budget Groups</h1>
  <p className="text-xs text-zinc-500 mt-0.5">Share one token budget across multiple API keys</p>
@@ -134,9 +134,9 @@ export default function BudgetGroupsPage() {
  </div>
  ) : (
  <>
- <div className="flex items-center justify-between">
- <div>
- <h3 className="text-sm font-medium text-zinc-100">{g.name}</h3>
+ <div className="flex flex-wrap items-center justify-between gap-2">
+ <div className="min-w-0 flex-1">
+ <h3 className="text-sm font-medium text-zinc-100 truncate">{g.name}</h3>
  <p className="text-xs text-zinc-500 mt-0.5">
  {g.tokenLimit > 0 ? `${fmt(g.usedTokens || 0)} / ${fmt(g.tokenLimit)} tokens` : `${fmt(g.usedTokens || 0)} tokens used (unlimited)`}
  </p>

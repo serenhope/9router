@@ -29,20 +29,20 @@ export default function ModelLeaderboardTab({ period }) {
  <table className="w-full text-sm">
  <thead>
  <tr className="border-b border-zinc-800">
- <th className="text-left text-zinc-500 font-medium pb-2">#</th>
- <th className="text-left text-zinc-500 font-medium pb-2">Model</th>
- <th className="text-right text-zinc-500 font-medium pb-2">Requests</th>
- <th className="text-right text-zinc-500 font-medium pb-2">Success Rate</th>
- <th className="text-right text-zinc-500 font-medium pb-2">Prompt Tokens</th>
- <th className="text-right text-zinc-500 font-medium pb-2">Completion</th>
- <th className="text-right text-zinc-500 font-medium pb-2">Avg/Req</th>
+ <th className="text-left text-zinc-500 font-medium pb-2 whitespace-nowrap">#</th>
+ <th className="text-left text-zinc-500 font-medium pb-2 whitespace-nowrap">Model</th>
+ <th className="text-right text-zinc-500 font-medium pb-2 whitespace-nowrap">Requests</th>
+ <th className="text-right text-zinc-500 font-medium pb-2 whitespace-nowrap">Success Rate</th>
+ <th className="text-right text-zinc-500 font-medium pb-2 whitespace-nowrap">Prompt Tokens</th>
+ <th className="text-right text-zinc-500 font-medium pb-2 whitespace-nowrap">Completion</th>
+ <th className="text-right text-zinc-500 font-medium pb-2 whitespace-nowrap">Avg/Req</th>
  </tr>
  </thead>
  <tbody>
  {data.leaderboard.map((m, i) => (
  <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
  <td className="py-2 text-zinc-500">{i + 1}</td>
- <td className="py-2 text-zinc-200">{m.model}</td>
+ <td className="max-w-[260px] truncate py-2 text-zinc-200">{m.model}</td>
  <td className="py-2 text-right text-zinc-300">{fmt(m.requests)}</td>
  <td className="py-2 text-right">
  <span className={Number(m.successRate) >= 95 ? "text-emerald-400" : Number(m.successRate) >= 80 ? "text-amber-400" : "text-red-400"}>

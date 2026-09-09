@@ -202,7 +202,10 @@ export async function importDb(payload) {
           rpmLimit,
           tpmLimit,
           ipWhitelist,
-        ]
+ expiresAt,
+ systemPrompt,
+ budgetGroupId,
+]
       );
     }
     for (const c of payload.combos || []) {

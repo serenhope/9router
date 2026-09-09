@@ -62,15 +62,15 @@ export default function ErrorClassificationTab({ period }) {
  <table className="w-full text-sm">
  <thead>
  <tr className="border-b border-zinc-800">
- <th className="text-left text-zinc-500 font-medium pb-2">Model</th>
- <th className="text-right text-zinc-500 font-medium pb-2">Errors</th>
- <th className="text-right text-zinc-500 font-medium pb-2">Tokens</th>
+ <th className="text-left text-zinc-500 font-medium pb-2 whitespace-nowrap">Model</th>
+ <th className="text-right text-zinc-500 font-medium pb-2 whitespace-nowrap">Errors</th>
+ <th className="text-right text-zinc-500 font-medium pb-2 whitespace-nowrap">Tokens</th>
  </tr>
  </thead>
  <tbody>
  {data.topErrorModels.map((m, i) => (
  <tr key={i} className="border-b border-zinc-800/50">
- <td className="py-2 text-zinc-200">{m.model}</td>
+ <td className="max-w-[260px] truncate py-2 text-zinc-200">{m.model}</td>
  <td className="py-2 text-right text-red-400">{m.errors.toLocaleString()}</td>
  <td className="py-2 text-right text-zinc-400">{m.totalTokens.toLocaleString()}</td>
  </tr>

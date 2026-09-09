@@ -48,9 +48,9 @@ export default function LiveFeedPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-4 px-1 sm:px-0">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-semibold text-zinc-100">Live Feed</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span className={`inline-flex items-center gap-1.5 text-xs ${connected ? "text-emerald-400" : "text-red-400"}`}>
             <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
             {connected ? "Connected" : "Disconnected"}
@@ -60,16 +60,16 @@ export default function LiveFeedPage() {
       </div>
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
-        <div className="overflow-y-auto max-h-[70vh]" ref={listRef}>
+        <div className="overflow-x-auto overflow-y-auto max-h-[70vh]" ref={listRef}>
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-zinc-900 z-10">
               <tr className="border-b border-zinc-800">
-                <th className="text-left text-zinc-500 font-medium px-4 py-2">Time</th>
-                <th className="text-left text-zinc-500 font-medium px-4 py-2">Model</th>
-                <th className="text-left text-zinc-500 font-medium px-4 py-2">Provider</th>
-                <th className="text-right text-zinc-500 font-medium px-4 py-2">Status</th>
-                <th className="text-right text-zinc-500 font-medium px-4 py-2">Prompt</th>
-                <th className="text-right text-zinc-500 font-medium px-4 py-2">Completion</th>
+                <th className="text-left text-zinc-500 font-medium px-4 py-2 whitespace-nowrap">Time</th>
+                <th className="text-left text-zinc-500 font-medium px-4 py-2 whitespace-nowrap">Model</th>
+                <th className="text-left text-zinc-500 font-medium px-4 py-2 whitespace-nowrap">Provider</th>
+                <th className="text-right text-zinc-500 font-medium px-4 py-2 whitespace-nowrap">Status</th>
+                <th className="text-right text-zinc-500 font-medium px-4 py-2 whitespace-nowrap">Prompt</th>
+                <th className="text-right text-zinc-500 font-medium px-4 py-2 whitespace-nowrap">Completion</th>
               </tr>
             </thead>
             <tbody>
@@ -85,7 +85,7 @@ export default function LiveFeedPage() {
                   <td className="px-4 py-1.5 text-zinc-400 font-mono text-xs">
                     {e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : "—"}
                   </td>
-                  <td className="px-4 py-1.5 text-zinc-200">{e.model || "—"}</td>
+                  <td className="max-w-[260px] truncate px-4 py-1.5 text-zinc-200">{e.model || "—"}</td>
                   <td className="px-4 py-1.5 text-zinc-400">{e.provider || "—"}</td>
                   <td className={`px-4 py-1.5 text-right ${statusColor(e.status)}`}>{e.status || "—"}</td>
                   <td className="px-4 py-1.5 text-right text-zinc-300">{fmt(e.promptTokens)}</td>
