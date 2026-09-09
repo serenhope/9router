@@ -85,9 +85,9 @@ export default function LiveFeedPage() {
                   <td className="px-4 py-1.5 text-zinc-400 font-mono text-xs">
                     {e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : "—"}
                   </td>
-                  <td className="max-w-[260px] truncate px-4 py-1.5 text-zinc-200">{e.model || "—"}</td>
+                  <td className="max-w-[200px] truncate px-4 py-1.5 text-zinc-200">{e.model || "—"}</td>
                   <td className="px-4 py-1.5 text-zinc-400">{e.provider || "—"}</td>
-                  <td className={`px-4 py-1.5 text-right ${statusColor(e.status)}`}>{e.status || "—"}</td>
+                  <td className={`px-4 py-1.5 max-w-[120px] truncate text-right ${statusColor(e.status)}`}>{e.status || "—"}</td>
                   <td className="px-4 py-1.5 text-right text-zinc-300">{fmt(e.promptTokens)}</td>
                   <td className="px-4 py-1.5 text-right text-zinc-300">{fmt(e.completionTokens)}</td>
                 </tr>

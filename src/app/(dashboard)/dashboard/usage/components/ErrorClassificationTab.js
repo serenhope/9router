@@ -42,8 +42,8 @@ export default function ErrorClassificationTab({ period }) {
  .sort((a, b) => b[1].count - a[1].count)
  .map(([status, info]) => (
  <div key={status} className="flex items-center justify-between">
- <span className="text-sm text-zinc-400">{status}</span>
- <div className="flex items-center gap-3">
+ <span className="text-sm text-zinc-400 min-w-0 truncate">{status}</span>
+ <div className="flex flex-shrink-0 items-center gap-3">
  <div className="w-32 h-2 bg-zinc-800 rounded-full overflow-hidden">
  <div className="h-full bg-zinc-500 rounded-full" style={{ width: `${(info.count / data.total) * 100}%` }} />
  </div>
@@ -70,7 +70,7 @@ export default function ErrorClassificationTab({ period }) {
  <tbody>
  {data.topErrorModels.map((m, i) => (
  <tr key={i} className="border-b border-zinc-800/50">
- <td className="max-w-[260px] truncate py-2 text-zinc-200">{m.model}</td>
+ <td className="max-w-[200px] truncate py-2 text-zinc-200">{m.model}</td>
  <td className="py-2 text-right text-red-400">{m.errors.toLocaleString()}</td>
  <td className="py-2 text-right text-zinc-400">{m.totalTokens.toLocaleString()}</td>
  </tr>

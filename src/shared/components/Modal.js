@@ -86,7 +86,7 @@ export default function Modal({
                 </div>
               )}
               {title && (
-                <h2 className="text-lg font-semibold text-text-main">{title}</h2>
+                <h2 className="text-lg font-semibold text-text-main truncate min-w-0">{title}</h2>
               )}
             </div>
             {/* X button — mobile only */}

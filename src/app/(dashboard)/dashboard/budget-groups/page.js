@@ -81,7 +81,7 @@ export default function BudgetGroupsPage() {
  </div>
  <button
  onClick={() => setShowAdd(true)}
- className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
+ className="flex-shrink-0 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
  >
  + New Group
  </button>
@@ -94,7 +94,7 @@ export default function BudgetGroupsPage() {
  value={newName}
  onChange={(e) => setNewName(e.target.value)}
  placeholder="Group name"
- className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 focus:border-primary focus:outline-none"
+ className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 focus:border-primary focus:outline-none"
  />
  <input
  value={newLimit}
@@ -124,7 +124,7 @@ export default function BudgetGroupsPage() {
  {editingId === g.id ? (
  <div className="flex flex-col gap-3">
  <div className="flex flex-col sm:flex-row gap-3">
- <input value={editName} onChange={(e) => setEditName(e.target.value)} className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-primary focus:outline-none" />
+ <input value={editName} onChange={(e) => setEditName(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-primary focus:outline-none" />
  <input value={editLimit} onChange={(e) => setEditLimit(e.target.value)} type="number" className="w-full sm:w-56 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-primary focus:outline-none" />
  </div>
  <div className="flex gap-2">
@@ -136,12 +136,12 @@ export default function BudgetGroupsPage() {
  <>
  <div className="flex flex-wrap items-center justify-between gap-2">
  <div className="min-w-0 flex-1">
- <h3 className="text-sm font-medium text-zinc-100 truncate">{g.name}</h3>
+ <h3 className="text-sm font-medium text-zinc-100 truncate max-w-[200px]">{g.name}</h3>
  <p className="text-xs text-zinc-500 mt-0.5">
  {g.tokenLimit > 0 ? `${fmt(g.usedTokens || 0)} / ${fmt(g.tokenLimit)} tokens` : `${fmt(g.usedTokens || 0)} tokens used (unlimited)`}
  </p>
  </div>
- <div className="flex items-center gap-2">
+ <div className="flex flex-shrink-0 items-center gap-2">
  <button onClick={() => { setEditingId(g.id); setEditName(g.name); setEditLimit(g.tokenLimit ? String(g.tokenLimit) : ""); }} className="text-xs text-zinc-400 hover:text-zinc-200">Edit</button>
  <button onClick={() => handleDelete(g.id)} className="text-xs text-red-400 hover:text-red-300">Delete</button>
  </div>

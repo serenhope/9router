@@ -906,7 +906,7 @@ export default function APIPageClient({ machineId }) {
             }`}>Tunnel</span>
             {tunnelEnabled && !tunnelLoading && tunnelReachable ? (
               <>
-                <Input value={`${tunnelPublicUrl || tunnelUrl}/v1`} readOnly className="flex-1 font-mono text-sm" />
+                <Input value={`${tunnelPublicUrl || tunnelUrl}/v1`} readOnly className="flex-1 min-w-0 font-mono text-sm" inputClassName="truncate" />
                 <button
                   onClick={() => copy(`${tunnelPublicUrl || tunnelUrl}/v1`, "tunnel_url")}
                   className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-colors shrink-0"
@@ -923,7 +923,7 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : tunnelEnabled && !tunnelLoading && !tunnelReachable ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-amber-300 dark:border-amber-800 bg-amber-500/5 text-sm text-amber-600 dark:text-amber-400">
+                <div className="min-w-0 flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-amber-300 dark:border-amber-800 bg-amber-500/5 text-sm text-amber-600 dark:text-amber-400">
                   <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
                   {tunnelEverReachable ? "Tunnel reconnecting..." : "Tunnel checking..."}
                 </div>
@@ -937,7 +937,7 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : tunnelLoading ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-input text-sm text-text-muted">
+                <div className="min-w-0 flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-input text-sm text-text-muted">
                   <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
                   {tunnelProgress || "Creating tunnel..."}
                 </div>
@@ -951,7 +951,7 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : tunnelStatus?.type === "error" ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-red-300 dark:border-red-800 bg-red-500/5 text-sm text-red-600 dark:text-red-400">
+                <div className="min-w-0 flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-red-300 dark:border-red-800 bg-red-500/5 text-sm text-red-600 dark:text-red-400">
                   <span className="material-symbols-outlined text-sm">error</span>
                   {tunnelStatus.message}
                 </div>
@@ -959,7 +959,7 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : tunnelChecking ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-input text-sm text-text-muted">
+                <div className="min-w-0 flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-input text-sm text-text-muted">
                   <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
                   Checking...
                 </div>
@@ -998,7 +998,7 @@ export default function APIPageClient({ machineId }) {
             }`}>Tailscale</span>
             {tsEnabled && !tsLoading && tsReachable ? (
               <>
-                <Input value={`${tsUrl}/v1`} readOnly className="flex-1 font-mono text-sm" />
+                <Input value={`${tsUrl}/v1`} readOnly className="flex-1 min-w-0 font-mono text-sm" inputClassName="truncate" />
                 <button
                   onClick={() => copy(`${tsUrl}/v1`, "ts_url")}
                   className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-colors shrink-0"
@@ -1015,7 +1015,7 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : tsEnabled && !tsLoading && !tsReachable ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-amber-300 dark:border-amber-800 bg-amber-500/5 text-sm text-amber-600 dark:text-amber-400">
+                <div className="min-w-0 flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-amber-300 dark:border-amber-800 bg-amber-500/5 text-sm text-amber-600 dark:text-amber-400">
                   <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
                   {tsEverReachable ? "Tailscale reconnecting..." : "Tailscale checking..."}
                 </div>
@@ -1029,7 +1029,7 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : (tsLoading || tsConnecting) ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-input text-sm text-text-muted">
+                <div className="min-w-0 flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-input text-sm text-text-muted">
                   <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
                   {tsProgress || "Connecting..."}
                 </div>
@@ -1052,7 +1052,7 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : tsStatus?.type === "error" ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-red-300 dark:border-red-800 bg-red-500/5 text-sm text-red-600 dark:text-red-400">
+                <div className="min-w-0 flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-red-300 dark:border-red-800 bg-red-500/5 text-sm text-red-600 dark:text-red-400">
                   <span className="material-symbols-outlined text-sm">error</span>
                   {tsStatus.message}
                 </div>
@@ -1117,9 +1117,10 @@ export default function APIPageClient({ machineId }) {
           <div className="mt-4 pt-4 border-t border-border flex flex-wrap items-center gap-3">
             <Toggle
               checked={tunnelDashboardAccess}
+              className="flex-shrink-0"
               onChange={() => handleTunnelDashboardAccess(!tunnelDashboardAccess)}
             />
-            <div className="flex items-center gap-1.5">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
               <p className="font-medium text-sm">Allow dashboard access via tunnel</p>
               <Tooltip text="When enabled, the dashboard can be accessed through your tunnel or Tailscale URL (login still required). When disabled, dashboard access via tunnel/Tailscale is completely blocked." />
             </div>
@@ -1129,7 +1130,7 @@ export default function APIPageClient({ machineId }) {
 
       {/* API Keys */}
       <Card id="require-api-key">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <span className="material-symbols-outlined text-primary">vpn_key</span>
             API Keys
@@ -1139,8 +1140,8 @@ export default function APIPageClient({ machineId }) {
           </Button>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 pb-4 mb-4 border-b border-border">
-          <div>
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-border">
+          <div className="min-w-0 flex-1">
             <p className="font-medium">Require API key</p>
             <p className="text-sm text-text-muted">
               Requests without a valid key will be rejected
@@ -1148,6 +1149,7 @@ export default function APIPageClient({ machineId }) {
           </div>
           <Toggle
             checked={requireApiKey}
+            className="flex-shrink-0"
             onChange={() => handleRequireApiKey(!requireApiKey)}
           />
         </div>
@@ -1174,17 +1176,17 @@ export default function APIPageClient({ machineId }) {
             {keys.map((key) => (
               <div
                 key={key.id}
-                className={`group flex flex-wrap items-center justify-between gap-2 py-3 border-b border-black/[0.03] dark:border-white/[0.03] last:border-b-0 ${key.isActive === false ? "opacity-60" : ""}`}
+                className={`group flex flex-wrap items-center justify-between gap-3 py-3 border-b border-black/[0.03] dark:border-white/[0.03] last:border-b-0 ${key.isActive === false ? "opacity-60" : ""}`}
               >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{key.name}</p>
-                  <div className="flex items-center gap-2 mt-1 min-w-0">
-                    <code className="text-xs text-text-muted font-mono truncate max-w-full min-w-0">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate min-w-0">{key.name}</p>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1 min-w-0">
+                    <code className="text-xs text-text-muted font-mono truncate max-w-[200px] sm:max-w-xs min-w-0">
                       {visibleKeys.has(key.id) ? key.key : maskKey(key.key)}
                     </code>
                     <button
                       onClick={() => toggleKeyVisibility(key.id)}
-                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
+                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all flex-shrink-0"
                       title={visibleKeys.has(key.id) ? "Hide key" : "Show key"}
                     >
                       <span className="material-symbols-outlined text-[14px]">
@@ -1193,7 +1195,7 @@ export default function APIPageClient({ machineId }) {
                     </button>
                     <button
                       onClick={() => copy(key.key, key.id)}
-                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
+                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all flex-shrink-0"
                     >
                       <span className="material-symbols-outlined text-[14px]">
                         {copied === key.id ? "check" : "content_copy"}
@@ -1203,30 +1205,30 @@ export default function APIPageClient({ machineId }) {
                   <p className="text-xs text-text-muted mt-1">
                     Created {new Date(key.createdAt).toLocaleDateString()}
                   </p>
-                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                    <span className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2 overflow-hidden">
+                    <span className="text-xs max-w-full truncate px-2 py-0.5 rounded bg-primary/10 text-primary font-medium">
                       Usage: {formatTokensNumber(key.usedTokens)} / {key.tokenLimit > 0 ? formatTokensNumber(key.tokenLimit) + " tokens" : "Unlimited"}
                     </span>
                     {key.tokenLimit > 0 && key.resetInterval && key.resetInterval !== "never" && (
-                      <span className="text-xs px-2 py-0.5 rounded bg-gray-500/10 text-text-muted">
+                      <span className="text-xs max-w-full truncate px-2 py-0.5 rounded bg-gray-500/10 text-text-muted">
                         Reset: every {key.resetInterval}
                       </span>
                     )}
-                    <span className="text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 font-medium">
+                    <span className="text-xs max-w-full truncate px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 font-medium">
                       Models: {key.allowedModels && key.allowedModels !== "*" ? key.allowedModels : "All"}
                     </span>
                     {(key.rpmLimit > 0 || key.tpmLimit > 0) && (
-                      <span className="text-xs px-2 py-0.5 rounded bg-purple-500/10 text-purple-500 font-medium">
+                      <span className="text-xs max-w-full truncate px-2 py-0.5 rounded bg-purple-500/10 text-purple-500 font-medium">
                         Rate: {key.rpmLimit > 0 ? `${key.rpmLimit} RPM` : ""}{key.rpmLimit > 0 && key.tpmLimit > 0 ? " · " : ""}{key.tpmLimit > 0 ? `${formatTokensNumber(key.tpmLimit)} TPM` : ""}
                       </span>
                     )}
                     {key.ipWhitelist && (
-                      <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-medium">
+                      <span className="text-xs max-w-full truncate px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-medium">
                         IP Guard: Active
                       </span>
                     )}
                     {key.tokenLimit > 0 && (key.usedTokens || 0) >= key.tokenLimit && (
-                      <span className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-500 font-semibold">
+                      <span className="text-xs max-w-full truncate px-2 py-0.5 rounded bg-red-500/10 text-red-500 font-semibold">
                         Quota Exceeded
                       </span>
                     )}
@@ -1235,7 +1237,7 @@ export default function APIPageClient({ machineId }) {
                     <p className="text-xs text-orange-500 mt-1">Paused</p>
                   )}
                 </div>
-                <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                <div className="flex flex-shrink-0 items-center gap-1.5">
                   <button
                     onClick={() => {
                       setEditingKey(key);
@@ -1389,7 +1391,7 @@ export default function APIPageClient({ machineId }) {
             )}
           </div>
           <Input
-            label="IP Whitelist (Optional, comma-separated IPs)"
+            label="IP Whitelist"
             value={newKeyIpWhitelist}
             onChange={(e) => setNewKeyIpWhitelist(e.target.value)}
             placeholder="e.g. 192.168.1.1, 103.20.10.5 (Leave empty to allow all)"
@@ -1524,7 +1526,7 @@ export default function APIPageClient({ machineId }) {
             )}
           </div>
           <Input
-            label="IP Whitelist (Optional, comma-separated IPs)"
+            label="IP Whitelist"
             value={editIpWhitelist}
             onChange={(e) => setEditIpWhitelist(e.target.value)}
             placeholder="e.g. 192.168.1.1, 103.20.10.5 (Leave empty to allow all)"
@@ -1597,11 +1599,12 @@ export default function APIPageClient({ machineId }) {
             <Input
               value={createdKey || ""}
               readOnly
-              className="flex-1 font-mono text-sm"
+              className="flex-1 min-w-0 font-mono text-sm" inputClassName="truncate"
             />
             <Button
               variant="secondary"
               icon={copied === "created_key" ? "check" : "content_copy"}
+              className="flex-shrink-0"
               onClick={() => copy(createdKey, "created_key")}
             >
               {copied === "created_key" ? "Copied!" : "Copy"}
@@ -1786,7 +1789,7 @@ export default function APIPageClient({ machineId }) {
         <button
           key={lang}
           onClick={() => setSnippetLang(lang)}
-          className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+          className={`px-3 py-1.5 rounded text-sm font-medium transition-colors flex-shrink-0 ${
             snippetLang === lang
               ? "bg-primary text-white"
               : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"

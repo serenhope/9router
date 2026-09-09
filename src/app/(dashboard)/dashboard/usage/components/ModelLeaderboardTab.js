@@ -42,7 +42,7 @@ export default function ModelLeaderboardTab({ period }) {
  {data.leaderboard.map((m, i) => (
  <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
  <td className="py-2 text-zinc-500">{i + 1}</td>
- <td className="max-w-[260px] truncate py-2 text-zinc-200">{m.model}</td>
+ <td className="max-w-[200px] truncate py-2 text-zinc-200">{m.model}</td>
  <td className="py-2 text-right text-zinc-300">{fmt(m.requests)}</td>
  <td className="py-2 text-right">
  <span className={Number(m.successRate) >= 95 ? "text-emerald-400" : Number(m.successRate) >= 80 ? "text-amber-400" : "text-red-400"}>
