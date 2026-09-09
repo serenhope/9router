@@ -294,9 +294,33 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         redirectUri = "http://localhost:1455/auth/callback";
       } else if (provider === "xai") {
         redirectUri = "http://127.0.0.1:56121/callback";
-      } else if (provider === "antigravity" || provider === "gemini-cli") {
-        // Google Client ID is registered only with localhost redirect_uri
-        redirectUri = `http://localhost:${appPort}/callback`;
+ } else if (provider === "antigravity" || provider === "gemini-cli") {
+ // Auto-detect public URL: settings.publicUrl > tunnel publicUrl > localhost fallback.
+ let pub = "";
+ try {
+ const sRes = await fetch("/api/settings");
+ if (sRes.ok) {
+ const sData = await sRes.json();
+ pub = (sData.settings?.publicUrl || "").replace(/\/$/, "");
+ }
+ } catch {}
+ if (!pub) {
+ try {
+ const tRes = await fetch("/api/tunnel/status");
+ if (tRes.ok) {
+ const tData = await tRes.json();
+ pub = (tData.tunnel?.publicUrl || "").replace(/\/$/, "");
+ }
+ } catch {}
+ }
+ const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+ if (pub && !pub.includes("localhost") && !pub.includes("127.0.0.1")) {
+ redirectUri = `${pub}/callback`;
+ } else if (!isLocal) {
+ redirectUri = `${window.location.origin}/callback`;
+ } else {
+ redirectUri = `http://localhost:${appPort}/callback`;
+ }
       } else {
         redirectUri = `${window.location.origin}/callback`;
       }
