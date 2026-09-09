@@ -41,7 +41,6 @@ export async function PUT(request, { params }) {
     if (body.ipWhitelist !== undefined) updateData.ipWhitelist = body.ipWhitelist;
  if (body.expiresAt !== undefined) updateData.expiresAt = body.expiresAt || null;
  if (body.systemPrompt !== undefined) updateData.systemPrompt = body.systemPrompt;
- if (body.budgetGroupId !== undefined) updateData.budgetGroupId = body.budgetGroupId;
 
     const updated = await updateApiKey(id, updateData);
 

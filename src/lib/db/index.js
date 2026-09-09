@@ -30,8 +30,6 @@ export {
 // API keys
 export {
   getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey, recordApiKeyUsageInWindow,
-  getBudgetGroups, getBudgetGroupById, createBudgetGroup, updateBudgetGroup, deleteBudgetGroup, incrementBudgetGroupUsage,
-  cloneApiKey, auditApiKeys,
 } from "./repos/apiKeysRepo.js";
 
 // Combos
@@ -97,9 +95,7 @@ export async function exportDb() {
       ipWhitelist: r.ipWhitelist,
       expiresAt: r.expiresAt || null,
       systemPrompt: r.systemPrompt || "",
-      budgetGroupId: r.budgetGroupId || "",
     })),
-    budgetGroups: db.all(`SELECT * FROM budgetGroups`),
     combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
     usageHistory: db.all(`SELECT * FROM usageHistory`),
     usageDaily: db.all(`SELECT * FROM usageDaily`),
@@ -141,7 +137,6 @@ export async function importDb(payload) {
     db.run(`DELETE FROM combos`);
     db.run(`DELETE FROM usageHistory`);
     db.run(`DELETE FROM usageDaily`);
-    db.run(`DELETE FROM budgetGroups`);
  db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'modelMasks', 'customModels', 'mitmAlias', 'pricing')`);
 
     // Settings
@@ -183,10 +178,9 @@ export async function importDb(payload) {
       const ipWhitelist = k.ipWhitelist !== undefined ? k.ipWhitelist : (prev.ipWhitelist || "");
  const expiresAt = k.expiresAt !== undefined ? k.expiresAt : (prev.expiresAt || null);
  const systemPrompt = k.systemPrompt !== undefined ? k.systemPrompt : (prev.systemPrompt || "");
- const budgetGroupId = k.budgetGroupId !== undefined ? k.budgetGroupId : (prev.budgetGroupId || "");
 
       db.run(
-        `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, createdAt, tokenLimit, usedTokens, resetInterval, lastResetAt, allowedModels, rpmLimit, tpmLimit, ipWhitelist, expiresAt, systemPrompt, budgetGroupId) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, createdAt, tokenLimit, usedTokens, resetInterval, lastResetAt, allowedModels, rpmLimit, tpmLimit, ipWhitelist, expiresAt, systemPrompt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           k.id,
           k.key,
@@ -204,7 +198,6 @@ export async function importDb(payload) {
           ipWhitelist,
  expiresAt,
  systemPrompt,
- budgetGroupId,
 ]
       );
     }

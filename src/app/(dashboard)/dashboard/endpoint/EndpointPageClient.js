@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
-import { Card, Button, Input, Select, Modal, CardSkeleton, Toggle, ConfirmModal, ModelSelectModal } from "@/shared/components";
+import { Card, Button, Input, Select, Modal, CardSkeleton, Toggle, ConfirmModal, ModelSelectModal, SegmentedControl } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import {
   TUNNEL_BENEFITS,
@@ -1313,14 +1313,13 @@ export default function APIPageClient({ machineId }) {
             onChange={(e) => setNewKeyLimit(e.target.value)}
             placeholder="e.g. 88000000"
           />
-          {Number(newKeyLimit) > 0 && (
-            <Select
-              label="Auto Reset Interval"
-              options={RESET_INTERVAL_OPTIONS}
-              value={newKeyReset}
-              onChange={(e) => setNewKeyReset(e.target.value)}
-            />
-          )}
+ <Input
+ label="Expiry Date (optional)"
+ type="datetime-local"
+ value={newKeyExpiresAt}
+ onChange={(e) => setNewKeyExpiresAt(e.target.value)}
+ hint="Key stops working after this date; leave empty for no expiry"
+ />
           {Number(newKeyLimit) > 0 && newKeyReset === "custom" && (
             <Input
               label="Custom Interval (e.g. 10h, 3d)"
@@ -1448,14 +1447,13 @@ export default function APIPageClient({ machineId }) {
             onChange={(e) => setEditLimit(e.target.value)}
             placeholder="e.g. 88000000"
           />
-          {Number(editLimit) > 0 && (
-            <Select
-              label="Auto Reset Interval"
-              options={RESET_INTERVAL_OPTIONS}
-              value={editReset}
-              onChange={(e) => setEditReset(e.target.value)}
-            />
-          )}
+ <Input
+ label="Expiry Date (optional)"
+ type="datetime-local"
+ value={editExpiresAt}
+ onChange={(e) => setEditExpiresAt(e.target.value)}
+ hint="Key stops working after this date; leave empty for no expiry"
+ />
           {Number(editLimit) > 0 && editReset === "custom" && (
             <Input
               label="Custom Interval (e.g. 10h, 3d)"
@@ -1784,22 +1782,19 @@ export default function APIPageClient({ machineId }) {
   onClose={() => setShowSnippetModal(null)}
 >
   <div className="flex flex-col gap-4">
-    <div className="flex flex-wrap gap-1">
-      {["curl", "python", "node", "go"].map(lang => (
-        <button
-          key={lang}
-          onClick={() => setSnippetLang(lang)}
-          className={`px-3 py-1.5 rounded text-sm font-medium transition-colors flex-shrink-0 ${
-            snippetLang === lang
-              ? "bg-primary text-white"
-              : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-          }`}
-        >
-          {lang === "node" ? "Node.js" : lang === "curl" ? "cURL" : lang === "go" ? "Go" : "Python"}
-        </button>
-      ))}
-    </div>
-    <pre className="bg-zinc-950 border border-zinc-700 rounded-lg p-4 text-xs text-zinc-200 font-mono overflow-x-auto max-h-64 whitespace-pre-wrap break-all">
+ <SegmentedControl
+ options={[
+ { value: "curl", label: "cURL" },
+ { value: "python", label: "Python" },
+ { value: "node", label: "Node.js" },
+ { value: "go", label: "Go" },
+ ]}
+ value={snippetLang}
+ onChange={setSnippetLang}
+ size="sm"
+ className="w-full sm:w-auto"
+ />
+    <pre className="bg-surface-2 border border-border/50 rounded-[10px] p-4 text-xs text-text-main font-mono overflow-x-auto max-h-64 whitespace-pre-wrap break-all">
       {showSnippetModal && generateSnippet(snippetLang, showSnippetModal.key, typeof window !== "undefined" ? window.location.origin : "")}
     </pre>
     <Button

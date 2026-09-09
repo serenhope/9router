@@ -41,7 +41,6 @@ const debugItems = [
 const systemItems = [
   { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan" },
   { href: "/dashboard/skills", label: "Skills", icon: "extension" },
-  { href: "/dashboard/budget-groups", label: "Budget Groups", icon: "link" },
 ];
 
 function NavLink({ href, icon, label, active, onClick, sub = false }) {

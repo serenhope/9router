@@ -11,8 +11,6 @@ export {
   getProxyPools, getProxyPoolById,
   createProxyPool, updateProxyPool, deleteProxyPool,
   getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey,
-getBudgetGroups, getBudgetGroupById, createBudgetGroup, updateBudgetGroup, deleteBudgetGroup, incrementBudgetGroupUsage,
-cloneApiKey, auditApiKeys,
   getCombos, getComboById, getComboByName,
   createCombo, updateCombo, deleteCombo,
   getModelAliases, setModelAlias, deleteModelAlias,

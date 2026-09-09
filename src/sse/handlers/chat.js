@@ -127,10 +127,6 @@ export async function handleChat(request, clientRawRequest = null) {
  log.warn("AUTH", "API key expired");
  return errorResponse(HTTP_STATUS.FORBIDDEN, "API key has expired");
  }
- if (valid === "BUDGET_GROUP_EXCEEDED") {
- log.warn("AUTH", "API key budget group exhausted");
- return errorResponse(HTTP_STATUS.TOO_MANY_REQUESTS, "Shared budget group token limit exceeded");
- }
     if (!valid && settings.requireApiKey) {
       log.warn("AUTH", "Invalid API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
