@@ -1313,12 +1313,14 @@ export default function APIPageClient({ machineId }) {
             onChange={(e) => setNewKeyLimit(e.target.value)}
             placeholder="e.g. 88000000"
           />
- <Input
- label="Expiry Date (optional)"
- type="datetime-local"
- value={newKeyExpiresAt}
- onChange={(e) => setNewKeyExpiresAt(e.target.value)}
- hint="Key stops working after this date; leave empty for no expiry"
+ {Number(newKeyLimit) > 0 && (
+ <Select
+ label="Auto Reset Interval"
+ options={RESET_INTERVAL_OPTIONS}
+ value={newKeyReset}
+ onChange={(e) => setNewKeyReset(e.target.value)}
+ />
+ )}
  />
           {Number(newKeyLimit) > 0 && newKeyReset === "custom" && (
             <Input
@@ -1397,18 +1399,13 @@ export default function APIPageClient({ machineId }) {
             hint="Leave empty to allow access from any IP address"
           />
 
-      {Number(newKeyLimit) > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-main">Expiry Date</label>
-          <input
-            type="datetime-local"
-            value={newKeyExpiresAt}
-            onChange={(e) => setNewKeyExpiresAt(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
-          />
-          <p className="text-xs text-text-muted">Key expires after this date (optional)</p>
-        </div>
-      )}
+ <Input
+ label="Expiry Date (optional)"
+ type="datetime-local"
+ value={newKeyExpiresAt}
+ onChange={(e) => setNewKeyExpiresAt(e.target.value)}
+ hint="Key stops working after this date; leave empty for no expiry"
+ />
           <div className="flex gap-2 w-full mt-2">
             <Button onClick={handleCreateKey} fullWidth disabled={!newKeyName.trim()} className="min-h-[44px]">
               Create
@@ -1447,13 +1444,14 @@ export default function APIPageClient({ machineId }) {
             onChange={(e) => setEditLimit(e.target.value)}
             placeholder="e.g. 88000000"
           />
- <Input
- label="Expiry Date (optional)"
- type="datetime-local"
- value={editExpiresAt}
- onChange={(e) => setEditExpiresAt(e.target.value)}
- hint="Key stops working after this date; leave empty for no expiry"
+ {Number(editLimit) > 0 && (
+ <Select
+ label="Auto Reset Interval"
+ options={RESET_INTERVAL_OPTIONS}
+ value={editReset}
+ onChange={(e) => setEditReset(e.target.value)}
  />
+ )}
           {Number(editLimit) > 0 && editReset === "custom" && (
             <Input
               label="Custom Interval (e.g. 10h, 3d)"
@@ -1531,18 +1529,13 @@ export default function APIPageClient({ machineId }) {
             hint="Leave empty to allow access from any IP address"
           />
 
-      {Number(editLimit) > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-main">Expiry Date</label>
-          <input
-            type="datetime-local"
-            value={editExpiresAt}
-            onChange={(e) => setEditExpiresAt(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
-          />
-          <p className="text-xs text-text-muted">Key expires after this date (optional)</p>
-        </div>
-      )}
+ <Input
+ label="Expiry Date (optional)"
+ type="datetime-local"
+ value={editExpiresAt}
+ onChange={(e) => setEditExpiresAt(e.target.value)}
+ hint="Key stops working after this date; leave empty for no expiry"
+ />
           <div className="flex gap-2 w-full mt-2">
             <Button
               onClick={() => {
