@@ -17,24 +17,34 @@ export async function GET() {
 
 // POST /api/keys - Create new API key
 export async function POST(request) {
-  try {
-    const body = await request.json();
-    const { name, tokenLimit, resetInterval, allowedModels, rpmLimit, tpmLimit, ipWhitelist, expiresAt, systemPrompt } = body;
+ try {
+ const body = await request.json();
+ const { name, tokenLimit, resetInterval, allowedModels, rpmLimit, tpmLimit, ipWhitelist, expiresAt, systemPrompt } = body;
 
-    if (!name) {
-      return NextResponse.json({ error: "Name is required" }, { status: 400 });
-    }
+ const trimmedName = typeof name === "string" ? name.trim() : "";
+ if (!trimmedName) {
+ return NextResponse.json({ error: "Name is required" }, { status: 400 });
+ }
 
-    // Always get machineId from server
-    const machineId = await getConsistentMachineId();
-    const apiKey = await createApiKey(name, machineId, {
-      tokenLimit: tokenLimit !== undefined ? Number(tokenLimit) : 0,
-      resetInterval: resetInterval || "never",
-      allowedModels: allowedModels || "*",
-      rpmLimit: rpmLimit !== undefined ? Number(rpmLimit) : 0,
-      tpmLimit: tpmLimit !== undefined ? Number(tpmLimit) : 0,
-      ipWhitelist: ipWhitelist || "",
-    });
+ // Enforce unique key names — no overwriting or duplicate names
+ const existingKeys = await getApiKeys();
+ if (existingKeys.some((k) => k.name === trimmedName)) {
+ return NextResponse.json({ error: `A key named "${trimmedName}" already exists. Use a different name.` }, { status: 409 });
+ }
+
+ // Always get machineId from server
+ const machineId = await getConsistentMachineId();
+ const apiKey = await createApiKey(trimmedName, machineId, {
+ tokenLimit: tokenLimit !== undefined ? Number(tokenLimit) : 0,
+ resetInterval: resetInterval || "never",
+ allowedModels: allowedModels || "*",
+ rpmLimit: rpmLimit !== undefined ? Number(rpmLimit) : 0,
+ tpmLimit: tpmLimit !== undefined ? Number(tpmLimit) : 0,
+ ipWhitelist: ipWhitelist || "",
+ expiresAt: expiresAt || null,
+ systemPrompt: systemPrompt || "",
+ });
+
 
     return NextResponse.json({
       key: apiKey.key,

@@ -737,6 +737,11 @@ export default function APIPageClient({ machineId }) {
 
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) return;
+ const trimmedName = newKeyName.trim();
+ if (keys.some((k) => k.name === trimmedName)) {
+ alert(`A key named "${trimmedName}" already exists. Use a different name.`);
+ return;
+ }
 
     const limitNum = newKeyLimit ? Number(newKeyLimit) : 0;
     let finalReset = "never";
@@ -774,11 +779,40 @@ export default function APIPageClient({ machineId }) {
         setNewKeyIpWhitelist("");
         setShowAddModal(false);
         setNewKeyExpiresAt("");
-      }
+ } else {
+ alert(data?.error || "Failed to create key");
+ }
     } catch (error) {
       console.log("Error creating key:", error);
     }
   };
+
+ const handleDuplicateKey = (sourceKey) => {
+ // Suggest a unique name like "X (copy)" / "X (copy 2)"
+ let base = `${sourceKey.name} (copy)`;
+ let candidate = base;
+ let n = 2;
+ while (keys.some((k) => k.name === candidate)) {
+ candidate = `${base} ${n}`;
+ n += 1;
+ }
+ setNewKeyName(candidate);
+ setNewKeyLimit(sourceKey.tokenLimit ? String(sourceKey.tokenLimit) : "");
+ const resVal = sourceKey.resetInterval || "never";
+ if (["never", "5h", "7d", "14d", "30d"].includes(resVal)) {
+ setNewKeyReset(resVal);
+ setNewKeyCustomReset("");
+ } else {
+ setNewKeyReset("custom");
+ setNewKeyCustomReset(resVal);
+ }
+ setNewKeyAllowedModels(sourceKey.allowedModels || "*");
+ setNewKeyRpm(sourceKey.rpmLimit ? String(sourceKey.rpmLimit) : "");
+ setNewKeyTpm(sourceKey.tpmLimit ? String(sourceKey.tpmLimit) : "");
+ setNewKeyIpWhitelist(sourceKey.ipWhitelist || "");
+ setNewKeyExpiresAt(sourceKey.expiresAt || "");
+ setShowAddModal(true);
+ };
 
   const handleUpdateKeyQuota = async (id, data) => {
     try {
@@ -1263,6 +1297,13 @@ export default function APIPageClient({ machineId }) {
                   >
                     <span className="material-symbols-outlined text-[18px]">edit</span>
                   </button>
+ <button
+ onClick={() => handleDuplicateKey(key)}
+ className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
+ title="Duplicate key (copy settings)"
+ >
+ <span className="material-symbols-outlined text-[18px]">library_add</span>
+ </button>
                   <button
                     onClick={() => handleManualResetUsage(key)}
                     className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
