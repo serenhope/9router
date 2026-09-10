@@ -10,57 +10,57 @@ marked.setOptions({ gfm: true, breaks: true });
 const DECOLUA_URL = "https://raw.githubusercontent.com/decolua/9router/refs/heads/master/CHANGELOG.md";
 const SERENHOPE_URL = "https://raw.githubusercontent.com/serenhope/9router/refs/heads/master/CHANGELOG.md";
 
-function splitByVersion(md) {
-  if (!md) return [];
-  const lines = md.split("\n");
-  const versions = [];
-  let current = null;
-  for (const line of lines) {
-    const m = line.match(/^#{1,3}\s+(.+)/);
-    if (m) {
-      current = { label: m[1].trim(), body: "" };
-      versions.push(current);
-    } else if (current) {
-      current.body += line + "\n";
-    }
-  }
-  if (versions.length === 0 && md.trim()) return [{ label: "Full Changelog", body: md }];
-  return versions;
-}
-
 export default function ChangelogModal({ isOpen, onClose }) {
-  const [source, setSource] = useState("seren");
-  const [activeIdx, setActiveIdx] = useState(0);
+  const [combinedHtml, setCombinedHtml] = useState("");
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [cache, setCache] = useState({});
   const modalRef = useRef(null);
 
-  // Fetch when source changes and cache is empty — all setState in .then()/.catch() (async)
   useEffect(() => {
-    if (!isOpen || cache[source]) return;
-    let cancelled = false;
-    const url = source === "seren" ? SERENHOPE_URL : DECOLUA_URL;
-    fetch(url)
-      .then((r) => (r.ok ? r.text() : ""))
-      .then((md) => {
-        if (cancelled) return;
-        setCache((prev) => ({ ...prev, [source]: splitByVersion(md) }));
-        setActiveIdx(0);
+    if (!isOpen || combinedHtml) return;
+    setLoading(true);
+    setError("");
+
+    Promise.all([
+      fetch(DECOLUA_URL).then((r) => r.ok ? r.text() : "").catch(() => ""),
+      fetch(SERENHOPE_URL).then((r) => r.ok ? r.text() : "").catch(() => ""),
+    ])
+      .then(([decoluaMd, serenhopeMd]) => {
+        const decoluaHtml = decoluaMd ? marked.parse(decoluaMd) : "";
+        const serenhopeHtml = serenhopeMd ? marked.parse(serenhopeMd) : "";
+
+        const serenSection = serenhopeHtml
+          ? `<div style="margin-bottom:32px;padding:16px;border:1px solid rgba(96,165,250,0.3);border-radius:12px;background:rgba(96,165,250,0.05);">
+  <h2 style="display:flex;align-items:center;gap:8px;margin:0 0 16px 0;font-size:18px;font-weight:600;color:#60a5fa;">
+    <span class="material-symbols-outlined" style="font-size:20px;">star</span>
+    Contributed by Seren
+  </h2>
+  <div class="seren-contrib">${serenhopeHtml}</div>
+</div>`
+          : "";
+
+        const divider = decoluaHtml && serenhopeHtml
+          ? `<div style="margin:32px 0 0 0;padding-top:24px;border-top:1px solid rgba(128,128,128,0.15);">
+  <h2 style="display:flex;align-items:center;gap:8px;margin:0 0 16px 0;font-size:18px;font-weight:600;color:rgba(128,128,128,0.8);">
+    <span class="material-symbols-outlined" style="font-size:20px;">history_edu</span>
+    Official Releases (Decolua)
+  </h2>
+</div>`
+          : "";
+
+        setCombinedHtml(serenSection + divider + decoluaHtml);
       })
       .catch((err) => {
-        if (cancelled) return;
         setError(err.message || "Failed to load changelog");
-      });
-    return () => { cancelled = true; };
-  }, [isOpen, source, cache]);
-
-  const versions = cache[source] || [];
-  const isLoading = isOpen && !cache[source] && !error;
-  const currentVersion = versions[activeIdx] || versions[0] || null;
+      })
+      .finally(() => setLoading(false));
+  }, [isOpen, combinedHtml]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (modalRef.current && !modalRef.current.contains(e.target)) onClose();
+      if (modalRef.current && !modalRef.current.contains(e.target)) {
+        onClose();
+      }
     };
     if (isOpen) {
       document.addEventListener("mousedown", handleClickOutside);
@@ -68,13 +68,19 @@ export default function ChangelogModal({ isOpen, onClose }) {
     }
   }, [isOpen, onClose]);
 
-  if (!isOpen || typeof document === "undefined") return null;
+  // Reset content when modal closes
+  useEffect(() => {
+    if (!isOpen) setCombinedHtml("");
+  }, [isOpen]);
 
-  const handleSourceSwitch = (s) => { setSource(s); setActiveIdx(0); };
+  if (!isOpen || typeof document === "undefined") return null;
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+        onClick={onClose}
+      />
       <div
         ref={modalRef}
         className="relative w-full bg-surface border border-black/10 dark:border-white/10 rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-3xl flex flex-col max-h-[85vh]"
@@ -89,61 +95,15 @@ export default function ChangelogModal({ isOpen, onClose }) {
           </button>
         </div>
 
-        <div className="flex items-center gap-2 px-4 pt-3">
-          <button
-            onClick={() => handleSourceSwitch("seren")}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-              source === "seren"
-                ? "bg-blue-500/15 text-blue-400 border border-blue-500/30"
-                : "text-text-muted hover:text-text-main hover:bg-black/5 dark:hover:bg-white/5 border border-transparent"
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px] align-text-bottom mr-1">star</span>
-            Contributed by Seren
-          </button>
-          <button
-            onClick={() => handleSourceSwitch("official")}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-              source === "official"
-                ? "bg-gray-500/15 text-gray-300 border border-gray-500/30"
-                : "text-text-muted hover:text-text-main hover:bg-black/5 dark:hover:bg-white/5 border border-transparent"
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px] align-text-bottom mr-1">history_edu</span>
-            Official (Decolua)
-          </button>
-        </div>
-
-        {!isLoading && versions.length > 1 && (
-          <div className="flex flex-wrap gap-1.5 px-4 pt-2.5">
-            {versions.map((v, i) => (
-              <button
-                key={i}
-                onClick={() => setActiveIdx(i)}
-                className={`px-2.5 py-1 rounded-md text-xs font-mono font-medium transition-all ${
-                  i === activeIdx
-                    ? "bg-primary/15 text-primary border border-primary/30"
-                    : "text-text-muted hover:text-text-main hover:bg-black/5 dark:hover:bg-white/5 border border-transparent"
-                }`}
-              >
-                {v.label}
-              </button>
-            ))}
-          </div>
-        )}
-
         <div className="p-6 overflow-y-auto flex-1 prose dark:prose-invert max-w-none text-sm">
-          {isLoading ? (
+          {loading ? (
             <div className="flex items-center justify-center py-12">
               <span className="material-symbols-outlined text-3xl animate-spin text-primary">progress_activity</span>
             </div>
           ) : error ? (
             <p className="text-red-500">{error}</p>
-          ) : currentVersion ? (
-            <>
-              <h3 className="text-base font-semibold text-text-main mb-3">{currentVersion.label}</h3>
-              <div dangerouslySetInnerHTML={{ __html: marked.parse(currentVersion.body) }} />
-            </>
+          ) : combinedHtml ? (
+            <div dangerouslySetInnerHTML={{ __html: combinedHtml }} />
           ) : (
             <p className="text-text-muted">No changelog available.</p>
           )}

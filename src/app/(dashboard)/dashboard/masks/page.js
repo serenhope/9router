@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Card, Button, Modal, Input, ModelSelectModal } from "@/shared/components";
+import { Card, Button, Modal, Input } from "@/shared/components";
 
 export default function MasksPage() {
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
       <div className="min-w-0">
-        <h1 className="text-lg font-semibold text-zinc-100">Model Masking</h1>
-        <p className="text-xs text-zinc-500 mt-0.5">
+        <h1 className="text-lg font-semibold text-text-main">Model Masking</h1>
+        <p className="text-xs text-text-muted mt-0.5">
           Create model aliases that forward requests to target models and/or inject custom system prompts.
         </p>
       </div>
@@ -25,8 +25,6 @@ function MasksContent() {
   const [alias, setAlias] = useState("");
   const [targetModel, setTargetModel] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
-  const [showModelSelect, setShowModelSelect] = useState(false);
-  const [activeProviders, setActiveProviders] = useState([]);
 
   const fetchMasks = useCallback(async () => {
     try {
@@ -42,19 +40,9 @@ function MasksContent() {
     }
   }, []);
 
- useEffect(() => {
- let cancelled = false;
- fetch("/api/models/masks")
- .then((r) => (r.ok ? r.json() : { masks: {} }))
- .then((d) => { if (!cancelled) setMasks(d.masks || {}); })
- .catch(() => {})
- .finally(() => { if (!cancelled) setLoading(false); });
- fetch("/api/providers/client")
- .then((r) => (r.ok ? r.json() : null))
- .then((d) => { if (!cancelled && d && d.connections) setActiveProviders(d.connections); })
- .catch(() => {});
- return () => { cancelled = true; };
- }, []);
+  useEffect(() => {
+    fetchMasks();
+  }, [fetchMasks]);
 
   const handleOpenAdd = () => {
     setEditingAlias(null);
@@ -67,8 +55,8 @@ function MasksContent() {
   const handleOpenEdit = (key, data) => {
     setEditingAlias(key);
     setAlias(key);
-    setTargetModel(data.targetModel || "");
-    setSystemPrompt(data.systemPrompt || "");
+    setTargetModel(data?.targetModel || "");
+    setSystemPrompt(data?.systemPrompt || "");
     setShowModal(true);
   };
 
@@ -105,15 +93,15 @@ function MasksContent() {
     }
   };
 
-  const maskList = Object.entries(masks);
+  const maskList = Object.entries(masks || {});
 
   return (
     <Card padding="md" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
           <h3 className="text-base font-semibold text-text-main flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-[20px]">masks</span>
-            Model Masking & Custom Prompts
+            <span className="material-symbols-outlined text-primary text-[20px]">swap_horiz</span>
+            Model Masking &amp; Custom Prompts
           </h3>
         </div>
         <Button icon="add" size="sm" onClick={handleOpenAdd}>
@@ -128,18 +116,21 @@ function MasksContent() {
       ) : (
         <div className="flex flex-col gap-2">
           {maskList.map(([key, data]) => (
-            <div key={key} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg border border-black/5 dark:border-white/5 bg-black/5 dark:bg-white/5 gap-2">
+            <div
+              key={key}
+              className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg border border-black/5 dark:border-white/5 bg-black/5 dark:bg-white/5 gap-2"
+            >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <code className="font-mono text-sm font-semibold text-primary truncate max-w-[200px]">{key}</code>
-                  {data.targetModel && (
+                  {data?.targetModel && (
                     <span className="text-xs text-text-muted flex items-center gap-1 min-w-0">
                       <span className="material-symbols-outlined text-[14px] shrink-0">arrow_forward</span>
                       <code className="font-mono truncate max-w-[240px]">{data.targetModel}</code>
                     </span>
                   )}
                 </div>
-                {data.systemPrompt && (
+                {data?.systemPrompt && (
                   <p className="text-xs text-text-muted mt-1 truncate max-w-xl italic">
                     Prompt: &quot;{data.systemPrompt}&quot;
                   </p>
@@ -187,17 +178,11 @@ function MasksContent() {
 
             <div>
               <label className="block text-xs font-medium text-text-main mb-1">Target Model (Optional)</label>
-              <div className="flex flex-wrap gap-2">
-                <Input
-                  value={targetModel}
-                  onChange={(e) => setTargetModel(e.target.value)}
-                  placeholder="e.g. claude-3-5-sonnet-20241022"
-                  className="flex-1 min-w-0"
-                />
-                <Button type="button" variant="secondary" onClick={() => setShowModelSelect(true)} className="shrink-0">
-                  Select
-                </Button>
-              </div>
+              <Input
+                value={targetModel}
+                onChange={(e) => setTargetModel(e.target.value)}
+                placeholder="e.g. claude-3-5-sonnet-20241022"
+              />
               <p className="text-[11px] text-text-muted mt-1">If set, overrides the model called under the hood.</p>
             </div>
 
@@ -210,7 +195,9 @@ function MasksContent() {
                 rows={4}
                 className="w-full rounded-[10px] border border-border/50 bg-surface-2 p-2.5 text-sm text-text-main placeholder-text-muted/70 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/50 focus:bg-surface transition-all duration-150 ease-out"
               />
-              <p className="text-[11px] text-text-muted mt-1">Injected into system messages before processing.</p>
+              <p className="text-[11px] text-text-muted mt-1">
+                Injected into system messages before processing.
+              </p>
             </div>
 
             <div className="flex justify-end gap-2 mt-2">
@@ -221,19 +208,6 @@ function MasksContent() {
             </div>
           </form>
         </Modal>
-      )}
-
-      {showModelSelect && (
-        <ModelSelectModal
-          isOpen={showModelSelect}
-          onClose={() => setShowModelSelect(false)}
-          onSelect={(m) => {
-            // ModelSelectModal may pass an object {value,name} or a raw string
-            setTargetModel(typeof m === "string" ? m : m?.value || m?.name || "");
-            setShowModelSelect(false);
-          }}
-          activeProviders={activeProviders}
-        />
       )}
     </Card>
   );
