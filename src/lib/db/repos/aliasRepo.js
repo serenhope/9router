@@ -5,8 +5,6 @@ import { makeKv } from "../helpers/kvStore.js";
 const aliasKv = makeKv("modelAliases");
 const customKv = makeKv("customModels");
 const mitmKv = makeKv("mitmAlias");
-const modelMaskKv = makeKv("modelMasks");
-
 // modelAliases: key=alias, value=modelString
 export async function getModelAliases() {
   return await aliasKv.getAll();
@@ -20,18 +18,6 @@ export async function deleteModelAlias(alias) {
   await aliasKv.remove(alias);
 }
 
-// modelMasks: key=alias, value={ targetModel, systemPrompt, name }
-export async function getModelMasks() {
-  return await modelMaskKv.getAll();
-}
-
-export async function setModelMask(alias, data) {
-  await modelMaskKv.set(alias, data);
-}
-
-export async function deleteModelMask(alias) {
-  await modelMaskKv.remove(alias);
-}
 
 // customModels: key=`${providerAlias}|${id}|${type}`, value=full model object
 function customKey(providerAlias, id, type) {

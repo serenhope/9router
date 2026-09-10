@@ -25,7 +25,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
-import { getModelMasks } from "@/lib/db/repos/aliasRepo.js";
+
 
 /**
  * Handle chat completion request
@@ -56,25 +56,6 @@ export async function handleChat(request, clientRawRequest = null) {
   let { model: modelStr, contextMarker } = stripModelContextMarker(body.model);
   if (contextMarker) body.model = modelStr;
 
-  try {
-    const masks = await getModelMasks();
-    if (masks && masks[modelStr]) {
-      const mask = masks[modelStr];
-      if (mask.targetModel) {
-        body.model = mask.targetModel;
-        modelStr = mask.targetModel;
-      }
-      if (mask.systemPrompt) {
-        if (Array.isArray(body.messages)) {
-          body.messages.unshift({ role: "system", content: mask.systemPrompt });
-        } else if (typeof body.system === "string") {
-          body.system = mask.systemPrompt + "\n\n" + body.system;
-        } else {
-          body.system = mask.systemPrompt;
-        }
-      }
-    }
-  } catch { /* fail open */ }
 
   // Request summary is emitted as the unified "▶" line in chatCore (has fmt/thinking/account)
 
@@ -267,6 +248,28 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 
   const { provider, model } = modelInfo;
+
+ // Apply per-model overrides (Model Editor)
+ try {
+   const { getModelOverride } = await import("@/lib/db/repos/modelEditorRepo.js");
+   const overrideKey = provider ? `${provider}|${model}` : null;
+   const override = overrideKey ? await getModelOverride(overrideKey) : null;
+   if (override) {
+     if (override.targetModel) {
+       body.model = override.targetModel;
+       modelStr = override.targetModel;
+     }
+     if (override.systemPrompt) {
+       if (Array.isArray(body.messages)) {
+         body.messages.unshift({ role: "system", content: override.systemPrompt });
+       } else if (typeof body.system === "string") {
+         body.system = override.systemPrompt + "\n\n" + body.system;
+       } else {
+         body.system = override.systemPrompt;
+       }
+     }
+   }
+ } catch { /* fail open */ }
 
   // Routing shown in the unified "▶" line (client model → provider/model)
 

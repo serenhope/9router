@@ -1,7 +1,7 @@
 # v0.5.71-Custom (2026-09-10)
 
 ## Custom Features & Enhancements
-- **Model Masking**: Dedicated Model Masking page under Feature+ to create model aliases that forward to a target model and/or inject a custom system prompt.
+- **Model Editor**: Edit per-model overrides (rename, target model, context window, system prompt) and manage custom provider prefixes from a dedicated Model Editor page under Feature+.
 - **MoonshotAI Provider**: Added MoonshotAI (Kimi) compatible provider option alongside OpenAI/Anthropic compatible providers.
 - **Extra Combo Strategies**: New combo routing strategies beyond Fallback / Round Robin / Fusion.
 - **Changelog View**: Combined changelog modal — custom contributions shown in a highlighted "Contributed by Seren" section above the official Decolua release notes.
