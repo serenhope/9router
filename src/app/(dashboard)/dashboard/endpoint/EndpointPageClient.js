@@ -1321,7 +1321,6 @@ export default function APIPageClient({ machineId }) {
  onChange={(e) => setNewKeyReset(e.target.value)}
  />
  )}
- />
           {Number(newKeyLimit) > 0 && newKeyReset === "custom" && (
             <Input
               label="Custom Interval (e.g. 10h, 3d)"
