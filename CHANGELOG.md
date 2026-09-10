@@ -1,3 +1,13 @@
+# v0.5.71-Custom (2026-09-10)
+
+## Custom Features & Enhancements
+- **Model Masking**: Dedicated Model Masking page under Feature+ to create model aliases that forward to a target model and/or inject a custom system prompt.
+- **MoonshotAI Provider**: Added MoonshotAI (Kimi) compatible provider option alongside OpenAI/Anthropic compatible providers.
+- **Extra Combo Strategies**: New combo routing strategies beyond Fallback / Round Robin / Fusion.
+- **Changelog View**: Combined changelog modal — custom contributions shown in a highlighted "Contributed by Seren" section above the official Decolua release notes.
+- **UI Cleanup**: Refined dashboard layout, tidied console log view, and removed the Live Feed page and related controls for a cleaner sidebar.
+- **Backup Fix**: Fixed API key settings and usage statistics being reset on backup import (column/placeholder mismatch).
+
 # v0.5.70-Custom (2026-09-07)
 
 ## Custom Features & Enhancements
