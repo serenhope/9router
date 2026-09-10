@@ -10,6 +10,71 @@ marked.setOptions({ gfm: true, breaks: true });
 const DECOLUA_URL = "https://raw.githubusercontent.com/decolua/9router/refs/heads/master/CHANGELOG.md";
 const SERENHOPE_URL = "https://raw.githubusercontent.com/serenhope/9router/refs/heads/master/CHANGELOG.md";
 
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// Split markdown into per-version sections.
+// A version boundary is an h1/h2 heading whose text starts with an optional "v" + digit,
+// e.g. "# v0.5.71-Custom (2026-09-10)" or "## v0.5.65". Sub-headings like "## Features"
+// are intentionally NOT treated as boundaries.
+function splitVersions(md) {
+  if (!md) return [];
+  const lines = md.split("\n");
+  const sections = [];
+  let cur = null;
+  for (const line of lines) {
+    const m = line.match(/^ {0,3}#{1,2}\s+(v?\d[^\n]*)$/i);
+    if (m) {
+      if (cur) sections.push(cur);
+      cur = { title: m[1].trim(), body: "" };
+    } else if (cur) {
+      cur.body += line + "\n";
+    }
+  }
+  if (cur) sections.push(cur);
+  return sections;
+}
+
+// Render each version as its own bordered card.
+function renderVersionCards(md, accent) {
+  const sections = splitVersions(md);
+  const cardStyle = `margin:0 0 14px;padding:14px 16px;border:1px solid ${accent.border};border-radius:12px;background:${accent.bg};box-sizing:border-box;`;
+  if (!sections.length) {
+    const html = md ? marked.parse(md) : "";
+    return html ? `<div style="${cardStyle}"><div class="changelog-body">${html}</div></div>` : "";
+  }
+  return sections
+    .map((s) => {
+      const bodyMd = s.body.replace(/^#{2,6}\s/gm, (m) => "#".repeat(Math.min(6, m.length + 2)) + " ");
+      const bodyHtml = s.body.trim() ? marked.parse(bodyMd) : "";
+      return `<div style="${cardStyle}">
+  <h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:${accent.color};display:flex;align-items:center;gap:8px;">
+    <span class="material-symbols-outlined" style="font-size:18px;">${accent.icon}</span>
+    ${escapeHtml(s.title)}
+  </h3>
+  <div class="changelog-body">${bodyHtml}</div>
+</div>`;
+    })
+    .join("");
+}
+
+const SEREN_ACCENT = {
+  color: "#60a5fa",
+  border: "rgba(96,165,250,0.35)",
+  bg: "rgba(96,165,250,0.06)",
+  icon: "star",
+};
+const OFFICIAL_ACCENT = {
+  color: "rgba(148,163,184,0.95)",
+  border: "rgba(148,163,184,0.25)",
+  bg: "rgba(148,163,184,0.05)",
+  icon: "history_edu",
+};
+
 export default function ChangelogModal({ isOpen, onClose }) {
   const [combinedHtml, setCombinedHtml] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,42 +83,53 @@ export default function ChangelogModal({ isOpen, onClose }) {
 
   useEffect(() => {
     if (!isOpen || combinedHtml) return;
+    let cancelled = false;
     setLoading(true);
     setError("");
 
     Promise.all([
-      fetch(DECOLUA_URL).then((r) => r.ok ? r.text() : "").catch(() => ""),
-      fetch(SERENHOPE_URL).then((r) => r.ok ? r.text() : "").catch(() => ""),
+      fetch(DECOLUA_URL).then((r) => (r.ok ? r.text() : "")).catch(() => ""),
+      fetch(SERENHOPE_URL).then((r) => (r.ok ? r.text() : "")).catch(() => ""),
     ])
       .then(([decoluaMd, serenhopeMd]) => {
-        const decoluaHtml = decoluaMd ? marked.parse(decoluaMd) : "";
-        const serenhopeHtml = serenhopeMd ? marked.parse(serenhopeMd) : "";
+        if (cancelled) return;
 
-        const serenSection = serenhopeHtml
-          ? `<div style="margin-bottom:32px;padding:16px;border:1px solid rgba(96,165,250,0.3);border-radius:12px;background:rgba(96,165,250,0.05);">
-  <h2 style="display:flex;align-items:center;gap:8px;margin:0 0 16px 0;font-size:18px;font-weight:600;color:#60a5fa;">
-    <span class="material-symbols-outlined" style="font-size:20px;">star</span>
-    Contributed by Seren
-  </h2>
-  <div class="seren-contrib">${serenhopeHtml}</div>
+        const serenCards = serenhopeMd ? renderVersionCards(serenhopeMd, SEREN_ACCENT) : "";
+        const officialCards = decoluaMd ? renderVersionCards(decoluaMd, OFFICIAL_ACCENT) : "";
+
+        const serenBlock = serenCards
+          ? `<div style="display:flex;align-items:center;gap:8px;margin:0 0 14px;font-size:17px;font-weight:600;color:#60a5fa;">
+  <span class="material-symbols-outlined" style="font-size:20px;">star</span>
+  Contributed by Seren
+</div>
+${serenCards}`
+          : "";
+
+        const divider = serenCards && officialCards
+          ? `<div style="margin:32px 0 20px 0;padding-top:24px;border-top:1px solid rgba(128,128,128,0.15);display:flex;align-items:center;gap:8px;font-size:17px;font-weight:600;color:rgba(148,163,184,0.85);">
+  <span class="material-symbols-outlined" style="font-size:20px;">history_edu</span>
+  Official Releases (Decolua)
 </div>`
           : "";
 
-        const divider = decoluaHtml && serenhopeHtml
-          ? `<div style="margin:32px 0 0 0;padding-top:24px;border-top:1px solid rgba(128,128,128,0.15);">
-  <h2 style="display:flex;align-items:center;gap:8px;margin:0 0 16px 0;font-size:18px;font-weight:600;color:rgba(128,128,128,0.8);">
-    <span class="material-symbols-outlined" style="font-size:20px;">history_edu</span>
-    Official Releases (Decolua)
-  </h2>
-</div>`
+        const officialBlock = officialCards
+          ? (divider || `<div style="display:flex;align-items:center;gap:8px;margin:0 0 14px;font-size:17px;font-weight:600;color:rgba(148,163,184,0.85);">
+  <span class="material-symbols-outlined" style="font-size:20px;">history_edu</span>
+  Official Releases (Decolua)
+</div>`) + officialCards
           : "";
 
-        setCombinedHtml(serenSection + divider + decoluaHtml);
+        setCombinedHtml(serenBlock + officialBlock);
       })
       .catch((err) => {
+        if (cancelled) return;
         setError(err.message || "Failed to load changelog");
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
   }, [isOpen, combinedHtml]);
 
   useEffect(() => {
