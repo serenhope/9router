@@ -248,6 +248,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 
   const { provider, model } = modelInfo;
+ let effectiveModel = model;
 
  // Apply per-model overrides (Model Editor)
  try {
@@ -256,8 +257,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
    const override = overrideKey ? await getModelOverride(overrideKey) : null;
    if (override) {
      if (override.targetModel) {
-       body.model = override.targetModel;
-       modelStr = override.targetModel;
+       effectiveModel = override.targetModel;
      }
      if (override.systemPrompt) {
        if (Array.isArray(body.messages)) {
@@ -317,8 +317,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const chatSettings = await getSettings();
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
     const result = await handleChatCore({
-      body: { ...body, model: `${provider}/${model}` },
-      modelInfo: { provider, model },
+      body: { ...body, model: `${provider}/${effectiveModel}` },
+      modelInfo: { provider, model: effectiveModel },
       credentials: refreshedCredentials,
       log,
       clientRawRequest,

@@ -126,22 +126,16 @@ export async function PATCH(request) {
  const updated = await updateProviderNode(id, updateData);
  // Also update prefix on all connections that reference this node
  if (updateData.prefix) {
- const connections = await getProviderConnections();
- for (const conn of connections) {
- if (conn.provider === id) {
- const existingData = conn.data || {};
- await updateProviderConnection(conn.id, {
- ...conn,
- data: {
- ...existingData,
- providerSpecificData: {
- ...(existingData.providerSpecificData || {}),
- prefix: updateData.prefix,
- },
- },
- });
- }
- }
+   const connections = await getProviderConnections({ provider: id });
+   for (const conn of connections) {
+     await updateProviderConnection(conn.id, {
+       ...conn,
+       providerSpecificData: {
+         ...(conn.providerSpecificData || {}),
+         prefix: updateData.prefix,
+       },
+     });
+   }
  }
  return NextResponse.json({ node: updated });
  } catch (error) {
