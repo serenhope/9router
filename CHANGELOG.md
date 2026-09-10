@@ -8,6 +8,12 @@
 - **UI Cleanup**: Refined dashboard layout, tidied console log view, and removed the Live Feed page and related controls for a cleaner sidebar.
 - **Backup Fix**: Fixed API key settings and usage statistics being reset on backup import (column/placeholder mismatch).
 
+## Fixes
+- **API Key Creation Bug**: Fixed `createApiKey` INSERT placeholder mismatch (16 columns vs 15 `?`) that made creating any API key silently fail.
+- **API Key Expiry**: Expiry date set during creation is now persisted (was silently dropped).
+- **Unique Key Names**: API key names are enforced unique — server rejects duplicates and the client shows a clear message; no overwriting.
+- **Duplicate API Key**: Added a Duplicate button per key that copies all settings into a new key with an auto-suggested unique name (`X (copy)`, `X (copy 2)`, …); a fresh key value is generated.
+
 # v0.5.70-Custom (2026-09-07)
 
 ## Custom Features & Enhancements
