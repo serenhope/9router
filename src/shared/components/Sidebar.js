@@ -31,7 +31,7 @@ const navItems = [
 const featurePlusItems = [
  { href: "/dashboard/arena", label: "Model Arena", icon: "swords" },
  { href: "/dashboard/live", label: "Live Feed", icon: "bolt" },
- { href: "/dashboard/masks", label: "Model Masking", icon: "masks" },
+ { href: "/dashboard/masks", label: "Model Masking", icon: "swap_horiz" },
 ];
 
 const debugItems = [

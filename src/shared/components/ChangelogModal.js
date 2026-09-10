@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import { marked } from "marked";
@@ -10,61 +10,54 @@ marked.setOptions({ gfm: true, breaks: true });
 const DECOLUA_URL = "https://raw.githubusercontent.com/decolua/9router/refs/heads/master/CHANGELOG.md";
 const SERENHOPE_URL = "https://raw.githubusercontent.com/serenhope/9router/refs/heads/master/CHANGELOG.md";
 
-/** Split markdown into per-version blocks keyed by the header line. */
 function splitByVersion(md) {
   if (!md) return [];
   const lines = md.split("\n");
   const versions = [];
   let current = null;
-
   for (const line of lines) {
     const m = line.match(/^#{1,3}\s+(.+)/);
     if (m) {
-      const label = m[1].trim();
-      current = { label, body: "" };
+      current = { label: m[1].trim(), body: "" };
       versions.push(current);
     } else if (current) {
       current.body += line + "\n";
     }
   }
-
-  if (versions.length === 0 && md.trim()) {
-    return [{ label: "Full Changelog", body: md }];
-  }
+  if (versions.length === 0 && md.trim()) return [{ label: "Full Changelog", body: md }];
   return versions;
 }
 
 export default function ChangelogModal({ isOpen, onClose }) {
-  const [source, setSource] = useState("seren"); // "seren" | "official"
-  const [cache, setCache] = useState({});         // { seren: [...], official: [...] }
-   const [error, setError] = useState("");
+  const [source, setSource] = useState("seren");
   const [activeIdx, setActiveIdx] = useState(0);
+  const [error, setError] = useState("");
+  const [cache, setCache] = useState({});
   const modalRef = useRef(null);
 
- // Fetch on source change only when cache misses — no sync setState in effect
- useEffect(() => {
- if (!isOpen || cache[source]) return;
- let cancelled = false;
- const url = source === "seren" ? SERENHOPE_URL : DECOLUA_URL;
- fetch(url)
- .then((r) => (r.ok ? r.text() : ""))
- .then((md) => {
- if (cancelled) return;
- setCache((prev) => ({ ...prev, [source]: splitByVersion(md) }));
- setActiveIdx(0);
- })
- .catch((err) => {
- if (cancelled) return;
- setError(err.message || "Failed to load changelog");
- });
- return () => { cancelled = true; };
- }, [isOpen, source, cache]);
+  // Fetch when source changes and cache is empty — all setState in .then()/.catch() (async)
+  useEffect(() => {
+    if (!isOpen || cache[source]) return;
+    let cancelled = false;
+    const url = source === "seren" ? SERENHOPE_URL : DECOLUA_URL;
+    fetch(url)
+      .then((r) => (r.ok ? r.text() : ""))
+      .then((md) => {
+        if (cancelled) return;
+        setCache((prev) => ({ ...prev, [source]: splitByVersion(md) }));
+        setActiveIdx(0);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err.message || "Failed to load changelog");
+      });
+    return () => { cancelled = true; };
+  }, [isOpen, source, cache]);
 
-  // Derived versions list (no setState in effect)
-  const versions = useMemo(() => cache[source] || [], [cache, source]);
-  const currentVersion = versions[activeIdx] || null;
+  const versions = cache[source] || [];
+  const isLoading = isOpen && !cache[source] && !error;
+  const currentVersion = versions[activeIdx] || versions[0] || null;
 
-  // Close on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (modalRef.current && !modalRef.current.contains(e.target)) onClose();
@@ -77,20 +70,15 @@ export default function ChangelogModal({ isOpen, onClose }) {
 
   if (!isOpen || typeof document === "undefined") return null;
 
-  const handleSourceSwitch = (s) => {
-    setSource(s);
-    setActiveIdx(0);
-  };
+  const handleSourceSwitch = (s) => { setSource(s); setActiveIdx(0); };
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-
       <div
         ref={modalRef}
         className="relative w-full bg-surface border border-black/10 dark:border-white/10 rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-3xl flex flex-col max-h-[85vh]"
       >
-        {/* Header */}
         <div className="flex items-center justify-between p-3 border-b border-black/5 dark:border-white/5">
           <h2 className="text-lg font-semibold text-text-main">Change Log</h2>
           <button
@@ -101,7 +89,6 @@ export default function ChangelogModal({ isOpen, onClose }) {
           </button>
         </div>
 
-        {/* Source toggle */}
         <div className="flex items-center gap-2 px-4 pt-3">
           <button
             onClick={() => handleSourceSwitch("seren")}
@@ -127,7 +114,6 @@ export default function ChangelogModal({ isOpen, onClose }) {
           </button>
         </div>
 
-        {/* Version selector */}
         {!isLoading && versions.length > 1 && (
           <div className="flex flex-wrap gap-1.5 px-4 pt-2.5">
             {versions.map((v, i) => (
@@ -146,7 +132,6 @@ export default function ChangelogModal({ isOpen, onClose }) {
           </div>
         )}
 
-        {/* Content */}
         <div className="p-6 overflow-y-auto flex-1 prose dark:prose-invert max-w-none text-sm">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">

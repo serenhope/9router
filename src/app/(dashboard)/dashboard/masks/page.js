@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Card, Button, Modal, Input, ModelSelectModal, CardSkeleton } from "@/shared/components";
+import { Card, Button, Modal, Input, ModelSelectModal } from "@/shared/components";
 
 export default function MasksPage() {
   return (

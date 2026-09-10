@@ -1361,9 +1361,9 @@ export default function ProviderDetailPage() {
         <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <h2 className="text-lg font-semibold">{isAnthropicCompatible ? "Anthropic Compatible Details" : "OpenAI Compatible Details"}</h2>
+              <h2 className="text-lg font-semibold">{isAnthropicCompatible ? "Anthropic Compatible Details" : /(moonshot|kimi)/i.test(providerNode?.name || "") ? "MoonshotAI Compatible Details" : "OpenAI Compatible Details"}</h2>
               <p className="break-all text-sm text-text-muted">
-                {isAnthropicCompatible ? "Messages API" : (providerNode.apiType === "responses" ? "Responses API" : "Chat Completions")} · {(providerNode.baseUrl || "").replace(/\/$/, "")}/
+                {isAnthropicCompatible ? "Messages API" : /(moonshot|kimi)/i.test(providerNode?.name || "") ? "Chat Completions (Kimi)" : (providerNode.apiType === "responses" ? "Responses API" : "Chat Completions")} · {(providerNode.baseUrl || "").replace(/\/$/, "")}/
                 {isAnthropicCompatible ? "messages" : (providerNode.apiType === "responses" ? "responses" : "chat/completions")}
               </p>
             </div>
