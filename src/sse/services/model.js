@@ -75,6 +75,16 @@ export async function getModelInfo(modelStr) {
     return { provider: null, model: parsed.model };
   }
 
+  // Check studio models
+  try {
+   const { getStudioModel } = await import("@/lib/db/repos/modelEditorRepo.js");
+   const studio = await getStudioModel(parsed.model);
+   if (studio?.targetModel?.includes("/")) {
+   const resolved = parseModel(studio.targetModel);
+   return { provider: resolved.provider, model: resolved.model };
+   }
+  } catch { /* fall through */ }
+
   return getModelInfoCore(modelStr, getModelAliases);
 }
 

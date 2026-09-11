@@ -8,7 +8,7 @@ import {
 import { getCombos } from "@/lib/db/repos/combosRepo.js";
 import { getProviderNodes } from "@/lib/db/repos/nodesRepo.js";
 import { resolveProviderAlias } from "open-sse/services/model.js";
-import { getModelAliases, setModelAlias, deleteModelAlias } from "@/lib/db/repos/aliasRepo.js";
+import { getModelAliases } from "@/lib/db/repos/aliasRepo.js";
 
 export const dynamic = "force-dynamic";
 
@@ -67,9 +67,6 @@ async function validate({ callName, targetModel, previousName }) {
   if (callName !== previousName && combos.some((c) => c.name === callName)) {
   return `"${callName}" is already used by a combo.`;
   }
-  if (callName !== previousName && aliases[callName] && aliases[callName] !== targetModel) {
-  return `"${callName}" is already used by another model alias.`;
-  }
   return null;
 }
 
@@ -91,8 +88,6 @@ export async function POST(request) {
   contextWindow: body.contextWindow,
   systemPrompt: body.systemPrompt,
   });
-  // The alias is what makes the name callable by the router.
-  await setModelAlias(callName, targetModel);
 
   return NextResponse.json({ model });
   } catch (error) {
@@ -125,14 +120,9 @@ export async function PUT(request) {
   contextWindow: body.contextWindow,
   systemPrompt: body.systemPrompt,
   });
-  await setModelAlias(callName, targetModel);
 
   if (previousName !== callName) {
   await deleteStudioModel(previousName);
-  const aliases = await getModelAliases().catch(() => ({}));
-  if (aliases[previousName] === existing.targetModel) {
-  await deleteModelAlias(previousName);
-  }
   }
 
   return NextResponse.json({ model });
@@ -153,10 +143,6 @@ export async function DELETE(request) {
   if (!existing) return NextResponse.json({ error: "Model not found" }, { status: 404 });
 
   await deleteStudioModel(callName);
-  const aliases = await getModelAliases().catch(() => ({}));
-  if (aliases[callName] === existing.targetModel) {
-  await deleteModelAlias(callName);
-  }
 
   return NextResponse.json({ success: true });
   } catch (error) {

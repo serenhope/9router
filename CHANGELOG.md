@@ -1,3 +1,13 @@
+# v0.5.74-Custom (2026-09-11)
+
+## Fixes
+- **Model Studio no longer renames the original model**: a studio name is now resolved through its own record instead of writing a display alias, so `claude-fable-5` appears as an added entry while `custom1/neko/qwen3.8-flash` keeps its own name in every picker.
+- **Legacy studio aliases cleaned up**: display aliases left behind by older builds for studio names are deleted the first time the studio list loads, so previously renamed models reappear under their real name.
+- **Usage shows the called studio name**: the name a client sent is stored in the usage row's metadata and rendered first, with the real target model shown under it as `→ provider/model`.
+
+## Custom Features & Enhancements
+- **MoonshotAI logo is reliable**: compatible nodes created from the MoonshotAI button are tagged with a brand, and that tag (not just the name) now picks the `moonshoot-ai.png` logo on cards, the detail page, and its colors.
+
 # v0.5.73-Custom (2026-09-11)
 
 ## Fixes

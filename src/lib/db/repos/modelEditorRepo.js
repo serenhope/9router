@@ -4,7 +4,7 @@ import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 // Two record shapes live in the `modelOverrides` kv scope:
 //  • `{callName}`           → a studio model: a user-owned callable name that points at any
 //                             `provider/model` and may override context window + system prompt.
-//                             It is aliased so the router resolves the name.
+//                             The router resolves the name directly via getStudioModel (no alias needed).
 //  • `{provider}|{model}`   → legacy per-model override, still honoured at request time.
 const SCOPE = "modelOverrides";
 
@@ -58,11 +58,29 @@ function toModel(callName, value) {
 /** Studio models (keyed by their callable name), sorted by name. */
 export async function getStudioModels() {
   const rows = await store().all();
-  return Object.entries(rows)
-  .filter(([key]) => !key.includes("|"))
-  .map(([key, value]) => toModel(key, value))
-  .filter(Boolean)
-  .sort((a, b) => a.callName.localeCompare(b.callName));
+  const models = Object.entries(rows)
+    .filter(([key]) => !key.includes("|"))
+    .map(([key, value]) => toModel(key, value))
+    .filter(Boolean)
+    .sort((a, b) => a.callName.localeCompare(b.callName));
+
+  // Migration: older builds wrote a display alias for every studio name into the
+  // modelAliases kv scope, which made the studio name REPLACE the original model
+  // in pickers. Studio names now resolve through getStudioModel, so delete any
+  // leftover alias that points at this studio entry's target. Idempotent, best-effort.
+  if (models.length) {
+    try {
+      const { getModelAliases, deleteModelAlias } = await import("./aliasRepo.js");
+      const aliases = await getModelAliases();
+      for (const m of models) {
+        if (aliases[m.callName] === m.targetModel) await deleteModelAlias(m.callName);
+      }
+    } catch {
+      /* fail open — the studio list is still returned */
+    }
+  }
+
+  return models;
 }
 
 /** One studio model by callable name, or null. */

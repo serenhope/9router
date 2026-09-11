@@ -146,6 +146,8 @@ function groupDataByKey(data, keyField) {
     s.cachedCost += item.cachedCost || 0;
     s.outputCost += item.outputCost || 0;
     s.pending += item.pending || 0;
+    if (item.requestedModel && !s.requestedModel) s.requestedModel = item.requestedModel;
+    if (item.rawModel && !s.rawModel) s.rawModel = item.rawModel;
     if (item.lastUsed && (!s.lastUsed || new Date(item.lastUsed) > new Date(s.lastUsed))) {
       s.lastUsed = item.lastUsed;
     }

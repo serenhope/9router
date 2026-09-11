@@ -270,7 +270,8 @@ export default function ProvidersPage() {
     .map((node) => ({
       id: node.id,
       name: node.name || "OpenAI Compatible",
-      color: /moonshot|kimi/i.test(node.name || "") ? "#6366F1" : "#10A37F",
+      brand: node.brand,
+      color: (node.brand === "moonshot" || /moonshot|kimi/i.test(node.name || "")) ? "#6366F1" : "#10A37F",
       textIcon: "OC",
       apiType: node.apiType,
     }))
@@ -850,7 +851,7 @@ function ApiKeyProviderCard({
   };
 
   const getIconPath = () => {
-    if (isCompatible && /moonshot|kimi/i.test(provider.name || ""))
+    if (isCompatible && (provider.brand === "moonshot" || /moonshot|kimi/i.test(provider.name || "")))
       return "/providers/moonshoot-ai.png";
     if (isCompatible && provider.apiType)
       return provider.apiType === "responses"
