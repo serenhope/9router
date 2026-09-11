@@ -1,10 +1,10 @@
 # v0.5.73-Custom (2026-09-11)
 
 ## Fixes
-- **Model Studio page crash**: opening the page with at least one saved model threw a client-side `ReferenceError` ("This page couldn't load"). The per-card copy button now uses the shared copy hook, so "Copied" shows only on the card you clicked.
-- **Model Battle data load**: the page silently skipped its API-key and Model Studio lookups because one fetch was missing, so no key was pre-selected and costs were never resolved. Both are loaded again and virtual (studio) names are priced by their real target model.
+- **Model Studio page crash**: the per-card copy button now uses the shared copy hook, so a saved model no longer throws the client-side `ReferenceError` that showed "This page couldn't load".
+- **Model Battle data load**: the missing API-key and Model Studio fetch is restored, so a key is pre-selected and virtual (studio) names are priced by their real target model.
 - **Sub-cent battle costs**: costs now show enough digits (e.g. `$0.0034`) instead of every row reading `$0.00`, so the cheapest badge means something.
-- **Backup round trip**: `disabledModels` (per-provider hidden models) was missing from exports and was never cleared on import — restores now reproduce it exactly. The observability request log is cleared on import so stale rows cannot mix with restored data, and usage history is exported in original order.
+- **Backup round trip**: exports now carry `disabledModels`, and import clears the stale request log in the same transaction while keeping usage history in its original order.
 - **Duplicate API key names on rename**: renaming an existing key to a name already in use is now rejected (HTTP 409) with the reason shown in the UI, matching how key creation behaves.
 
 ## Custom Features & Enhancements
@@ -18,7 +18,7 @@
 # v0.5.72-Custom (2026-09-10)
 
 ## Custom Features & Enhancements
-- **Model Studio (was Model Editor)**: Rebuilt from scratch — pick ANY connected model (built-in, custom provider or compatible) and give it your own callable name, display name, context window and injected system prompt. Saved names become real model IDs: they resolve in chat, show up in `/v1/models` (with the custom `context_length`) and appear in every model picker (combos, API keys, CLI tools, Model Battle).
+- **Model Studio (was Model Editor)**: pick any connected model (built-in, custom provider or compatible) and give it your own callable name, display name, context window and injected system prompt, which then resolves in chat, `/v1/models`, and every model picker.
 - **Model Battle (was Model Arena)**: Side-by-side comparison now supports up to 4 contenders, estimated cost per run, and a **Final Result** board — fastest / cheapest / longest badges, plus a manual "My pick" so quality is decided by you, not a judge model.
 - **Menu Renames**: The `Feature+` group is now **Model Lab** containing **Model Battle** and **Model Studio**.
 - **MoonshotAI Logo**: MoonshotAI compatible providers now use the uploaded `moonshoot-ai.png` brand image on cards and detail pages.
@@ -44,11 +44,11 @@
 
 ## Custom Features & Enhancements
 - **API Key Quota & Limits**: Add token limit per API Key with real-time usage tracking and HTTP 429 (`API key token limit exceeded`) response upon quota exhaustion.
-- **Dynamic Auto Reset Interval**: Support periodic usage reset intervals (`5h`, `7d`, `14d`, `30d`, and custom intervals such as `10h` or `3d`). Column dynamically appears only when `tokenLimit > 0`.
-- **Model Access Control**: Restrict API Keys to specific allowed models (`allowedModels`) with wildcard support (`claude-*`, `gpt-*`) or exact matches. Returns HTTP 403 when calling unauthorized models.
+- **Dynamic Auto Reset Interval**: periodic usage resets (`5h`, `7d`, `14d`, `30d`, or custom like `10h`) become selectable whenever `tokenLimit > 0`.
+- **Model Access Control**: API Keys can be restricted to allowed models with wildcard (`claude-*`, `gpt-*`) or exact matching, returning HTTP 403 on unauthorized calls.
 - **Interactive Model Selector**: Integrated `ModelSelectModal` directly into Create & Edit API Key forms, allowing users to pick allowed models visually (same UI as Combo creation) without manual typing.
-- **Key Editing & Management**: Support editing API Key names, token limits, reset intervals, and allowed models anytime. Added manual usage reset button (`restart_alt`) to set used tokens back to 0.
-- **UI & Theme Sync**: Enforced permanent Dark Mode theme across the app, removing theme toggles and display language switcher controls for a clean UI. Updated custom select dropdown styling to match app theme.
+- **Key Editing & Management**: key names, token limits, reset intervals, and allowed models stay editable anytime, with a manual `restart_alt` button to zero the used tokens.
+- **UI & Theme Sync**: the app is locked to dark mode with theme and language switchers removed, and custom select dropdowns now follow the app theme.
 
 # v0.5.69 (2026-09-05)
 

@@ -816,7 +816,7 @@ export default function ProfilePage() {
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm sm:text-base">Require login</p>
                 <p className="text-xs sm:text-sm text-text-muted">
-                  When ON, dashboard requires password. When OFF, access without login.
+                  Require a password for the dashboard when ON, or allow access without login when OFF.
                 </p>
               </div>
               <Toggle

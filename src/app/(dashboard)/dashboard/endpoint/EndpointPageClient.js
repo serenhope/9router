@@ -1103,7 +1103,7 @@ export default function APIPageClient({ machineId }) {
             />
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
               <p className="font-medium text-sm">Allow dashboard access via tunnel</p>
-              <Tooltip text="When enabled, the dashboard can be accessed through your tunnel or Tailscale URL (login still required). When disabled, dashboard access via tunnel/Tailscale is completely blocked." />
+              <Tooltip text="Open the dashboard through the tunnel or Tailscale URL (login still required), or keep it blocked when disabled" />
             </div>
           </div>
         )}
@@ -1570,7 +1570,7 @@ export default function APIPageClient({ machineId }) {
               Save this key now!
             </p>
             <p className="text-sm text-yellow-700 dark:text-yellow-300">
-              This is the only time you will see this key. Store it securely.
+              Store this key now, because it is shown only once.
             </p>
           </div>
           <div className="flex gap-2">
@@ -1624,7 +1624,7 @@ export default function APIPageClient({ machineId }) {
                   Cloudflare Tunnel
                 </p>
                 <p className="text-sm text-text-muted">
-                  Expose your local 9Router to the internet. No port forwarding, no static IP needed. Share endpoint URL with your team or use it in Cursor, Cline, and other AI tools from anywhere.
+                  Expose your local 9Router to the internet without port forwarding or a static IP, then use the URL in Cursor, Cline, and other tools from anywhere.
                 </p>
               </div>
             </div>
@@ -1641,7 +1641,7 @@ export default function APIPageClient({ machineId }) {
           </div>
 
           <p className="text-xs text-text-muted">
-            Requires outbound port 7844 (TCP/UDP). Connection may take 10-30s.
+            Needs outbound port 7844 (TCP/UDP) and may take 10-30s to connect.
           </p>
 
           <div className="flex gap-2">
@@ -1660,7 +1660,7 @@ export default function APIPageClient({ machineId }) {
         onClose={() => !tunnelLoading && setShowDisableTunnelModal(false)}
       >
         <div className="flex flex-col gap-4">
-          <p className="text-sm text-text-muted">The Cloudflare tunnel will be disconnected. Remote access via tunnel URL will stop working.</p>
+          <p className="text-sm text-text-muted">The Cloudflare tunnel will disconnect and its URL will stop working.</p>
           <div className="flex gap-2">
             <Button onClick={handleDisableTunnel} fullWidth disabled={tunnelLoading} variant="danger">
               {tunnelLoading ? "Disabling..." : "Disable"}
@@ -1688,7 +1688,7 @@ export default function APIPageClient({ machineId }) {
           {/* Not installed */}
           {tsInstalled === false && !tsInstalling && (
             <div className="flex flex-col gap-3">
-              <p className="text-sm text-text-muted">Tailscale is not installed. Install it to enable Funnel.</p>
+              <p className="text-sm text-text-muted">Install Tailscale to enable Funnel.</p>
               <div className="flex gap-2">
                 <Button onClick={handleInstallTailscale} fullWidth>
                   Install Tailscale
@@ -1745,7 +1745,7 @@ export default function APIPageClient({ machineId }) {
         onClose={() => !tsLoading && setShowDisableTsModal(false)}
       >
         <div className="flex flex-col gap-4">
-          <p className="text-sm text-text-muted">Tailscale Funnel will be stopped. Remote access via Tailscale URL will stop working.</p>
+          <p className="text-sm text-text-muted">Tailscale Funnel will stop and its URL will become unreachable.</p>
           <div className="flex gap-2">
             <Button onClick={handleDisableTailscale} fullWidth disabled={tsLoading} variant="danger">
               {tsLoading ? "Disabling..." : "Disable"}

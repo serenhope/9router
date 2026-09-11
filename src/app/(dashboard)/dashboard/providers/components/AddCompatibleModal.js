@@ -152,14 +152,14 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           placeholder={config.namePlaceholder}
-          hint="Required. A friendly label for this node."
+          hint="A friendly label for this node"
         />
         <Input
           label="Prefix"
           value={formData.prefix}
           onChange={(e) => setFormData({ ...formData, prefix: e.target.value })}
           placeholder={config.prefixPlaceholder}
-          hint="Required. Used as the provider prefix for model IDs."
+          hint="The provider prefix used in model IDs"
         />
         {config.hasApiType && (
           <Select

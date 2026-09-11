@@ -422,7 +422,7 @@ export default function CoworkToolCard({
                           />
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-medium">Web Search & Fetch (Exa)</div>
-                            <p className="text-[10px] text-text-muted leading-snug">Replaces built-in WebSearch/WebFetch. Auto-strips duplicates from tool list.</p>
+                            <p className="text-[10px] text-text-muted leading-snug">Replaces the built-in WebSearch/WebFetch and auto-strips duplicates</p>
                           </div>
                         </label>
                       );

@@ -563,7 +563,7 @@ export default function TokenSaverClient() {
               Response Caching (Instant & 0-Cost Cache)
             </p>
             <p className="text-sm text-text-muted">
-              Cache identical prompt completions locally in memory. Exact duplicate queries return instantly (~10ms) consuming 0 upstream tokens
+              Keeps identical prompt completions in memory so duplicates return instantly (~10ms) at 0 upstream tokens.
             </p>
           </div>
           <Toggle
@@ -902,7 +902,7 @@ export default function TokenSaverClient() {
               className="font-mono text-sm"
             />
             <p className="text-xs text-text-muted">
-              Request timeout in milliseconds. Defaults to 3000 ms.
+              Request timeout in milliseconds (defaults to 3000 ms)
             </p>
           </div>
           {headroomManaged ? (
@@ -916,7 +916,7 @@ export default function TokenSaverClient() {
             </Button>
           ) : headroomRunning ? (
             <p className="text-sm text-success">
-              Headroom proxy is reachable. You can enable the token saver.
+              The Headroom proxy is reachable, so you can enable the token saver.
             </p>
           ) : headroomCanStart ? (
             <Button
@@ -932,8 +932,7 @@ export default function TokenSaverClient() {
             </p>
           ) : !headroomStatus.python ? (
             <p className="text-sm text-warning">
-              Python ≥ 3.10 required for local managed mode. Install Python
-              first, or use an external proxy URL.
+              Install Python ≥ 3.10 first, or point to an external proxy URL.
             </p>
           ) : (
             <div className="flex flex-col gap-1">
@@ -982,8 +981,7 @@ export default function TokenSaverClient() {
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-text-muted">
-            Compress prompts using multimodal encoding. Runs in-process — no
-            extra server or environment variables required.
+            Compresses prompts in-process with multimodal encoding, so no extra server or environment variables are needed.
           </p>
           <div className="flex items-center justify-between text-sm">
             <span>Status</span>
@@ -1021,8 +1019,7 @@ export default function TokenSaverClient() {
                 {pxpipeActionLoading || pxpipeStatus.installing ? "Installing…" : "Install"}
               </Button>
               <p className="text-xs text-text-muted">
-                Installs the npm package <code className="font-mono">pxpipe-proxy</code> into
-                the 9Router data directory. May take a few minutes.
+                Installs the <code className="font-mono">pxpipe-proxy</code> package into your data directory and may take a few minutes.
               </p>
             </div>
           ) : (
@@ -1099,3 +1096,4 @@ export default function TokenSaverClient() {
     </div>
   );
 }
+

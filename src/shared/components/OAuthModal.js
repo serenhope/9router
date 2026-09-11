@@ -712,7 +712,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
                 {step === "input" && (
                   <div className="space-y-3">
                     <p className="text-sm text-text-muted">
-                      Popup was blocked. After authorizing in the browser, paste the full callback URL here:
+                      The popup was blocked, so authorize in your browser and paste the full callback URL here:
                     </p>
                     <Input
                       value={callbackUrl}

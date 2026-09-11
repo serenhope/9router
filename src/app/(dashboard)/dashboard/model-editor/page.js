@@ -20,8 +20,7 @@ export default function ModelStudioPage() {
       <div className="min-w-0">
         <h1 className="text-lg font-semibold text-text-main">Model Studio</h1>
         <p className="text-xs text-text-muted mt-0.5">
-          Give any model your own name, context size and behaviour. Each entry becomes a
-          callable model ID you can use in clients, combos and API keys.
+          Give any model your own name, context size and behaviour, and it becomes a callable model ID for clients, combos, and API keys.
         </p>
       </div>
       <ModelStudioContent />
@@ -110,8 +109,7 @@ function ModelStudioContent() {
           <div>
             <p className="text-sm font-medium text-text-main">No models yet</p>
             <p className="text-xs text-text-muted mt-1 max-w-md">
-              Add any model you have connected — pick it, name it however you like, and call it
-              by that name. Useful for stable names, custom context sizes and injected prompts.
+              Pick any connected model, name it however you like, and call it by that name.
             </p>
           </div>
           <Button size="sm" icon="add" onClick={openCreate}>
@@ -523,3 +521,4 @@ function PrefixCard({ nodes, onSaved }) {
     </>
   );
 }
+

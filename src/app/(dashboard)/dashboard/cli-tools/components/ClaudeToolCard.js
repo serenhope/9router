@@ -405,7 +405,7 @@ export default function ClaudeToolCard({
                   <label className="flex items-center gap-1.5 cursor-pointer select-none">
                     <input type="checkbox" checked={exaMcpEnabled} onChange={(e) => setExaMcpEnabled(e.target.checked)} className="w-3.5 h-3.5 accent-primary cursor-pointer" />
                     <span className="text-xs text-text-muted">Exa MCP</span>
-                    <Tooltip text="Injects Exa MCP into ~/.claude.json so non-Claude models gain web search. Restart Claude Code after Apply.">
+                    <Tooltip text="Adds Exa web search for non-Claude models (restart Claude Code after Apply)">
                       <span className="material-symbols-outlined text-text-muted text-[14px] cursor-help">info</span>
                     </Tooltip>
                   </label>
