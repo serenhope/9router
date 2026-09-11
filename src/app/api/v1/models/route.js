@@ -5,7 +5,7 @@ import {
   isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
-import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
+import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getStudioModels } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
@@ -275,6 +275,13 @@ export async function buildModelsList(kindFilter, options = {}) {
     console.log("Could not fetch model aliases");
   }
 
+  
+  let studioModels = [];
+  try {
+    studioModels = await getStudioModels();
+  } catch (e) {
+    console.log("Could not fetch model studio models");
+  }
   let disabledByAlias = {};
   try {
     disabledByAlias = await getDisabledModels();
@@ -303,6 +310,23 @@ export async function buildModelsList(kindFilter, options = {}) {
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {
       entry.kind = combo.kind;
     }
+    models.push(entry);
+  }
+  
+  // Model Studio names are user-defined callable IDs (alias + per-model overrides).
+  for (const studio of studioModels) {
+    if (!kindFilter.includes(LLM_KIND)) continue;
+    const entry = {
+      id: studio.callName,
+      object: "model",
+      owned_by: "model-studio",
+      resolved_model: studio.targetModel,
+    };
+    const caps = getCapabilitiesForModel(studio.provider, studio.model);
+    if (caps) entry.capabilities = caps;
+    const contextWindow = Number(studio.contextWindow) || caps?.contextWindow;
+    if (Number.isFinite(contextWindow)) entry.context_length = contextWindow;
+    if (Number.isFinite(caps?.maxOutput)) entry.max_completion_tokens = caps.maxOutput;
     models.push(entry);
   }
 

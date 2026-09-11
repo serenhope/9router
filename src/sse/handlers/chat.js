@@ -250,25 +250,28 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const { provider, model } = modelInfo;
  let effectiveModel = model;
 
- // Apply per-model overrides (Model Editor)
+ // Model overrides: a Model Studio name wins over a per-model override.
  try {
-   const { getModelOverride } = await import("@/lib/db/repos/modelEditorRepo.js");
-   const overrideKey = provider ? `${provider}|${model}` : null;
-   const override = overrideKey ? await getModelOverride(overrideKey) : null;
-   if (override) {
-     if (override.targetModel) {
-       effectiveModel = override.targetModel;
-     }
-     if (override.systemPrompt) {
-       if (Array.isArray(body.messages)) {
-         body.messages.unshift({ role: "system", content: override.systemPrompt });
-       } else if (typeof body.system === "string") {
-         body.system = override.systemPrompt + "\n\n" + body.system;
-       } else {
-         body.system = override.systemPrompt;
-       }
-     }
+  const { getStudioModel, getModelOverride } = await import("@/lib/db/repos/modelEditorRepo.js");
+  const studio = await getStudioModel(modelStr);
+  const override = studio || (provider ? await getModelOverride(`${provider}|${model}`) : null);
+  if (override) {
+   if (!studio && override.targetModel) {
+    effectiveModel = override.targetModel;
    }
+   if (override.systemPrompt) {
+    if (Array.isArray(body.messages)) {
+     body.messages.unshift({ role: "system", content: override.systemPrompt });
+    } else if (typeof body.system === "string") {
+     body.system = override.systemPrompt + "\n\n" + body.system;
+    } else {
+     body.system = override.systemPrompt;
+    }
+   }
+   if (studio) {
+    log.info("CHAT", `Model Studio ${modelStr} -> ${provider}/${effectiveModel}`);
+   }
+  }
  } catch { /* fail open */ }
 
   // Routing shown in the unified "▶" line (client model → provider/model)

@@ -28,9 +28,9 @@ const navItems = [
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
 ];
 
-const featurePlusItems = [
- { href: "/dashboard/arena", label: "Model Arena", icon: "swords" },
- { href: "/dashboard/model-editor", label: "Model Editor", icon: "tune" },
+const modelLabItems = [
+ { href: "/dashboard/arena", label: "Model Battle", icon: "swords" },
+ { href: "/dashboard/model-editor", label: "Model Studio", icon: "auto_awesome" },
 ];
 
 const debugItems = [
@@ -203,12 +203,12 @@ export default function Sidebar({ onClose }) {
           ))}
 
   
-        {/* Feature+ section */}
+        {/* Model Lab section */}
           <div className="pt-3 mt-2 space-y-0.5">
             <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
-              Feature+
+              Model Lab
             </p>
-            {featurePlusItems.map((item) => (
+            {modelLabItems.map((item) => (
               <NavLink
                 key={item.href}
                 href={item.href}

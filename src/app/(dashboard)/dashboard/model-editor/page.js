@@ -1,344 +1,520 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Card, Button, Modal, Input } from "@/shared/components";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Card, Button, Modal, Input, ModelSelectModal } from "@/shared/components";
+import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { useModelCaps } from "@/shared/hooks/useModelCaps";
 
-export default function ModelEditorPage() {
+const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
+
+function formatTokens(n) {
+  const value = Number(n) || 0;
+  if (value >= 1000000) return `${(value / 1000000).toFixed(value % 1000000 ? 1 : 0)}M`;
+  if (value >= 1000) return `${Math.round(value / 1000)}k`;
+  return String(value);
+}
+
+export default function ModelStudioPage() {
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
       <div className="min-w-0">
-        <h1 className="text-lg font-semibold text-text-main">Model Editor</h1>
+        <h1 className="text-lg font-semibold text-text-main">Model Studio</h1>
         <p className="text-xs text-text-muted mt-0.5">
-          Rename models, override upstream model IDs, set custom system prompts, and manage provider prefixes for your custom providers.
+          Give any model your own name, context size and behaviour. Each entry becomes a
+          callable model ID you can use in clients, combos and API keys.
         </p>
       </div>
-      <ModelEditorContent />
+      <ModelStudioContent />
     </div>
   );
 }
 
-function ModelEditorContent() {
-  const [providers, setProviders] = useState([]);
-  const [customModels, setCustomModels] = useState([]);
-  const [overrides, setOverrides] = useState({});
+function ModelStudioContent() {
+  const [models, setModels] = useState([]);
+  const [providerNodes, setProviderNodes] = useState([]);
+  const [activeProviders, setActiveProviders] = useState([]);
+  const [modelAliases, setModelAliases] = useState({});
   const [loading, setLoading] = useState(true);
-  const [editModel, setEditModel] = useState(null);
-  const [editProvider, setEditProvider] = useState(null);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [showPrefixModal, setShowPrefixModal] = useState(false);
-
-  // Edit form state
-  const [formTargetModel, setFormTargetModel] = useState("");
-  const [formContextWindow, setFormContextWindow] = useState("");
-  const [formSystemPrompt, setFormSystemPrompt] = useState("");
-  const [formName, setFormName] = useState("");
-  const [formPrefix, setFormPrefix] = useState("");
+  const [error, setError] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(null);
+const { copy } = useCopyToClipboard(1800); 
 
   const fetchData = useCallback(async () => {
     try {
-      const [nodesRes, modelsRes, overridesRes] = await Promise.all([
-        fetch("/api/provider-nodes").then(r => r.ok ? r.json() : { nodes: [] }).catch(() => ({ nodes: [] })),
-        fetch("/api/models/custom").then(r => r.ok ? r.json() : { models: [] }).catch(() => ({ models: [] })),
-        fetch("/api/model-editor").then(r => r.ok ? r.json() : { overrides: {} }).catch(() => ({ overrides: {} })),
+      const [studioRes, nodesRes, providersRes, aliasesRes] = await Promise.all([
+        fetch("/api/model-editor").then((r) => (r.ok ? r.json() : { models: [] })).catch(() => ({ models: [] })),
+        fetch("/api/provider-nodes").then((r) => (r.ok ? r.json() : { nodes: [] })).catch(() => ({ nodes: [] })),
+        fetch("/api/providers").then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
+        fetch("/api/models/alias").then((r) => (r.ok ? r.json() : { aliases: {} })).catch(() => ({ aliases: {} })),
       ]);
-      const customNodes = (nodesRes.nodes || []).filter(n =>
-        ["openai-compatible", "anthropic-compatible"].includes(n.type)
-      );
-      setProviders(customNodes);
-      setCustomModels(modelsRes.models || []);
-      setOverrides(overridesRes.overrides || {});
+      setModels(studioRes.models || []);
+      setProviderNodes((nodesRes.nodes || []).filter((n) => n.type !== "custom-embedding"));
+      setActiveProviders(providersRes.connections || []);
+      setModelAliases(aliasesRes.aliases || {});
+      setError(studioRes.error || "");
     } catch (e) {
-      console.error("Failed to load model editor data", e);
+      setError(e?.message || "Failed to load models");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-  const getProviderModels = (providerId) => {
-    return customModels.filter(m => m.providerAlias === providerId);
+  const openCreate = () => {
+    setEditing(null);
+    setShowForm(true);
   };
 
-  const handleEditModel = (providerNode, model) => {
-    const key = `${providerNode.id}|${model.id}`;
-    const existing = overrides[key] || {};
-    setEditModel({ key, provider: providerNode, model });
-    setFormTargetModel(existing.targetModel || "");
-    setFormContextWindow(existing.contextWindow ? String(existing.contextWindow) : "");
-    setFormSystemPrompt(existing.systemPrompt || "");
-    setFormName(existing.name || model.name || model.id);
-    setShowEditModal(true);
+  const openEdit = (model) => {
+    setEditing(model);
+    setShowForm(true);
   };
 
-  const handleSaveOverride = async (e) => {
-    e.preventDefault();
-    if (!editModel) return;
+  const handleDelete = async (model) => {
+    setRemoving(model.callName);
     try {
-      await fetch("/api/model-editor", {
-        method: "PUT",
+      await fetch(`/api/model-editor?name=${encodeURIComponent(model.callName)}`, { method: "DELETE" });
+      fetchData();
+    } finally {
+      setRemoving(null);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-medium text-text-main">
+            {models.length} {models.length === 1 ? "model" : "models"}
+          </span>
+          {error && <span className="text-xs text-red-500 truncate">{error}</span>}
+        </div>
+        <Button size="sm" icon="add" onClick={openCreate}>
+          Add Model
+        </Button>
+      </div>
+
+      {loading ? (
+        <Card padding="md">
+          <div className="text-xs text-text-muted py-4">Loading models...</div>
+        </Card>
+      ) : models.length === 0 ? (
+        <Card padding="lg" className="flex flex-col items-center gap-3 text-center py-10">
+          <span className="material-symbols-outlined text-[34px] text-text-muted/50">auto_awesome</span>
+          <div>
+            <p className="text-sm font-medium text-text-main">No models yet</p>
+            <p className="text-xs text-text-muted mt-1 max-w-md">
+              Add any model you have connected — pick it, name it however you like, and call it
+              by that name. Useful for stable names, custom context sizes and injected prompts.
+            </p>
+          </div>
+          <Button size="sm" icon="add" onClick={openCreate}>
+            Add your first model
+          </Button>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {models.map((model) => (
+            <Card key={model.callName} padding="md" className="flex min-w-0 flex-col gap-3">
+              <div className="flex min-w-0 items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      copy(model.callName);
+                      setCopiedName(model.callName);
+                    }}
+                    title="Copy model name"
+                    className="flex items-center gap-2 min-w-0 max-w-full text-left group"
+                  >
+                    <code className="font-mono text-sm font-semibold text-primary truncate">
+                      {model.callName}
+                    </code>
+                    <span
+                      className={`material-symbols-outlined text-[14px] shrink-0 transition-opacity ${copiedName === model.callName ? "text-green-500 opacity-100" : "text-text-muted opacity-0 group-hover:opacity-100"
+                        }`}
+                    >
+                      {copiedName === model.callName ? "check" : "content_copy"}
+                    </span>
+                  </button>
+                  {model.displayName && model.displayName !== model.callName && (
+                    <p className="text-xs text-text-muted mt-0.5 truncate">{model.displayName}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => openEdit(model)}
+                    title="Edit"
+                    className="p-1.5 rounded-lg text-text-muted hover:text-primary hover:bg-primary/10 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">edit</span>
+                  </button>
+                  <button
+                    onClick={() => handleDelete(model)}
+                    disabled={removing === model.callName}
+                    title="Delete"
+                    className="p-1.5 rounded-lg text-text-muted hover:text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">
+                      {removing === model.callName ? "progress_activity" : "delete"}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                <span className="px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/5 text-text-muted font-mono truncate max-w-full">
+                  {model.targetLabel || model.targetModel}
+                </span>
+                {model.contextWindow > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                    {formatTokens(model.contextWindow)} context
+                  </span>
+                )}
+              </div>
+
+              {model.systemPrompt && (
+                <div className="rounded-lg bg-black/5 dark:bg-white/5 px-2.5 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-text-muted/70 mb-0.5">
+                    System prompt
+                  </p>
+                  <p className="text-xs text-text-muted line-clamp-3 break-words">
+                    {model.systemPrompt}
+                  </p>
+                </div>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <PrefixCard nodes={providerNodes} onSaved={fetchData} />
+
+      {showForm && (
+        <StudioFormModal
+          editing={editing}
+          activeProviders={activeProviders}
+          modelAliases={modelAliases}
+          saving={saving}
+          setSaving={setSaving}
+          onClose={() => setShowForm(false)}
+          onSaved={() => {
+            setShowForm(false);
+            fetchData();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function StudioFormModal({
+  editing,
+  activeProviders,
+  modelAliases,
+  saving,
+  setSaving,
+  onClose,
+  onSaved,
+}) {
+  const { getCaps } = useModelCaps();
+  const [showPicker, setShowPicker] = useState(false);
+  const [callName, setCallName] = useState(editing?.callName || "");
+  const [displayName, setDisplayName] = useState(editing?.displayName || "");
+  const [targetModel, setTargetModel] = useState(editing?.targetModel || "");
+  const [contextWindow, setContextWindow] = useState(
+    editing?.contextWindow ? String(editing.contextWindow) : ""
+  );
+  const [systemPrompt, setSystemPrompt] = useState(editing?.systemPrompt || "");
+
+  const targetCaps = useMemo(() => (targetModel ? getCaps(targetModel) : null), [targetModel, getCaps]);
+  const nameError = useMemo(() => {
+    if (!callName) return "";
+    if (callName.includes("/")) return "Use a name without \"/\" — it is the model ID clients send.";
+    if (!NAME_RE.test(callName)) return "Letters, numbers, dot, dash and underscore only (max 64).";
+    return "";
+  }, [callName]);
+
+  const handlePickModel = (model) => {
+    if (!model?.value || model.isPlaceholder) return;
+    setTargetModel(model.value);
+    const caps = getCaps(model.value);
+    if (caps?.contextWindow && !contextWindow) setContextWindow(String(caps.contextWindow));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!callName.trim() || !targetModel || nameError) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/model-editor", {
+        method: editing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          key: editModel.key,
-          targetModel: formTargetModel,
-          contextWindow: formContextWindow ? Number(formContextWindow) : 0,
-          systemPrompt: formSystemPrompt,
-          name: formName,
+          callName: callName.trim(),
+          previousName: editing?.callName,
+          displayName: displayName.trim(),
+          targetModel,
+          contextWindow: contextWindow ? Number(contextWindow) : 0,
+          systemPrompt,
         }),
       });
-      setShowEditModal(false);
-      fetchData();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || "Failed to save model");
+        return;
+      }
+      onSaved();
     } catch (err) {
-      console.error(err);
+      alert(err?.message || "Failed to save model");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleDeleteOverride = async (key) => {
-    try {
-      await fetch(`/api/model-editor?key=${encodeURIComponent(key)}`, { method: "DELETE" });
-      fetchData();
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  return (
+    <>
+      <Modal
+        isOpen
+        onClose={onClose}
+        title={editing ? `Edit ${editing.callName}` : "Add Model"}
+      >
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <label className="block text-xs font-medium text-text-main">This name calls</label>
+              {targetModel && (
+                <button
+                  type="button"
+                  onClick={() => setTargetModel("")}
+                  className="text-[11px] text-text-muted hover:text-red-500 transition-colors"
+                >
+                  clear
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPicker(true)}
+              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border text-left transition-colors ${targetModel
+                ? "border-primary/40 bg-primary/5"
+                : "border-dashed border-border hover:border-primary/50"
+                }`}
+            >
+              <span className="min-w-0 flex-1">
+                {targetModel ? (
+                  <>
+                    <span className="block font-mono text-sm text-text-main truncate">{targetModel}</span>
+                    {targetCaps?.contextWindow ? (
+                      <span className="block text-[11px] text-text-muted mt-0.5">
+                        {formatTokens(targetCaps.contextWindow)} context
+                        {targetCaps.maxOutput ? ` · ${formatTokens(targetCaps.maxOutput)} output` : ""}
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  <span className="text-sm text-text-muted">Pick a model to route to</span>
+                )}
+              </span>
+              <span className="material-symbols-outlined text-[18px] text-primary shrink-0">
+                {targetModel ? "swap_horiz" : "search"}
+              </span>
+            </button>
+            <p className="text-[11px] text-text-muted">
+              Any model you have connected — built-in, custom provider or combo.
+            </p>
+          </div>
 
-  const handleEditPrefix = (providerNode) => {
-    setEditProvider(providerNode);
-    setFormPrefix(providerNode.prefix || "");
+          <div>
+            <label className="block text-xs font-medium text-text-main mb-1">Model name</label>
+            <Input
+              value={callName}
+              onChange={(e) => setCallName(e.target.value)}
+              placeholder="e.g. workhorse"
+              autoFocus
+            />
+            {nameError ? (
+              <p className="text-[11px] text-red-500 mt-1">{nameError}</p>
+            ) : (
+              <p className="text-[11px] text-text-muted mt-1">
+                Clients call <code className="font-mono">{`"${callName || "name"}"`}</code> as the model ID.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-text-main mb-1">
+              Display name <span className="text-text-muted font-normal">(optional)</span>
+            </label>
+            <Input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Friendly label shown in the dashboard"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-text-main mb-1">
+              Context window <span className="text-text-muted font-normal">(tokens)</span>
+            </label>
+            <Input
+              type="number"
+              min="0"
+              value={contextWindow}
+              onChange={(e) => setContextWindow(e.target.value)}
+              placeholder={targetCaps?.contextWindow ? String(targetCaps.contextWindow) : "0 = provider default"}
+            />
+            <p className="text-[11px] text-text-muted mt-1">
+              Advertised to clients reading <code className="font-mono">/v1/models</code>. Leave empty to
+              keep the provider default.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-text-main mb-1">
+              System prompt <span className="text-text-muted font-normal">(optional)</span>
+            </label>
+            <textarea
+              value={systemPrompt}
+              onChange={(e) => setSystemPrompt(e.target.value)}
+              placeholder="Instructions prepended to every request that uses this model..."
+              rows={4}
+              className="w-full rounded-[10px] border border-border/50 bg-surface-2 p-2.5 text-sm text-text-main placeholder-text-muted/70 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all duration-150 ease-out resize-y"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 mt-1">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!callName.trim() || !targetModel || !!nameError || saving}>
+              {saving ? "Saving..." : editing ? "Save" : "Create"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {showPicker && (
+        <ModelSelectModal
+          isOpen
+          onClose={() => setShowPicker(false)}
+          onSelect={handlePickModel}
+          activeProviders={activeProviders}
+          modelAliases={modelAliases}
+          selectedModel={targetModel}
+          title="Pick Model"
+        />
+      )}
+    </>
+  );
+}
+
+function PrefixCard({ nodes, onSaved }) {
+  const [showPrefixModal, setShowPrefixModal] = useState(false);
+  const [editNode, setEditNode] = useState(null);
+  const [prefix, setPrefix] = useState("");
+  const [savingPrefix, setSavingPrefix] = useState(false);
+
+  const compatible = useMemo(
+    () => nodes.filter((n) => n.type === "openai-compatible" || n.type === "anthropic-compatible"),
+    [nodes]
+  );
+
+  const openPrefix = (node) => {
+    setEditNode(node);
+    setPrefix(node.prefix || "");
     setShowPrefixModal(true);
   };
 
-  const handleSavePrefix = async (e) => {
+  const savePrefix = async (e) => {
     e.preventDefault();
-    if (!editProvider || !formPrefix.trim()) return;
+    if (!editNode || !prefix.trim()) return;
+    setSavingPrefix(true);
     try {
       const res = await fetch("/api/provider-nodes", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: editProvider.id, prefix: formPrefix.trim() }),
+        body: JSON.stringify({ id: editNode.id, prefix: prefix.trim() }),
       });
-      if (res.ok) {
-        setShowPrefixModal(false);
-        fetchData();
-      } else {
-        const err = await res.json();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
         alert(err.error || "Failed to update prefix");
+        return;
       }
+      setShowPrefixModal(false);
+      onSaved();
     } catch (err) {
-      console.error(err);
+      alert(err?.message || "Failed to update prefix");
+    } finally {
+      setSavingPrefix(false);
     }
   };
 
-  if (loading) {
-    return (
-      <Card padding="md">
-        <div className="text-xs text-text-muted py-4">Loading model editor...</div>
-      </Card>
-    );
-  }
-
-  if (providers.length === 0) {
-    return (
-      <Card padding="md">
-        <div className="text-xs text-text-muted italic py-2">
-          No custom providers found. Add an OpenAI/Anthropic/MoonshotAI compatible provider first.
-        </div>
-      </Card>
-    );
-  }
+  if (compatible.length === 0) return null;
 
   return (
     <>
-      <div className="flex flex-col gap-4">
-        {providers.map((prov) => {
-          const models = getProviderModels(prov.id);
-          return (
-            <Card key={prov.id} padding="md" className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-primary text-[20px]">
-                      {prov.type === "anthropic-compatible" ? "extension" : "dns"}
-                    </span>
-                    <h3 className="text-base font-semibold text-text-main">{prov.name}</h3>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs text-text-muted">Prefix:</span>
-                    <code className="font-mono text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">
-                      {prov.prefix}
-                    </code>
-                    <button
-                      onClick={() => handleEditPrefix(prov)}
-                      className="p-0.5 rounded text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                      title="Edit prefix"
-                    >
-                      <span className="material-symbols-outlined text-[14px]">edit</span>
-                    </button>
-                  </div>
-                  {prov.baseUrl && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-text-muted">Base URL:</span>
-                      <code className="font-mono text-[11px] text-text-muted/80 truncate max-w-md">{prov.baseUrl}</code>
-                    </div>
-                  )}
-                </div>
+      <Card padding="md" className="flex flex-col gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-text-main">Provider prefixes</h3>
+          <p className="text-[11px] text-text-muted mt-0.5">
+            One prefix per custom provider — clients call{" "}
+            <code className="font-mono">prefix/model-id</code>.
+          </p>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          {compatible.map((node) => (
+            <div
+              key={node.id}
+              className="flex items-center justify-between gap-2 rounded-lg border border-black/5 dark:border-white/5 bg-black/5 dark:bg-white/5 px-2.5 py-2"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium text-text-main truncate">{node.name}</p>
+                <code className="font-mono text-[11px] text-primary">{node.prefix || node.id}/</code>
               </div>
+              <button
+                onClick={() => openPrefix(node)}
+                title="Edit prefix"
+                className="p-1.5 rounded-lg text-text-muted hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
+              >
+                <span className="material-symbols-outlined text-[16px]">edit</span>
+              </button>
+            </div>
+          ))}
+        </div>
+      </Card>
 
-              {models.length === 0 ? (
-                <div className="text-xs text-text-muted italic py-1">
-                  No models imported. Import models from Providers → {prov.name} → Compatible Models.
-                </div>
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  {models.map((model) => {
-                    const overrideKey = `${prov.id}|${model.id}`;
-                    const override = overrides[overrideKey];
-                    return (
-                      <div key={model.id} className="flex items-center justify-between p-2 rounded-lg border border-black/5 dark:border-white/5 bg-black/5 dark:bg-white/5 gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <code className="font-mono text-sm text-text-main truncate max-w-[200px]">{model.id}</code>
-                            {override?.name && override.name !== model.id && (
-                              <span className="text-xs text-primary">({"\u2192"} {override.name})</span>
-                            )}
-                          </div>
-                          {override?.targetModel && (
-                            <p className="text-[11px] text-text-muted mt-0.5">
-                              {"\u2193"} upstream: <code className="font-mono">{override.targetModel}</code>
-                            </p>
-                          )}
-                          {override?.systemPrompt && (
-                            <p className="text-[11px] text-text-muted mt-0.5 italic truncate max-w-xl">
-                              prompt: {'"'}{override.systemPrompt}{'"'}
-                            </p>
-                          )}
-                          {override?.contextWindow > 0 && (
-                            <p className="text-[11px] text-text-muted mt-0.5">
-                              context: {(override.contextWindow / 1000).toFixed(0)}k tokens
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={() => handleEditModel(prov, model)}
-                            className="p-1 rounded text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                            title="Edit model override"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">edit</span>
-                          </button>
-                          {override && (
-                            <button
-                              onClick={() => handleDeleteOverride(overrideKey)}
-                              className="p-1 rounded text-red-500 hover:bg-red-500/10 transition-colors"
-                              title="Remove override"
-                            >
-                              <span className="material-symbols-outlined text-[18px]">delete</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Model Edit Modal */}
-      {showEditModal && editModel && (
-        <Modal
-          isOpen={showEditModal}
-          onClose={() => setShowEditModal(false)}
-          title={`Edit Model: ${editModel.model.id}`}
-        >
-          <form onSubmit={handleSaveOverride} className="flex flex-col gap-4">
+      {showPrefixModal && editNode && (
+        <Modal isOpen onClose={() => setShowPrefixModal(false)} title={`Prefix · ${editNode.name}`}>
+          <form onSubmit={savePrefix} className="flex flex-col gap-4">
             <div>
-              <label className="block text-xs font-medium text-text-main mb-1">Display Name</label>
+              <label className="block text-xs font-medium text-text-main mb-1">Prefix</label>
               <Input
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                placeholder={editModel.model.id}
-              />
-              <p className="text-[11px] text-text-muted mt-1">Custom display name for this model.</p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-text-main mb-1">Target Model (Override upstream ID)</label>
-              <Input
-                value={formTargetModel}
-                onChange={(e) => setFormTargetModel(e.target.value)}
-                placeholder="Leave empty to use original model ID"
-              />
-              <p className="text-[11px] text-text-muted mt-1">
-                If set, this model ID will be sent to the upstream provider instead of <code>{editModel.model.id}</code>.
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-text-main mb-1">Context Window Override</label>
-              <Input
-                type="number"
-                value={formContextWindow}
-                onChange={(e) => setFormContextWindow(e.target.value)}
-                placeholder="0 = use default"
-              />
-              <p className="text-[11px] text-text-muted mt-1">
-                Override context window in tokens (0 = no override). E.g. 128000 for 128k context.
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-text-main mb-1">Custom System Prompt</label>
-              <textarea
-                value={formSystemPrompt}
-                onChange={(e) => setFormSystemPrompt(e.target.value)}
-                placeholder="System instructions to prepend to all chats using this model..."
-                rows={4}
-                className="w-full rounded-[10px] border border-border/50 bg-surface-2 p-2.5 text-sm text-text-main placeholder-text-muted/70 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/50 focus:bg-surface transition-all duration-150 ease-out"
-              />
-              <p className="text-[11px] text-text-muted mt-1">
-                Injected into system messages before processing requests for this model.
-              </p>
-            </div>
-
-            <div className="flex justify-end gap-2 mt-2">
-              <Button type="button" variant="secondary" onClick={() => setShowEditModal(false)}>
-                Cancel
-              </Button>
-              <Button type="submit">Save</Button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* Prefix Edit Modal */}
-      {showPrefixModal && editProvider && (
-        <Modal
-          isOpen={showPrefixModal}
-          onClose={() => setShowPrefixModal(false)}
-          title={`Edit Prefix: ${editProvider.name}`}
-        >
-          <form onSubmit={handleSavePrefix} className="flex flex-col gap-4">
-            <div>
-              <label className="block text-xs font-medium text-text-main mb-1">Provider Prefix</label>
-              <Input
-                value={formPrefix}
-                onChange={(e) => setFormPrefix(e.target.value)}
+                value={prefix}
+                onChange={(e) => setPrefix(e.target.value)}
                 placeholder="e.g. custom1"
-                required
+                autoFocus
               />
               <p className="text-[11px] text-text-muted mt-1">
-                Clients will call <code>{formPrefix || "PREFIX"}/model-name</code> to reach this provider.
-                This replaces the previous prefix <code>{editProvider.prefix}</code>.
+                Clients call <code className="font-mono">{prefix || "prefix"}/model-id</code>.
+                {editNode.prefix && editNode.prefix !== prefix.trim() && (
+                  <> Replaces <code className="font-mono">{editNode.prefix}/</code>.</>
+                )}
               </p>
             </div>
-            <div className="flex justify-end gap-2 mt-2">
+            <div className="flex justify-end gap-2">
               <Button type="button" variant="secondary" onClick={() => setShowPrefixModal(false)}>
                 Cancel
               </Button>
-              <Button type="submit">Save Prefix</Button>
+              <Button type="submit" disabled={!prefix.trim() || savingPrefix}>
+                {savingPrefix ? "Saving..." : "Save"}
+              </Button>
             </div>
           </form>
         </Modal>

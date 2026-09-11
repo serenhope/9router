@@ -1266,7 +1266,7 @@ export default function ProviderDetailPage() {
   // Determine icon path: OpenAI Compatible providers use specialized icons
   const getHeaderIconPath = () => {
     if (isOpenAICompatible && /moonshot|kimi/i.test(providerInfo.name || "")) {
-      return "/providers/kimi.png";
+      return "/providers/moonshoot-ai.png";
     }
     if (isOpenAICompatible && providerInfo.apiType) {
       return providerInfo.apiType === "responses" ? "/providers/oai-r.png" : "/providers/oai-cc.png";

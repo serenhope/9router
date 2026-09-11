@@ -851,7 +851,7 @@ function ApiKeyProviderCard({
 
   const getIconPath = () => {
     if (isCompatible && /moonshot|kimi/i.test(provider.name || ""))
-      return "/providers/kimi.png";
+      return "/providers/moonshoot-ai.png";
     if (isCompatible && provider.apiType)
       return provider.apiType === "responses"
         ? "/providers/oai-r.png"

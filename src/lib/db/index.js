@@ -45,8 +45,9 @@ export {
   getMitmAlias, setMitmAliasAll,
  } from "./repos/aliasRepo.js";
 
-// Model overrides (Model Editor)
+ // Model overrides + Model Studio virtual models
 export {
+  getStudioModels, getStudioModel, setStudioModel, deleteStudioModel,
   getModelOverrides, setModelOverride, deleteModelOverride,
 } from "./repos/modelEditorRepo.js";
 

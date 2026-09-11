@@ -1,3 +1,12 @@
+# v0.5.72-Custom (2026-09-10)
+
+## Custom Features & Enhancements
+- **Model Studio (was Model Editor)**: Rebuilt from scratch — pick ANY connected model (built-in, custom provider or compatible) and give it your own callable name, display name, context window and injected system prompt. Saved names become real model IDs: they resolve in chat, show up in `/v1/models` (with the custom `context_length`) and appear in every model picker (combos, API keys, CLI tools, Model Battle).
+- **Model Battle (was Model Arena)**: Side-by-side comparison now supports up to 4 contenders, estimated cost per run, and a **Final Result** board — fastest / cheapest / longest badges, plus a manual "My pick" so quality is decided by you, not a judge model.
+- **Menu Renames**: The `Feature+` group is now **Model Lab** containing **Model Battle** and **Model Studio**.
+- **MoonshotAI Logo**: MoonshotAI compatible providers now use the uploaded `moonshoot-ai.png` brand image on cards and detail pages.
+- **Provider Prefixes**: Kept in Model Studio — one editable prefix per custom provider (`prefix/model-id`).
+
 # v0.5.71-Custom (2026-09-10)
 
 ## Custom Features & Enhancements
