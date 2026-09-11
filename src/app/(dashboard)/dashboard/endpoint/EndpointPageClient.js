@@ -81,8 +81,6 @@ export default function APIPageClient({ machineId }) {
   const [snippetLang, setSnippetLang] = useState("curl");
 
   const [requireApiKey, setRequireApiKey] = useState(false);
-  const [requireLogin, setRequireLogin] = useState(true);
-  const [hasPassword, setHasPassword] = useState(true);
  const [tunnelDashboardAccess, setTunnelDashboardAccess] = useState(false);
 
  // Cloudflare Tunnel state
@@ -139,12 +137,6 @@ export default function APIPageClient({ machineId }) {
   });
 
   const { copied, copy } = useCopyToClipboard();
-
-  // Security gate: block remote exposure while dashboard uses default password or login is off.
-  const isLoginUnsafe = false;
-  const unsafeReason = !requireLogin
-    ? "Enable \"Require login\" and set a custom password before activating the tunnel."
-    : "Change the default dashboard password before activating the tunnel.";
 
   // Auto-scroll install log
   useEffect(() => {
@@ -255,8 +247,6 @@ export default function APIPageClient({ machineId }) {
       if (settingsRes.ok) {
         const data = await settingsRes.json();
         setRequireApiKey(data.requireApiKey || false);
-        setRequireLogin(data.requireLogin !== false);
-        setHasPassword(data.hasPassword || false);
         setTunnelDashboardAccess(data.tunnelDashboardAccess || false);
       }
       if (statusRes.ok) {
@@ -824,6 +814,9 @@ export default function APIPageClient({ machineId }) {
       if (res.ok) {
         await fetchData();
         setEditingKey(null);
+      } else {
+        const errBody = await res.json().catch(() => ({}));
+        alert(errBody?.error || "Failed to update key");
       }
     } catch (error) {
       console.log("Error updating key:", error);
@@ -865,21 +858,6 @@ export default function APIPageClient({ machineId }) {
         }
       }
     });
-  };
-
-  const handleToggleKey = async (id, isActive) => {
-    try {
-      const res = await fetch(`/api/keys/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive }),
-      });
-      if (res.ok) {
-        setKeys(prev => prev.map(k => k.id === id ? { ...k, isActive } : k));
-      }
-    } catch (error) {
-      console.log("Error toggling key:", error);
-    }
   };
 
   const maskKey = (fullKey) => {
@@ -935,7 +913,7 @@ export default function APIPageClient({ machineId }) {
           />
           {/* Cloudflare Tunnel */}
           <div className="flex flex-wrap items-center gap-2 min-w-0">
-            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
+            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] max-w-[140px] truncate text-center ${
               tunnelEnabled ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
             }`}>Tunnel</span>
             {tunnelEnabled && !tunnelLoading && tunnelReachable ? (
@@ -1010,10 +988,6 @@ export default function APIPageClient({ machineId }) {
                 size="sm"
                 icon="cloud_upload"
                 onClick={() => {
-                  if (isLoginUnsafe) {
-                    setTunnelStatus({ type: "error", message: `Security required: ${unsafeReason}` });
-                    return;
-                  }
                   if (!requireApiKey) {
                     setTunnelStatus({ type: "error", message: "Security required: Enable \"Require API key\" before activating the tunnel." });
                     return;
@@ -1027,7 +1001,7 @@ export default function APIPageClient({ machineId }) {
           </div>
           {/* Tailscale */}
           <div className="flex flex-wrap items-center gap-2 min-w-0">
-            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
+            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] max-w-[140px] truncate text-center ${
               tsEnabled ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
             }`}>Tailscale</span>
             {tsEnabled && !tsLoading && tsReachable ? (
@@ -1097,10 +1071,6 @@ export default function APIPageClient({ machineId }) {
                 size="sm"
                 icon="vpn_lock"
                 onClick={() => {
-                  if (isLoginUnsafe) {
-                    setTsStatus({ type: "error", message: `Security required: ${unsafeReason}` });
-                    return;
-                  }
                   handleOpenTsModal();
                 }}
                 className="bg-linear-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white!"
@@ -1111,16 +1081,6 @@ export default function APIPageClient({ machineId }) {
           </div>
         </div>
 
-        {/* Pre-enable security gate banner */}
-        {isLoginUnsafe && !tunnelEnabled && !tsEnabled && (
-          <div className="mt-4">
-            <SecurityWarning
-              message={unsafeReason}
-              action={{ label: "Open settings", href: "/dashboard/profile" }}
-            />
-          </div>
-        )}
-
         {/* Security warnings when tunnel or tailscale is active */}
         {(tunnelEnabled || tsEnabled) && (
           <div className="mt-4 flex flex-col gap-2">
@@ -1128,19 +1088,6 @@ export default function APIPageClient({ machineId }) {
               <SecurityWarning
                 message="Require API key is disabled — your endpoint is publicly accessible without authentication."
                 action={{ label: "Enable", href: "#require-api-key" }}
-              />
-            )}
-            {(!requireLogin || !hasPassword) && (
-              <SecurityWarning
-                message={
-                  !requireLogin
-                    ? "Require login is disabled — anyone can access your dashboard via tunnel."
-                    : "Dashboard uses the default password — change it in Profile settings."
-                }
-                action={{
-                  label: !requireLogin ? "Enable" : "Change password",
-                  href: "/dashboard/profile",
-                }}
               />
             )}
           </div>
@@ -1407,9 +1354,9 @@ export default function APIPageClient({ machineId }) {
             </div>
             <Input
               value={newKeyAllowedModels}
-              onChange={(e) => setNewKeyAllowedModels(e.target.value)}
-              placeholder="* or claude-*, gpt-4o"
-              hint="Use * for all models, or pick models using the button above"
+              readOnly
+              inputClassName="truncate font-mono"
+              hint="Pick models with Select Models. * allows all models."
             />
             {parseAllowedModelsList(newKeyAllowedModels).length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-1">
@@ -1537,9 +1484,9 @@ export default function APIPageClient({ machineId }) {
             </div>
             <Input
               value={editAllowedModels}
-              onChange={(e) => setEditAllowedModels(e.target.value)}
-              placeholder="* or claude-*, gpt-4o"
-              hint="Use * for all models, or pick models using the button above"
+              readOnly
+              inputClassName="truncate font-mono"
+              hint="Pick models with Select Models. * allows all models."
             />
             {parseAllowedModelsList(editAllowedModels).length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-1">

@@ -20,11 +20,19 @@ function splitModel(value) {
   return { provider: ALIAS_TO_PROVIDER_ID[prefix] || prefix, model: str.slice(firstSlash + 1) };
 }
 
-function estimateCost(value, usage) {
-  const { provider, model } = splitModel(value);
+function estimateCost(modelName, usage, studioTargets) {
+  const { provider, model } = splitModel(studioTargets?.[modelName] || modelName);
   const pricing = getPricingForModel(provider, model);
   if (!pricing) return null;
   return calculateCostFromTokens(usage || {}, pricing);
+}
+
+// Battle costs are usually sub-cent, so two decimals would render every row as $0.00.
+function showCost(cost) {
+  if (cost === null || cost === undefined || Number.isNaN(cost)) return "—";
+  if (cost >= 0.01) return formatCost(cost);
+  if (cost < 0.0001) return `$${cost.toExponential(1)}`;
+  return `$${cost.toFixed(4)}`;
 }
 
 function emptyResult() {
@@ -54,9 +62,10 @@ function ArenaContent() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [providersRes, aliasesRes, keysRes] = await Promise.all([
+        const [providersRes, aliasesRes, studioRes, keysRes] = await Promise.all([
           fetch("/api/providers"),
           fetch("/api/models/alias"),
+          fetch("/api/model-editor"),
           fetch("/api/keys"),
         ]);
         if (providersRes.ok) {
@@ -72,8 +81,8 @@ function ArenaContent() {
           const map = {};
           for (const studio of sData.models || []) map[studio.callName] = studio.targetModel;
           setStudioTargets(map);
-         }
- if (keysRes.ok) {
+        }
+        if (keysRes.ok) {
           const kData = await keysRes.json();
           const firstActive = (kData.keys || []).find((k) => k.isActive !== false);
           if (firstActive?.key) setActiveApiKey(firstActive.key);
@@ -85,7 +94,6 @@ function ArenaContent() {
     load();
   }, []);
 
-  // Studio names are not in the provider catalog, so offer them as quick picks.
   const setSlot = (index, value) => {
     setSlots((prev) => {
       const next = [...prev];
@@ -293,7 +301,7 @@ function ArenaContent() {
                           <span>in {result.usage?.prompt_tokens ?? 0}</span>
                           <span>out {result.usage?.completion_tokens ?? 0}</span>
                           <span>total {result.usage?.total_tokens ?? 0}</span>
-                          {result.cost != null && <span>~{formatCost(result.cost)}</span>}
+                          {result.cost != null && <span>~{showCost(result.cost)}</span>}
                         </div>
                       )}
                     </div>
@@ -427,7 +435,7 @@ function FinalResult({ ranked, pick, setPick, runId }) {
                     {entry.ok ? entry.totalTokens || "—" : "—"}
                   </td>
                   <td className="py-2 px-3 text-right font-mono tabular-nums">
-                    {entry.ok ? (entry.cost != null ? formatCost(entry.cost) : "—") : "—"}
+                    {entry.ok ? showCost(entry.cost) : "—"}
                   </td>
                   <td className="py-2 pl-3 text-right">
                     <button

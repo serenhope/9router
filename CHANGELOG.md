@@ -1,3 +1,19 @@
+# v0.5.73-Custom (2026-09-11)
+
+## Fixes
+- **Model Studio page crash**: opening the page with at least one saved model threw a client-side `ReferenceError` ("This page couldn't load"). The per-card copy button now uses the shared copy hook, so "Copied" shows only on the card you clicked.
+- **Model Battle data load**: the page silently skipped its API-key and Model Studio lookups because one fetch was missing, so no key was pre-selected and costs were never resolved. Both are loaded again and virtual (studio) names are priced by their real target model.
+- **Sub-cent battle costs**: costs now show enough digits (e.g. `$0.0034`) instead of every row reading `$0.00`, so the cheapest badge means something.
+- **Backup round trip**: `disabledModels` (per-provider hidden models) was missing from exports and was never cleared on import — restores now reproduce it exactly. The observability request log is cleared on import so stale rows cannot mix with restored data, and usage history is exported in original order.
+- **Duplicate API key names on rename**: renaming an existing key to a name already in use is now rejected (HTTP 409) with the reason shown in the UI, matching how key creation behaves.
+
+## Custom Features & Enhancements
+- **No password nagging**: the tunnel/endpoint page no longer warns about the default dashboard password or blocks activation over it — the tunnel turns on as-is.
+- **Models are picked, never typed**: the allowed-models field in the API key dialogs is read-only; models come from the picker only (chips + Select Models), so a typo can no longer lock a key out of a model.
+- **Changelog works offline**: a local `/api/changelog` route serves this fork's changelog from disk, falling back to raw GitHub only for what it cannot resolve; the custom section is labelled **Contributed by Serenhope**.
+- **CLI default password**: the terminal settings menu now reports `seren123` as the default dashboard password instead of the old upstream value.
+- **UI polish**: long sidebar labels, provider/model ids, tool titles, badges and the header search now ellipsize instead of pushing buttons out of place, with the full text available on hover.
+
 # v0.5.72-Custom (2026-09-10)
 
 ## Custom Features & Enhancements

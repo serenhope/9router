@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { deleteApiKey, getApiKeyById, updateApiKey } from "@/lib/localDb";
+import { deleteApiKey, getApiKeyById, getApiKeys, updateApiKey } from "@/lib/localDb";
 
 // GET /api/keys/[id] - Get single key
 export async function GET(request, { params }) {
@@ -28,9 +28,22 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
 
+    // Enforce unique key names on rename — mirrors POST /api/keys
+    let trimmedName;
+    if (body.name !== undefined) {
+      trimmedName = typeof body.name === "string" ? body.name.trim() : "";
+      if (!trimmedName) {
+        return NextResponse.json({ error: "Name is required" }, { status: 400 });
+      }
+      const existingKeys = await getApiKeys();
+      if (existingKeys.some((k) => k.id !== id && k.name === trimmedName)) {
+        return NextResponse.json({ error: `A key named "${trimmedName}" already exists. Use a different name.` }, { status: 409 });
+      }
+    }
+
     const updateData = {};
     if (isActive !== undefined) updateData.isActive = isActive;
-    if (body.name !== undefined) updateData.name = body.name;
+    if (trimmedName !== undefined) updateData.name = trimmedName;
     if (body.tokenLimit !== undefined) updateData.tokenLimit = Number(body.tokenLimit);
     if (body.resetInterval !== undefined) updateData.resetInterval = body.resetInterval;
     if (body.usedTokens !== undefined) updateData.usedTokens = Number(body.usedTokens);

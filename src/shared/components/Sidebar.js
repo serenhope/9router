@@ -49,7 +49,7 @@ function NavLink({ href, icon, label, active, onClick, sub = false }) {
       href={href}
       onClick={onClick}
       className={cn(
-        "relative flex items-center gap-3 rounded-[10px] transition-all group",
+        "relative flex min-w-0 items-center gap-3 rounded-[10px] transition-all group",
         sub ? "pl-7 pr-3 py-[6px]" : "px-3 py-[7px]",
         active
           ? "bg-primary/10 text-primary font-semibold"
@@ -68,7 +68,7 @@ function NavLink({ href, icon, label, active, onClick, sub = false }) {
       >
         {icon}
       </span>
-      <span className="text-[13px] font-medium">{label}</span>
+      <span className="text-[13px] font-medium min-w-0 truncate" title={label}>{label}</span>
     </Link>
   );
 }
@@ -240,7 +240,7 @@ export default function Sidebar({ onClose }) {
                 <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-primary" />
               )}
               <span className="material-symbols-outlined text-[18px]">perm_media</span>
-              <span className="text-[13px] font-medium flex-1 text-left">Media Providers</span>
+              <span className="text-[13px] font-medium flex-1 text-left min-w-0 truncate" title="Media Providers">Media Providers</span>
               <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
                 expand_more
               </span>

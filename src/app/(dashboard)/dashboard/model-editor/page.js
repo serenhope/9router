@@ -40,7 +40,7 @@ function ModelStudioContent() {
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(null);
-const { copy } = useCopyToClipboard(1800); 
+  const { copied: copiedName, copy } = useCopyToClipboard(1800);
 
   const fetchData = useCallback(async () => {
     try {
@@ -126,22 +126,23 @@ const { copy } = useCopyToClipboard(1800);
                 <div className="min-w-0 flex-1">
                   <button
                     type="button"
-                    onClick={() => {
-                      copy(model.callName);
-                      setCopiedName(model.callName);
-                    }}
+                    onClick={() => copy(model.callName, model.callName)}
                     title="Copy model name"
                     className="flex items-center gap-2 min-w-0 max-w-full text-left group"
                   >
                     <code className="font-mono text-sm font-semibold text-primary truncate">
                       {model.callName}
                     </code>
-                    <span
-                      className={`material-symbols-outlined text-[14px] shrink-0 transition-opacity ${copiedName === model.callName ? "text-green-500 opacity-100" : "text-text-muted opacity-0 group-hover:opacity-100"
-                        }`}
-                    >
-                      {copiedName === model.callName ? "check" : "content_copy"}
-                    </span>
+                    {copiedName === model.callName ? (
+                      <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-green-500">
+                        <span className="material-symbols-outlined text-[14px]">check</span>
+                        Copied
+                      </span>
+                    ) : (
+                      <span className="material-symbols-outlined text-[14px] shrink-0 text-text-muted opacity-0 transition-opacity group-hover:opacity-100">
+                        content_copy
+                      </span>
+                    )}
                   </button>
                   {model.displayName && model.displayName !== model.callName && (
                     <p className="text-xs text-text-muted mt-0.5 truncate">{model.displayName}</p>

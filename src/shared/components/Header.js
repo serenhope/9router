@@ -303,10 +303,10 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
       </div>
 
       {/* Right actions */}
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex min-w-0 items-center gap-1">
         {displayName && (loginMethod === "OIDC" || loginMethod === "SAML") && (
           <div
-            className="hidden sm:flex items-center max-w-[220px] px-3 py-1.5 rounded-full border border-border bg-surface/70 text-xs text-text-muted truncate"
+            className="hidden sm:flex items-center min-w-0 max-w-[220px] px-3 py-1.5 rounded-full border border-border bg-surface/70 text-xs text-text-muted truncate"
             title={displayName}
           >
             <span className="material-symbols-outlined text-[14px] mr-1.5 text-primary">person</span>
@@ -344,7 +344,7 @@ function HeaderSearch() {
   if (!visible) return null;
 
   return (
-    <div className="relative w-[160px] sm:w-[220px]">
+    <div className="relative min-w-0 w-[160px] sm:w-[220px]">
       <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-text-muted text-[16px] pointer-events-none">
         search
       </span>

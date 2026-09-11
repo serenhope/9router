@@ -9,6 +9,46 @@ marked.setOptions({ gfm: true, breaks: true });
 
 const DECOLUA_URL = "https://raw.githubusercontent.com/decolua/9router/refs/heads/master/CHANGELOG.md";
 const SERENHOPE_URL = "https://raw.githubusercontent.com/serenhope/9router/refs/heads/master/CHANGELOG.md";
+const CHANGELOG_API_URL = "/api/changelog";
+
+function asMarkdown(value) {
+  if (typeof value !== "string") return "";
+  return value.trim() ? value : "";
+}
+
+async function fetchJson(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchText(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return "";
+    return await res.text();
+  } catch {
+    return "";
+  }
+}
+
+// Local endpoint first (works offline and before any push), raw GitHub only for what it lacks.
+async function loadChangelogs() {
+  const local = await fetchJson(CHANGELOG_API_URL);
+  let decoluaMd = asMarkdown(local?.official);
+  let serenhopeMd = asMarkdown(local?.custom);
+
+  if (!decoluaMd && !serenhopeMd) {
+    return Promise.all([fetchText(DECOLUA_URL), fetchText(SERENHOPE_URL)]);
+  }
+  if (!decoluaMd) decoluaMd = await fetchText(DECOLUA_URL);
+  if (!serenhopeMd) serenhopeMd = await fetchText(SERENHOPE_URL);
+  return [decoluaMd, serenhopeMd];
+}
 
 function escapeHtml(s) {
   return String(s)
@@ -87,10 +127,7 @@ export default function ChangelogModal({ isOpen, onClose }) {
     setLoading(true);
     setError("");
 
-    Promise.all([
-      fetch(DECOLUA_URL).then((r) => (r.ok ? r.text() : "")).catch(() => ""),
-      fetch(SERENHOPE_URL).then((r) => (r.ok ? r.text() : "")).catch(() => ""),
-    ])
+    loadChangelogs()
       .then(([decoluaMd, serenhopeMd]) => {
         if (cancelled) return;
 
@@ -100,7 +137,7 @@ export default function ChangelogModal({ isOpen, onClose }) {
         const serenBlock = serenCards
           ? `<div style="display:flex;align-items:center;gap:8px;margin:0 0 14px;font-size:17px;font-weight:600;color:#60a5fa;">
   <span class="material-symbols-outlined" style="font-size:20px;">star</span>
-  Contributed by Seren
+  Contributed by Serenhope
 </div>
 ${serenCards}`
           : "";
@@ -123,7 +160,7 @@ ${serenCards}`
       })
       .catch((err) => {
         if (cancelled) return;
-        setError(err.message || "Failed to load changelog");
+        setError(err?.message || "Failed to load changelog");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
