@@ -1,12 +1,12 @@
 # v0.5.74-Custom (2026-09-11)
 
 ## Fixes
-- **Model Studio no longer renames the original model**: a studio name is now resolved through its own record instead of writing a display alias, so `claude-fable-5` appears as an added entry while `custom1/neko/qwen3.8-flash` keeps its own name in every picker.
+- **Model Studio no longer renames the original model**: a studio name is now resolved through its own record instead of writing a display alias, so `claude-fable-5` appears as an added entry while `custom1/claude-sonnet-5` keeps its own name in every picker.
 - **Legacy studio aliases cleaned up**: display aliases left behind by older builds for studio names are deleted the first time the studio list loads, so previously renamed models reappear under their real name.
 - **Usage shows the called studio name**: the name a client sent is stored in the usage row's metadata and rendered first, with the real target model shown under it as `→ provider/model`.
 
 ## Custom Features & Enhancements
-- **MoonshotAI logo is reliable**: compatible nodes created from the MoonshotAI button are tagged with a brand, and that tag (not just the name) now picks the `moonshoot-ai.png` logo on cards, the detail page, and its colors.
+- **MoonshotAI logo is reliable**: compatible nodes created from the MoonshotAI button are tagged with a brand, and that tag (not just the name) now picks the `moonshot-ai.png` logo on cards, the detail page, and its colors.
 
 # v0.5.73-Custom (2026-09-11)
 
@@ -31,7 +31,7 @@
 - **Model Studio (was Model Editor)**: pick any connected model (built-in, custom provider or compatible) and give it your own callable name, display name, context window and injected system prompt, which then resolves in chat, `/v1/models`, and every model picker.
 - **Model Battle (was Model Arena)**: Side-by-side comparison now supports up to 4 contenders, estimated cost per run, and a **Final Result** board — fastest / cheapest / longest badges, plus a manual "My pick" so quality is decided by you, not a judge model.
 - **Menu Renames**: The `Feature+` group is now **Model Lab** containing **Model Battle** and **Model Studio**.
-- **MoonshotAI Logo**: MoonshotAI compatible providers now use the uploaded `moonshoot-ai.png` brand image on cards and detail pages.
+- **MoonshotAI Logo**: MoonshotAI compatible providers now use the uploaded `moonshot-ai.png` brand image on cards and detail pages.
 - **Provider Prefixes**: Kept in Model Studio — one editable prefix per custom provider (`prefix/model-id`).
 
 # v0.5.71-Custom (2026-09-10)
