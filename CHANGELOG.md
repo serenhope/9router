@@ -13,6 +13,7 @@
 - **Changelog works offline**: a local `/api/changelog` route serves this fork's changelog from disk, falling back to raw GitHub only for what it cannot resolve; the custom section is labelled **Contributed by Serenhope**.
 - **CLI default password**: the terminal settings menu now reports `seren123` as the default dashboard password instead of the old upstream value.
 - **UI polish**: long sidebar labels, provider/model ids, tool titles, badges and the header search now ellipsize instead of pushing buttons out of place, with the full text available on hover.
+- **Sidebar group renamed**: `Model Lab` is now **Custom Suite** — it holds every feature added by this fork, not only the model tools, so future additions have an obvious home.
 
 # v0.5.72-Custom (2026-09-10)
 
