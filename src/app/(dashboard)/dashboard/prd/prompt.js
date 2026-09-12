@@ -33,6 +33,47 @@ export const PRD_TEMPLATES = [
     hint: "Device UX, offline behaviour, store release and telemetry.",
     extraSections: ["offline", "store"],
   },
+  {
+    value: "rfc",
+    label: "RFC / Tech Spec",
+    hint: "A design decision record: options weighed, choice made, cost and risk.",
+    sections: [
+      "overview", "problem", "goals", "scope", "alternatives", "decisions", "ux",
+      "data", "api", "capacity", "integrations", "nonFunctional", "security",
+      "migration", "observability", "testStrategy", "implementation", "rollout",
+      "risks", "openQuestions", "release",
+    ],
+  },
+  {
+    value: "release",
+    label: "Release Notes",
+    hint: "A shipped release written for humans, with migration and known issues.",
+    sections: [
+      "headline", "whatNew", "fixes", "breaking", "userMigration", "performance",
+      "metrics", "knownIssues", "support", "nextUp",
+    ],
+  },
+  {
+    value: "competitive",
+    label: "Competitive Analysis",
+    hint: "Rivals scored on capability, price and positioning, ending in a decision.",
+    sections: [
+      "overview", "problem", "scope", "market", "capabilityMatrix", "pricingLandscape",
+      "positioningMap", "gaps", "personas", "metrics", "recommendations", "watchlist",
+      "risks", "openQuestions",
+    ],
+  },
+  {
+    value: "incident",
+    label: "Bug Report → Fix Plan",
+    hint: "Root-cause analysis that ends in a fix, verification and prevention.",
+    sections: [
+      "overview", "symptom", "impact", "timeline", "baseline", "rootCause",
+      "fixOptions", "decisions", "data", "api", "implementation", "testStrategy",
+      "verification", "migration", "observability", "prevention", "risks",
+      "openQuestions", "release",
+    ],
+  },
 ];
 
 export const PRD_DEPTHS = [
@@ -195,6 +236,107 @@ const SECTION_LIBRARY = {
     heading: "Store & Device Release Plan",
     spec: "Minimum OS and device matrix, staged rollout percentages with hold-back criteria, review-risk items and the reviewer note, forced-upgrade floor version with its support window, and the hotfix path when a release is already in review.",
   },
+  // --- RFC, release notes, competitive analysis and incident profiles ---
+  alternatives: {
+    heading: "Alternatives Considered",
+    spec: "Table: option | what it is | why it was rejected or kept | the cost of being wrong about it | the evidence that decided it. Include doing nothing as a real option, and name the option a smart opponent would still argue for.",
+  },
+  decisions: {
+    heading: "Design Decisions",
+    spec: "Numbered DEC-1.. decisions in the form 'we chose X over Y because Z', each with the rejected alternative, the consequence accepted, the condition that would reopen it, and which FR or NFR it satisfies.",
+  },
+  capacity: {
+    heading: "Capacity & Cost Model",
+    spec: "Show the arithmetic: units of work per day, peak multiplier, per-request size, storage growth per month, and the resulting compute, egress and provider spend at the free tier, current scale and 10× scale, with the line item that dominates.",
+  },
+  headline: {
+    heading: "Release Headline",
+    spec: "The release in one paragraph a non-engineer can repeat correctly, plus a metadata table: version, date, packages touched, upgrade risk level, and who to ping when it breaks.",
+  },
+  whatNew: {
+    heading: "What's New",
+    spec: "Group the changes by area a user cares about, each entry as 'capability - what it does now - how to start using it', with the exact setting, endpoint or button involved.",
+  },
+  fixes: {
+    heading: "Fixes & Improvements",
+    spec: "Table: id | symptom users saw | what changed | issue or ticket reference. Every entry must be phrased as the user's complaint, not the internal diff.",
+  },
+  breaking: {
+    heading: "Breaking Changes",
+    spec: "Table: change | who is affected | the exact symptom if ignored | required action | deadline. State 'none' explicitly when nothing broke, and list the deprecation clock for anything removed.",
+  },
+  performance: {
+    heading: "Performance & Reliability Delta",
+    spec: "Before/after table: metric | baseline | this release | method of measurement, plus the regression you accepted and the error budget it consumed.",
+  },
+  userMigration: {
+    heading: "User Migration Guide",
+    spec: "Step-by-step upgrade path with copy-pasteable commands, the config or data each step touches, how long the dual-run window stays open, and the exact rollback for someone who upgrades and regrets it.",
+  },
+  knownIssues: {
+    heading: "Known Issues",
+    spec: "Table: issue | who hits it | workaround | severity | planned fix version - and do not omit the embarrassing one just because a fix already exists in a branch.",
+  },
+  support: {
+    heading: "Support & Communications",
+    spec: "The docs and in-app copy that changed, the changelog or newsletter line, the escalation path with names, and the three questions support will get asked in week one with their answers.",
+  },
+  nextUp: {
+    heading: "Next Up",
+    spec: "What ships next and why that order, the follow-ups deliberately cut from this release with their trigger condition, and the open experiment or flag that will be retired next.",
+  },
+  capabilityMatrix: {
+    heading: "Capability Matrix",
+    spec: "Table of competitor | each must-have capability | their answer | ours | the evidence source and its date. Mark unknown cells as unverified rather than guessing, and state how the matrix will be re-validated.",
+  },
+  pricingLandscape: {
+    heading: "Pricing & Packaging",
+    spec: "Compare plans, metering unit, free-tier ceiling, contract traps and effective price at three usage levels, then state where a buyer churns to a rival on price alone.",
+  },
+  positioningMap: {
+    heading: "Positioning Map",
+    spec: "Pick the two axes customers actually buy on, place every player with the reasoning, then name the quadrant that is empty and whether it is empty because nobody wants it or because nobody can build it.",
+  },
+  gaps: {
+    heading: "Gaps & Opportunities",
+    spec: "Table: gap | severity | how fast a rival closes it | effort for us | revenue or retention impact, separated into feature gaps, trust gaps and distribution gaps.",
+  },
+  recommendations: {
+    heading: "Strategic Recommendations",
+    spec: "Ranked REC-1.. with the action, the expected measurable effect, the cost, the owner, and the strongest counter-argument that must be answered before the recommendation is accepted.",
+  },
+  watchlist: {
+    heading: "Watchlist & Refresh Cadence",
+    spec: "Which rivals, signals and dates to monitor, the trip-wire that forces a re-analysis, who owns the watch, and the exact source each signal will be measured from.",
+  },
+  symptom: {
+    heading: "Symptom & Detection",
+    spec: "What broke as the user experienced it, when it started, how it was detected (alert, ticket, someone noticed), the blast radius in real numbers, and the first signal that was missed.",
+  },
+  impact: {
+    heading: "User & Business Impact",
+    spec: "Quantify affected users, requests, revenue, trust and internal time, plus the SLA or contractual exposure and the support cost. Separate what is confirmed from what is estimated.",
+  },
+  timeline: {
+    heading: "Timeline of Events",
+    spec: "Timestamped table from the change that started it to detection, mitigations attempted, resolution and the residual state, each row marking what was known at that moment versus what turned out to be true.",
+  },
+  rootCause: {
+    heading: "Root Cause Analysis",
+    spec: "Walk the causal chain to the root cause and prove it with evidence, separate contributing factors from the root cause, list what allowed it to spread (tests, review, flags, monitoring), and name the hypothesis still unconfirmed.",
+  },
+  fixOptions: {
+    heading: "Fix Options",
+    spec: "Table: option | blast radius | effort | risk | rollback difficulty | how long until users are safe, and name the option that only buys time so nobody mistakes it for the fix.",
+  },
+  verification: {
+    heading: "Verification & Regression Guard",
+    spec: "How the fix is proven - the reproduction that fails before and passes after, the new automated test that locks it in, the monitoring that would have caught it, and the manual check for the affected population.",
+  },
+  prevention: {
+    heading: "Prevention & Follow-ups",
+    spec: "Numbered ACTION-1.. items with owner, due date and the mechanism that makes the class of failure impossible (lint rule, migration guard, default change, alert), plus the process assumption being fixed rather than the code.",
+  },
 };
 
 // Every document gets these, in this order.
@@ -224,14 +366,22 @@ const CORE_SECTIONS = [
   "release",
 ];
 
-/** Ordered section descriptors for a profile, extras inserted after functional requirements. */
+/**
+ * Ordered section descriptors for a profile. A profile either replaces the whole
+ * outline (`sections`) or extends the core list with extras after the functional
+ * requirements; ids that do not exist in the library are dropped.
+ */
 export function resolveSections(template) {
   const profile = PRD_TEMPLATES.find((t) => t.value === template) || PRD_TEMPLATES[0];
-  const ids = [...CORE_SECTIONS];
+  const ids = Array.isArray(profile.sections) && profile.sections.length
+    ? [...profile.sections]
+    : [...CORE_SECTIONS];
   const extras = (profile.extraSections || []).filter((id) => SECTION_LIBRARY[id]);
-  const at = ids.indexOf("functional") + 1;
-  ids.splice(at, 0, ...extras);
-  return ids.map((id) => ({ id, ...SECTION_LIBRARY[id] }));
+  if (extras.length) {
+    const at = ids.indexOf("functional") + 1;
+    ids.splice(at > 0 ? at : ids.length, 0, ...extras);
+  }
+  return ids.filter((id) => SECTION_LIBRARY[id]).map((id) => ({ id, ...SECTION_LIBRARY[id] }));
 }
 
 const HINT_FIELDS = [

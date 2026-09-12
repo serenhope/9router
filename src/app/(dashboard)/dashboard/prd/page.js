@@ -28,6 +28,12 @@ import {
   auditSections,
   sanitizeMarkdownHtml,
 } from "./prompt.js";
+import {
+  buildPlanExtractionMessages,
+  cleanModelChecklist,
+  extractPlanFromMarkdown,
+  renderTasksMarkdown,
+} from "./checklist.js";
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -150,12 +156,20 @@ function PrdContent() {
   const [saving, setSaving] = useState(false);
   const [docs, setDocs] = useState([]);
   const [showPrompt, setShowPrompt] = useState(false);
+  const [showTasks, setShowTasks] = useState(false);
+  const [taskSource, setTaskSource] = useState("plan");
+  const [taskModelText, setTaskModelText] = useState("");
+  const [taskStage, setTaskStage] = useState("idle");
+  const [taskError, setTaskError] = useState("");
   const { copied, copy } = useCopyToClipboard(2000);
 
   const abortRef = useRef(null);
   const timerRef = useRef(null);
   const outputRef = useRef(null);
   const draftRef = useRef("");
+  const taskAbortRef = useRef(null);
+  const taskDraftRef = useRef("");
+  const taskListRef = useRef(null);
 
   const outline = useMemo(() => resolveSections(template), [template]);
   const activeSections = useMemo(
@@ -313,6 +327,10 @@ function PrdContent() {
     setElapsed(0);
     setMarkdown("");
     draftRef.current = "";
+    taskDraftRef.current = "";
+    setTaskModelText("");
+    setTaskStage("idle");
+    setTaskError("");
     setView("markdown");
     setStage("drafting");
 
@@ -469,6 +487,90 @@ function PrdContent() {
     URL.revokeObjectURL(url);
   };
 
+  const taskPlan = useMemo(
+    () => (showTasks && taskSource === "plan" ? extractPlanFromMarkdown(markdown) : null),
+    [showTasks, taskSource, markdown]
+  );
+  const planTaskText = useMemo(() => (taskPlan ? renderTasksMarkdown(taskPlan) : ""), [taskPlan]);
+  const taskText = taskSource === "plan" ? planTaskText : taskModelText;
+  const taskRunning = taskStage === "running";
+  const taskFollowUps = taskPlan ? taskPlan.groups.reduce((n, g) => n + g.items.length, 0) : 0;
+
+  useEffect(() => {
+    if (showTasks && taskSource === "model" && taskListRef.current) {
+      taskListRef.current.scrollTop = taskListRef.current.scrollHeight;
+    }
+  }, [taskText, showTasks, taskSource]);
+
+  const handleDownloadTasks = () => {
+    if (!taskText.trim()) return;
+    const blob = new Blob([taskText], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${slugify(docTitle)}-tasks.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const openTaskList = useCallback(() => {
+    setTaskError("");
+    setShowTasks(true);
+  }, []);
+
+  const closeTaskList = useCallback(() => {
+    if (taskAbortRef.current) {
+      taskAbortRef.current.abort();
+      taskAbortRef.current = null;
+    }
+    setTaskStage("idle");
+    setTaskError("");
+    setShowTasks(false);
+  }, []);
+
+  const stopTaskRequest = useCallback(() => {
+    if (taskAbortRef.current) taskAbortRef.current.abort();
+    setTaskStage(taskDraftRef.current.trim() ? "done" : "idle");
+  }, []);
+
+  const handleAskModel = useCallback(async () => {
+    if (!model || running || taskRunning || !markdown.trim()) return;
+    const controller = new AbortController();
+    taskAbortRef.current = controller;
+    taskDraftRef.current = "";
+    setTaskModelText("");
+    setTaskError("");
+    setTaskStage("running");
+    try {
+      const answer = await streamChat({
+        callModel: model,
+        messages: buildPlanExtractionMessages(markdown),
+        signal: controller.signal,
+        onDelta: (chunk) => {
+          taskDraftRef.current += chunk;
+          setTaskModelText(taskDraftRef.current);
+        },
+      });
+      const text = cleanModelChecklist(answer?.text || taskDraftRef.current);
+      taskDraftRef.current = text;
+      setTaskModelText(text);
+      setTaskStage(text.trim() ? "done" : "error");
+      if (!text.trim()) setTaskError("The model answered with nothing usable, so ask it again.");
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        const partial = cleanModelChecklist(taskDraftRef.current);
+        taskDraftRef.current = partial;
+        setTaskModelText(partial);
+        setTaskStage(partial.trim() ? "done" : "idle");
+      } else {
+        setTaskError(err?.message || "The task list request failed.");
+        setTaskStage("error");
+      }
+    } finally {
+      if (taskAbortRef.current === controller) taskAbortRef.current = null;
+    }
+  }, [model, running, taskRunning, markdown, streamChat]);
+
   const openDoc = async (id) => {
     try {
       const res = await fetch(`/api/prd?id=${encodeURIComponent(id)}`);
@@ -480,6 +582,9 @@ function PrdContent() {
       setStage("done");
       setError("");
       setCritique("");
+      taskDraftRef.current = "";
+      setTaskModelText("");
+      setTaskStage("idle");
       setUsage(null);
       setCost(null);
       setView("preview");
@@ -754,7 +859,7 @@ function PrdContent() {
                   </span>
                 )}
               </div>
-              <div className="flex shrink-0 items-center gap-1.5">
+              <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
                 <Button size="sm" variant="ghost" icon="save" onClick={handleSave} disabled={!markdown.trim() || saving}>
                   {savedId ? "Update" : "Save"}
                 </Button>
@@ -766,6 +871,15 @@ function PrdContent() {
                   disabled={!markdown.trim()}
                 >
                   Copy
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon="checklist"
+                  onClick={openTaskList}
+                  disabled={!markdown.trim()}
+                >
+                  Task list
                 </Button>
                 <Button size="sm" variant="ghost" icon="download" onClick={handleDownload} disabled={!markdown.trim()}>
                   .md
@@ -955,6 +1069,117 @@ function PrdContent() {
           selectedModel={pickerFor === "writer" ? model : reviewerModel}
           title={pickerFor === "writer" ? "Pick writer model" : "Pick reviewer model"}
         />
+      )}
+
+      {showTasks && (
+        <Modal isOpen onClose={closeTaskList} title="Task list" size="full">
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+              <SegmentedControl
+                size="sm"
+                value={taskSource}
+                onChange={setTaskSource}
+                options={[
+                  { value: "plan", label: "From plan section", icon: "account_tree" },
+                  { value: "model", label: model ? `Ask ${model}` : "Ask model", icon: "smart_toy" },
+                ]}
+              />
+              {taskSource === "model" && (
+                <div className="flex min-w-0 shrink-0 items-center gap-2">
+                  {taskRunning ? (
+                    <span className="flex min-w-0 items-center gap-1 text-[11px] text-text-muted">
+                      <span className="material-symbols-outlined text-[15px] animate-spin">progress_activity</span>
+                      Writing the list...
+                    </span>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon="auto_fix_high"
+                      onClick={handleAskModel}
+                      disabled={!model || running || !markdown.trim()}
+                    >
+                      {taskModelText.trim() ? "Ask again" : "Ask"}
+                    </Button>
+                  )}
+                  {taskRunning && (
+                    <Button size="sm" variant="ghost" icon="stop_circle" onClick={stopTaskRequest}>
+                      Stop
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+            {taskSource === "model" && !model && (
+              <p className="min-w-0 break-words text-[11px] text-amber-500">
+                Pick a writer model first so there is something to ask.
+              </p>
+            )}
+            {taskError && <p className="min-w-0 break-words text-[11px] text-red-500">{taskError}</p>}
+            {taskSource === "plan" && taskPlan && !taskPlan.tasks.length && (
+              <p className="min-w-0 break-words text-[11px] text-amber-500">
+                Nothing was found in a plan section here, so switch to the model tab and ask it to extract the tasks instead.
+              </p>
+            )}
+            {taskSource === "plan" && taskPlan && taskPlan.tasks.length > 0 && (
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-muted">
+                <span className="min-w-0 truncate">
+                  {taskPlan.tasks.length} {taskPlan.tasks.length === 1 ? "task" : "tasks"} in dependency order
+                </span>
+                {taskFollowUps > 0 && (
+                  <span className="min-w-0 truncate">{taskFollowUps} follow-up items</span>
+                )}
+                {taskPlan.warnings.slice(0, 3).map((warning) => (
+                  <span key={warning} className="min-w-0 break-words text-amber-500">
+                    {warning}
+                  </span>
+                ))}
+              </div>
+            )}
+            {taskText ? (
+              <pre
+                ref={taskListRef}
+                className="max-h-[45vh] min-w-0 overflow-auto custom-scrollbar whitespace-pre-wrap break-words rounded-lg bg-black/5 dark:bg-white/5 p-3 font-mono text-[11px] leading-relaxed text-text-main"
+              >
+                {taskText}
+                {taskRunning ? <span className="animate-pulse">▍</span> : null}
+              </pre>
+            ) : (
+              taskSource === "model" && (
+                <div className="flex min-w-0 flex-col items-center gap-2 rounded-lg border border-dashed border-border px-4 py-10 text-center">
+                  <span className="material-symbols-outlined text-[28px] text-text-muted/40">
+                    {taskRunning ? "hourglass_top" : "task_alt"}
+                  </span>
+                  <p className="max-w-sm text-xs text-text-muted">
+                    {taskRunning
+                      ? "Asking the model now and the lines show up here as they arrive."
+                      : "No checklist yet — run the request and the model writes one from this document."}
+                  </p>
+                </div>
+              )
+            )}
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={copied === "tasks" ? "check" : "content_copy"}
+                onClick={() => copy(taskText, "tasks")}
+                disabled={!taskText.trim()}
+              >
+                Copy
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="download"
+                onClick={handleDownloadTasks}
+                disabled={!taskText.trim()}
+              >
+                .md
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {showPrompt && (

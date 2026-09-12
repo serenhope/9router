@@ -1,3 +1,15 @@
+# v0.5.77-Custom (2026-09-12)
+
+## Fixes
+- **A rejected request no longer grounds an account**: 400, 406 and 422 from a provider are now classified as caller mistakes, so they surface immediately instead of cooling the credential for 30 seconds and dragging every other account through the same failure.
+
+## Custom Features & Enhancements
+- **PRD Writer document profiles**: four new profiles — RFC / Tech Spec, Release Notes, Competitive Analysis and Bug Report → Fix Plan — each with its own section outline built from 25 freshly written section briefs.
+- **PRD task list**: one button turns a finished PRD into an ordered `- [ ]` checklist, either parsed straight from the plan section (dependency order, owners, estimates, follow-ups) or extracted by the model when the plan is prose, with copy and `.md` download.
+- **Provider Health board**: a new page that rolls the request log into per-account and per-model success rate, p50/p95 latency, spend, last error and a live cooldown countdown, with test-now and pause/resume wired to the existing endpoints.
+- **Provider Health stays private**: the bare `GET /api/health` probe still answers `{"ok":true}` for tunnels and uptime checks, while `?window=` board data requires a dashboard session and never leaves request or response bodies on the server.
+- **Provider Health explains itself**: the board says when request logging is switched off in Settings instead of showing a page full of zeros.
+
 # v0.5.76-Custom (2026-09-12)
 
 ## Fixes
