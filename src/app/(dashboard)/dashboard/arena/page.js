@@ -4,6 +4,7 @@ import { Suspense, useState, useCallback, useEffect, useMemo } from "react";
 import { Card, Button, Input, ModelSelectModal, CardSkeleton } from "@/shared/components";
 import { PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import { getPricingForModel, calculateCostFromTokens, formatCost } from "open-sse/providers/pricing.js";
+import { extractAssistantText, describeEmptyResponse, formatGatewayError } from "@/shared/utils/modelResponse";
 
 const MAX_MODELS = 4;
 const MIN_MODELS = 1;
@@ -148,17 +149,27 @@ function ArenaContent() {
           const ms = Date.now() - started;
           const payload = await res.json().catch(() => ({}));
           const ok = res.ok;
-          const content = ok
-            ? payload.choices?.[0]?.message?.content || JSON.stringify(payload)
-            : payload?.error?.message || payload?.error || "Unknown error";
+          const answer = ok ? extractAssistantText(payload) : null;
+          const failure = ok ? null : formatGatewayError(payload?.error || payload?.message || payload);
+          if (failure && !failure.status) failure.status = String(res.status);
           const usage = ok ? payload.usage || {} : null;
+          const content = ok ? answer.text : failure.message;
           setResults((prev) => {
             const next = [...prev];
             next[index] = {
               loading: false,
               data: {
                 ok,
+                kind: ok ? answer.kind : "error",
                 content,
+                thinking: ok ? answer.thinking : "",
+                hint: ok && answer.kind === "empty"
+                  ? describeEmptyResponse({ finishReason: answer.finishReason, usage, thinking: answer.thinking })
+                  : "",
+                detail: failure ? failure.detail : "",
+                status: failure ? failure.status : "",
+                source: failure ? failure.model : "",
+                cooldown: failure ? failure.cooldown : "",
                 ms,
                 usage,
                 cost: ok ? estimateCost(model.trim(), usage, studioTargets) : null,
@@ -168,11 +179,26 @@ function ArenaContent() {
             return next;
           });
         } catch (err) {
+          const netErr = formatGatewayError(err?.message || "Request failed");
           setResults((prev) => {
             const next = [...prev];
             next[index] = {
               loading: false,
-              data: { ok: false, content: err?.message || "Request failed", ms: Date.now() - started, usage: null, cost: null, chars: 0 },
+              data: {
+                ok: false,
+                kind: "error",
+                content: netErr.message,
+                thinking: "",
+                hint: "",
+                detail: netErr.detail,
+                status: netErr.status,
+                source: netErr.model,
+                cooldown: netErr.cooldown,
+                ms: Date.now() - started,
+                usage: null,
+                cost: null,
+                chars: 0,
+              },
             };
             return next;
           });
@@ -277,10 +303,20 @@ function ArenaContent() {
                   {result && (
                     <span
                       className={`text-xs px-2 py-1 rounded font-mono shrink-0 ${
-                        result.ok ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"
+                        !result.ok
+                          ? "bg-red-500/10 text-red-500"
+                          : result.kind === "empty"
+                            ? "bg-amber-500/10 text-amber-500"
+                            : "bg-green-500/10 text-green-500"
                       }`}
                     >
-                      {result.ok ? `${result.ms}ms` : "failed"}
+                      {!result.ok
+                        ? result.status
+                          ? `HTTP ${result.status}`
+                          : "failed"
+                        : result.kind === "empty"
+                          ? "empty"
+                          : `${result.ms}ms`}
                     </span>
                   )}
                 </div>
@@ -293,9 +329,69 @@ function ArenaContent() {
                     </div>
                   ) : result ? (
                     <div className="flex flex-col h-full min-w-0">
-                      <pre className="text-sm font-mono whitespace-pre-wrap flex-1 break-words min-w-0">
-                        {result.content}
-                      </pre>
+                      {result.kind === "error" ? (
+                        <div className="flex flex-col gap-2 min-w-0">
+                          <p className="text-sm text-red-500 break-words min-w-0">{result.content}</p>
+                          <div className="flex flex-wrap gap-1.5 text-[10px]">
+                            {result.status && (
+                              <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-500 font-mono">
+                                HTTP {result.status}
+                              </span>
+                            )}
+                            {result.cooldown && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500">
+                                {result.cooldown}
+                              </span>
+                            )}
+                            {result.source && (
+                              <span
+                                title={result.source}
+                                className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-text-muted font-mono max-w-full truncate"
+                              >
+                                {result.source}
+                              </span>
+                            )}
+                          </div>
+                          {result.detail && (
+                            <details className="min-w-0">
+                              <summary className="cursor-pointer text-[11px] text-text-muted hover:text-primary">
+                                Show the raw error
+                              </summary>
+                              <pre className="mt-1 max-h-40 overflow-auto custom-scrollbar whitespace-pre-wrap break-words rounded bg-black/5 dark:bg-white/5 p-2 text-[10px] text-text-muted">
+                                {result.detail}
+                              </pre>
+                            </details>
+                          )}
+                        </div>
+                      ) : result.kind === "empty" ? (
+                        <div className="flex flex-col gap-1.5 min-w-0">
+                          <p className="text-sm text-amber-500 break-words min-w-0">{result.hint}</p>
+                          <p className="text-[11px] text-text-muted">The provider answered with HTTP 200 and nothing inside.</p>
+                        </div>
+                      ) : result.kind === "thinking" ? (
+                        <div className="flex flex-col gap-1.5 min-w-0 h-full">
+                          <p className="text-[11px] text-text-muted">Only reasoning came back, with no final answer.</p>
+                          <pre className="text-sm font-mono whitespace-pre-wrap flex-1 break-words min-w-0">
+                            {result.thinking}
+                          </pre>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-2 min-w-0 h-full">
+                          <pre className="text-sm font-mono whitespace-pre-wrap flex-1 break-words min-w-0">
+                            {result.content}
+                          </pre>
+                          {result.thinking && (
+                            <details className="min-w-0">
+                              <summary className="cursor-pointer text-[11px] text-text-muted hover:text-primary">
+                                Show the reasoning behind this answer
+                              </summary>
+                              <pre className="mt-1 max-h-40 overflow-auto custom-scrollbar whitespace-pre-wrap break-words rounded bg-black/5 dark:bg-white/5 p-2 text-[11px] text-text-muted">
+                                {result.thinking}
+                              </pre>
+                            </details>
+                          )}
+                        </div>
+                      )}
                       {result.ok && (
                         <div className="mt-4 pt-3 border-t border-border/50 text-xs text-text-muted flex flex-wrap gap-x-4 gap-y-1">
                           <span>in {result.usage?.prompt_tokens ?? 0}</span>
@@ -345,12 +441,14 @@ function buildRanking(slots, results) {
     .map((entry) => ({
       ...entry,
       ok: entry.data.ok,
+      answered: entry.data.ok && entry.data.kind !== "empty",
       ms: entry.data.ms,
       totalTokens: entry.data.usage?.total_tokens ?? 0,
       cost: entry.data.cost,
       chars: entry.data.chars,
     }))
     .sort((a, b) => {
+      if (a.answered !== b.answered) return a.answered ? -1 : 1;
       if (a.ok !== b.ok) return a.ok ? -1 : 1;
       if (a.ms !== b.ms) return a.ms - b.ms;
       return (a.cost ?? Number.MAX_SAFE_INTEGER) - (b.cost ?? Number.MAX_SAFE_INTEGER);
@@ -358,17 +456,18 @@ function buildRanking(slots, results) {
 }
 
 function FinalResult({ ranked, pick, setPick, runId }) {
+  // An empty 200 response is not a win, so every award needs a real answer.
   const winners = {
-    fastest: ranked.filter((r) => r.ok).slice().sort((a, b) => a.ms - b.ms)[0],
+    fastest: ranked.filter((r) => r.answered).slice().sort((a, b) => a.ms - b.ms)[0],
     cheapest: ranked
-      .filter((r) => r.ok && r.cost != null)
+      .filter((r) => r.answered && r.cost != null)
       .slice()
       .sort((a, b) => a.cost - b.cost)[0],
     leanest: ranked
-      .filter((r) => r.ok && r.totalTokens > 0)
+      .filter((r) => r.answered && r.totalTokens > 0)
       .slice()
       .sort((a, b) => a.totalTokens - b.totalTokens)[0],
-    richest: ranked.filter((r) => r.ok).slice().sort((a, b) => b.chars - a.chars)[0],
+    richest: ranked.filter((r) => r.answered).slice().sort((a, b) => b.chars - a.chars)[0],
   };
 
   const leader = ranked[0];
@@ -384,7 +483,7 @@ function FinalResult({ ranked, pick, setPick, runId }) {
             <p className="text-[11px] text-text-muted">
               {manual ? (
                 <>Your pick: <code className="font-mono">{manual.model}</code></>
-              ) : leader?.ok ? (
+              ) : leader?.answered ? (
                 <><code className="font-mono">{leader.model}</code> answered fastest — tap “My pick” below for quality.</>
               ) : (
                 "No contender answered successfully."
@@ -408,7 +507,7 @@ function FinalResult({ ranked, pick, setPick, runId }) {
           </thead>
           <tbody>
             {ranked.map((entry, position) => {
-              const isWinner = position === 0 && entry.ok && pick == null;
+              const isWinner = position === 0 && entry.answered && pick == null;
               const isPicked = pick === entry.index;
               return (
                 <tr
@@ -426,7 +525,11 @@ function FinalResult({ ranked, pick, setPick, runId }) {
                       )}
                       {isPicked && <Badge icon="check" text="your pick" accent />}
                     </div>
-                    {!entry.ok && <span className="text-[11px] text-red-500">failed</span>}
+                    {!entry.answered && (
+                  <span className={`text-[11px] ${entry.ok ? "text-amber-500" : "text-red-500"}`}>
+                    {entry.ok ? "empty answer" : "failed"}
+                  </span>
+                )}
                   </td>
                   <td className="py-2 px-3 text-right font-mono tabular-nums">
                     {entry.ok ? `${entry.ms}ms` : "—"}

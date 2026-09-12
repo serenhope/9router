@@ -1,3 +1,11 @@
+# v0.5.76-Custom (2026-09-12)
+
+## Fixes
+- **Showdown shows real outcomes**: a model that answers with HTTP 200 but no text is now labelled `empty` with the reason why, instead of dumping raw JSON into the result card.
+- **Showdown errors are readable**: provider failures show one short line plus HTTP status, cooldown and route chips, with the untouched payload behind "Show the raw error".
+- **Silent models can no longer win**: awards and the top ranking ignore answers that produced nothing, so an empty response can't be declared the fastest.
+- **PRD Writer errors formatted**: generation failures surface the parsed provider message with a collapsible raw detail, and a completion that returns nothing is reported as empty instead of leaving a blank document.
+
 # v0.5.75-Custom (2026-09-12)
 
 ## Custom Features & Enhancements

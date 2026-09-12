@@ -16,6 +16,7 @@ import {
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import { getPricingForModel, calculateCostFromTokens, formatCost } from "open-sse/providers/pricing.js";
+import { extractAssistantText, describeEmptyResponse, formatGatewayError } from "@/shared/utils/modelResponse";
 import {
   PRD_TEMPLATES,
   PRD_DEPTHS,
@@ -140,6 +141,7 @@ function PrdContent() {
   const [critique, setCritique] = useState("");
   const [stage, setStage] = useState("idle");
   const [error, setError] = useState("");
+  const [errorDetail, setErrorDetail] = useState("");
   const [usage, setUsage] = useState(null);
   const [cost, setCost] = useState(null);
   const [elapsed, setElapsed] = useState(0);
@@ -235,12 +237,21 @@ function PrdContent() {
       });
       if (!res.ok) {
         const bad = await res.json().catch(() => ({}));
-        throw new Error(bad?.error?.message || bad?.error || `Request failed (${res.status})`);
+        const info = formatGatewayError(bad?.error || bad?.message || `Request failed (${res.status})`);
+        const err = new Error(info.message);
+        err.detail = info.detail;
+        err.status = info.status || String(res.status);
+        err.cooldown = info.cooldown;
+        throw err;
       }
       const type = res.headers.get("content-type") || "";
       if (!type.includes("event-stream") || !res.body) {
         const json = await res.json().catch(() => ({}));
-        const text = json?.choices?.[0]?.message?.content || JSON.stringify(json);
+        const answer = extractAssistantText(json);
+        if (answer.kind === "empty") {
+          throw new Error(describeEmptyResponse({ finishReason: answer.finishReason, usage: json?.usage }));
+        }
+        const text = answer.kind === "thinking" ? answer.thinking : answer.text;
         if (onDelta) onDelta(text);
         return { text, usage: json?.usage || null };
       }
@@ -294,6 +305,7 @@ function PrdContent() {
     const controller = new AbortController();
     abortRef.current = controller;
     setError("");
+    setErrorDetail("");
     setCritique("");
     setUsage(null);
     setCost(null);
@@ -351,6 +363,11 @@ function PrdContent() {
         finalUsage = review.usage || draft.usage;
       }
 
+      if (!finalText.trim()) {
+        setError(describeEmptyResponse({ usage: finalUsage }));
+        setStage("error");
+        return;
+      }
       setMarkdown(finalText);
       setUsage(finalUsage || null);
       setCost(estimateCost(model, finalUsage, studioTargets));
@@ -361,6 +378,7 @@ function PrdContent() {
         setStage(draftRef.current ? "done" : "idle");
       } else {
         setError(err?.message || "Generation failed");
+        setErrorDetail(err?.detail || "");
         setStage("error");
       }
     } finally {
@@ -756,9 +774,21 @@ function PrdContent() {
             </div>
 
             {error && (
-              <div className="m-4 mb-0 flex min-w-0 items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2">
-                <span className="material-symbols-outlined text-[16px] text-red-500 shrink-0">error</span>
-                <p className="min-w-0 flex-1 break-words text-xs text-red-500">{error}</p>
+              <div className="m-4 mb-0 flex min-w-0 flex-col gap-1.5 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2">
+                <div className="flex min-w-0 items-start gap-2">
+                  <span className="material-symbols-outlined text-[16px] text-red-500 shrink-0">error</span>
+                  <p className="min-w-0 flex-1 break-words text-xs text-red-500">{error}</p>
+                </div>
+                {errorDetail && (
+                  <details className="min-w-0">
+                    <summary className="cursor-pointer text-[11px] text-red-500/80 hover:text-red-500">
+                      Show the raw error
+                    </summary>
+                    <pre className="mt-1 max-h-40 overflow-auto custom-scrollbar whitespace-pre-wrap break-words rounded bg-black/5 dark:bg-white/5 p-2 text-[10px] text-text-muted">
+                      {errorDetail}
+                    </pre>
+                  </details>
+                )}
               </div>
             )}
 
