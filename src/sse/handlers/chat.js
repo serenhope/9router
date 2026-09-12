@@ -84,6 +84,10 @@ export async function handleChat(request, clientRawRequest = null) {
   if (apiKey) {
     const clientIp = getClientIp(request);
     const valid = await isValidApiKey(apiKey, modelStr, clientIp);
+    if (valid === "KEY_DISABLED") {
+      log.warn("AUTH", "API key is disabled");
+      return errorResponse(HTTP_STATUS.FORBIDDEN, "API key is disabled");
+    }
     if (valid === "QUOTA_EXCEEDED") {
       log.warn("AUTH", "API key quota exceeded");
       return errorResponse(HTTP_STATUS.TOO_MANY_REQUESTS, "API key token limit exceeded");

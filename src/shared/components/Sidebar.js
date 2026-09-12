@@ -23,7 +23,6 @@ const navItems = [
   { href: "/dashboard/combos", label: "Combo & Vision Adapter", icon: "layers" },
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
-  { href: "/dashboard/health", label: "Provider Health", icon: "monitoring" },
   { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
   // { href: "/dashboard/pxpipe", label: "PXPIPE", icon: "image" },
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
@@ -33,7 +32,6 @@ const navItems = [
 const workshopItems = [
  { href: "/dashboard/arena", label: "Model Battle Arena", icon: "swords" },
  { href: "/dashboard/model-editor", label: "Custom Model Editor", icon: "auto_awesome" },
- { href: "/dashboard/prd", label: "PRD Document Writer", icon: "description" },
 ];
 
 const debugItems = [
@@ -206,10 +204,10 @@ export default function Sidebar({ onClose }) {
           ))}
 
   
-        {/* Workshop section — custom tools added by this fork */}
+        {/* FEATURE+ section — custom tools added by this fork */}
           <div className="pt-3 mt-2 space-y-0.5">
             <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
-              Workshop
+              FEATURE+
             </p>
             {workshopItems.map((item) => (
               <NavLink

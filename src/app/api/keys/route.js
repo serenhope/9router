@@ -51,6 +51,7 @@ export async function POST(request) {
       name: apiKey.name,
       id: apiKey.id,
       machineId: apiKey.machineId,
+      isActive: apiKey.isActive,
       tokenLimit: apiKey.tokenLimit,
       usedTokens: apiKey.usedTokens,
       resetInterval: apiKey.resetInterval,

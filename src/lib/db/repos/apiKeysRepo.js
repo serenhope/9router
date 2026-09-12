@@ -174,7 +174,8 @@ export async function validateApiKey(key, requestedModel = null, clientIp = null
       return;
     }
     if (row.isActive !== 1 && row.isActive !== true) {
-      result = false;
+      // Its own reason code: a switched-off key must not be confused with an unknown one.
+      result = "KEY_DISABLED";
       return;
     }
 

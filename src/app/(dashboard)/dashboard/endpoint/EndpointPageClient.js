@@ -823,6 +823,28 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
+  const handleToggleKeyActive = async (key, isActive) => {
+    const previous = key.isActive !== false;
+    setKeys((prev) => prev.map((k) => (k.id === key.id ? { ...k, isActive } : k)));
+    try {
+      const res = await fetch(`/api/keys/${key.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        alert(errBody?.error || "Failed to update the key state.");
+        setKeys((prev) => prev.map((k) => (k.id === key.id ? { ...k, isActive: previous } : k)));
+      return;
+    }
+    } catch (error) {
+      console.log("Error updating key state:", error);
+      setKeys((prev) => prev.map((k) => (k.id === key.id ? { ...k, isActive: previous } : k)));
+    }
+    await fetchData();
+  };
+
   const handleManualResetUsage = async (key) => {
     setConfirmState({
       title: "Reset Token Usage",
@@ -1215,13 +1237,27 @@ export default function APIPageClient({ machineId }) {
                     )}
                   </div>
                   {key.isActive === false && (
-                    <p className="text-xs text-orange-500 mt-1">Paused</p>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      <span className="text-xs max-w-full truncate px-2 py-0.5 rounded bg-orange-500/10 text-orange-500 font-semibold">
+                        Key switched off
+                      </span>
+                    </div>
                   )}
                 </div>
                 <div className="flex flex-shrink-0 items-center gap-1.5">
-                  <button
-                    onClick={() => {
-                      setEditingKey(key);
+                  <div
+                    className="inline-flex items-center px-1"
+                    title={key.isActive === false ? "Switch this key back on" : "Switch this key off"}
+                  >
+                  <Toggle
+                    size="sm"
+                    checked={key.isActive !== false}
+                    onChange={(nextActive) => handleToggleKeyActive(key, nextActive)}
+                  />
+                  </div>
+                <button
+                  onClick={() => {
+                    setEditingKey(key);
                       setEditName(key.name || "");
                       const lim = key.tokenLimit ? String(key.tokenLimit) : "";
                       setEditLimit(lim);
