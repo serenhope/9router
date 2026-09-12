@@ -313,7 +313,7 @@ export async function buildModelsList(kindFilter, options = {}) {
     models.push(entry);
   }
   
-  // Model Studio names are user-defined callable IDs (alias + per-model overrides).
+  // Forge (studio) names are user-defined callable IDs (alias + per-model overrides).
   for (const studio of studioModels) {
     if (!kindFilter.includes(LLM_KIND)) continue;
     const entry = {

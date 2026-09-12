@@ -29,9 +29,10 @@ const navItems = [
 ];
 
 // Custom features added by this fork — open-ended, new tools land here too.
-const customSuiteItems = [
- { href: "/dashboard/arena", label: "Model Battle", icon: "swords" },
- { href: "/dashboard/model-editor", label: "Model Studio", icon: "auto_awesome" },
+const workshopItems = [
+ { href: "/dashboard/arena", label: "Showdown", icon: "swords" },
+ { href: "/dashboard/model-editor", label: "Forge", icon: "auto_awesome" },
+ { href: "/dashboard/prd", label: "PRD Writer", icon: "description" },
 ];
 
 const debugItems = [
@@ -204,12 +205,12 @@ export default function Sidebar({ onClose }) {
           ))}
 
   
-        {/* Custom Suite section */}
+        {/* Workshop section — tools added by this fork */}
           <div className="pt-3 mt-2 space-y-0.5">
             <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
-              Custom Suite
+              Workshop
             </p>
-            {customSuiteItems.map((item) => (
+            {workshopItems.map((item) => (
               <NavLink
                 key={item.href}
                 href={item.href}

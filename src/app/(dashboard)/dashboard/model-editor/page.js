@@ -18,7 +18,7 @@ export default function ModelStudioPage() {
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
       <div className="min-w-0">
-        <h1 className="text-lg font-semibold text-text-main">Model Studio</h1>
+        <h1 className="text-lg font-semibold text-text-main">Forge</h1>
         <p className="text-xs text-text-muted mt-0.5">
           Give any model your own name, context size and behaviour, and it becomes a callable model ID for clients, combos, and API keys.
         </p>

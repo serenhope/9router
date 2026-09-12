@@ -1,3 +1,12 @@
+# v0.5.75-Custom (2026-09-12)
+
+## Custom Features & Enhancements
+- **PRD Writer**: a workshop tool that turns a short brief into a full, reviewable product requirements document, and it will not generate until you have picked the model that writes it.
+- **PRD controls**: choose the document profile, depth, language, output-token cap and the exact sections to write, then watch the document stream in live.
+- **PRD review pass**: an optional second model red-teams the draft, lists up to 12 defects, and rewrites the whole document with the missing sections filled in.
+- **PRD proof and storage**: a section checklist reports which required headings actually arrived, and every document can be saved, reopened, copied, downloaded as `.md`, or inspected through the exact prompt that produced it.
+- **Workshop menu names**: the custom-tools group is now the single word **Workshop**, and its tools no longer share the word "Model" — **Showdown** (was Model Battle) and **Forge** (was Model Studio).
+
 # v0.5.74-Custom (2026-09-11)
 
 ## Fixes

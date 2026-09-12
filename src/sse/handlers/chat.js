@@ -269,7 +269,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     }
    }
    if (studio) {
-    log.info("CHAT", `Model Studio ${modelStr} -> ${provider}/${effectiveModel}`);
+    log.info("CHAT", `Forge ${modelStr} -> ${provider}/${effectiveModel}`);
    }
   }
  } catch { /* fail open */ }

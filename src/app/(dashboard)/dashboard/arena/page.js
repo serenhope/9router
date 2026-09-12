@@ -190,7 +190,7 @@ function ArenaContent() {
       <div className="flex flex-col gap-2">
         <h1 className="text-xl font-bold flex items-center gap-2">
           <span className="material-symbols-outlined text-primary">swords</span>
-          Model Battle
+          Showdown
         </h1>
         <p className="text-sm text-text-muted">
           Send the same prompt to up to {MAX_MODELS} models and compare speed, cost and output.
