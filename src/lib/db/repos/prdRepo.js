@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
-// PRD Writer documents: one kv row per generated product requirement document.
+// PRD Document Writer records: one kv row per generated product requirement document.
 const SCOPE = "prdDocs";
 const MAX_DOCS = 50;
 

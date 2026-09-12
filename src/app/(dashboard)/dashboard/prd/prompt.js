@@ -1,4 +1,4 @@
-// Prompt catalogue for the PRD Writer: one library of sections, five document
+// Prompt catalogue for the PRD Document Writer: one library of sections, five document
 // profiles, three depth levels. Kept as data so the checklist and the prompt can
 // never disagree about what a complete PRD contains.
 

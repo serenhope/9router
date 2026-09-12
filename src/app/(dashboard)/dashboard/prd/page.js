@@ -570,9 +570,9 @@ function PrdContent() {
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
       <div className="min-w-0">
-        <h1 className="text-lg font-semibold text-text-main flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary">description</span>
-          PRD Writer
+        <h1 className="text-lg font-semibold leading-none text-text-main flex items-center gap-2">
+          <span className="material-symbols-outlined size-[20px] text-[20px] leading-none shrink-0 text-primary">description</span>
+          PRD Document Writer
         </h1>
         <p className="text-xs text-text-muted mt-0.5">
           Turn a short brief into a full, reviewable product requirements document with any model you choose.

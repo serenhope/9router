@@ -558,12 +558,12 @@ export default function ModelSelectModal({
           </div>
         )}
 
-        {/* Forge section */}
+        {/* Custom model section */}
         {filteredStudioModels.length > 0 && (
           <div>
             <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5">
-              <span className="material-symbols-outlined text-primary text-[14px]">auto_awesome</span>
-              <span className="text-xs font-medium text-primary">Forge</span>
+              <span className="material-symbols-outlined size-[14px] text-[14px] leading-none text-primary">auto_awesome</span>
+              <span className="text-xs font-medium leading-none text-primary">Custom Models</span>
               <span className="text-[10px] text-text-muted">({filteredStudioModels.length})</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -588,7 +588,7 @@ export default function ModelSelectModal({
                       <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
                     )}
                     {studio.callName}
-                    <span className="text-[9px] opacity-60 font-normal">forge</span>
+                    <span className="text-[9px] opacity-60 font-normal">custom</span>
                   </button>
                 );
               })}

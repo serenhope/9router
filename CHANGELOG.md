@@ -1,3 +1,11 @@
+# v0.5.80-Custom (2026-09-12)
+
+## Improvements
+- **Workshop menu names now say what the tool does**: the three custom tools are **Model Battle Arena**, **Custom Model Editor** and **PRD Document Writer** in the sidebar, in each page header and in the model picker group, so nothing has to be guessed from a one-word nickname.
+- **Icons finally respect their own size**: the Material Symbols defaults were an unlayered vendor stylesheet, so every icon rendered at a fixed 24px no matter what was written on it — they now live in Tailwind's base layer and the icon font is declared in `globals.css`, so a `text-[14px]` icon is 14px.
+- **Icon and label share one centre line**: each sidebar and page-title icon is a fixed square flex box that a long label can no longer squash, which is what made rows look crooked.
+- **Model picker group renamed**: the studio group in the model picker is **Custom Models** and its chips carry a `custom` tag instead of the old tool name.
+
 # v0.5.79-Custom (2026-09-12)
 
 ## Fixes

@@ -31,9 +31,9 @@ const navItems = [
 
 // Custom features added by this fork — open-ended, new tools land here too.
 const workshopItems = [
- { href: "/dashboard/arena", label: "Showdown", icon: "swords" },
- { href: "/dashboard/model-editor", label: "Forge", icon: "auto_awesome" },
- { href: "/dashboard/prd", label: "PRD Writer", icon: "description" },
+ { href: "/dashboard/arena", label: "Model Battle Arena", icon: "swords" },
+ { href: "/dashboard/model-editor", label: "Custom Model Editor", icon: "auto_awesome" },
+ { href: "/dashboard/prd", label: "PRD Document Writer", icon: "description" },
 ];
 
 const debugItems = [
@@ -64,14 +64,14 @@ function NavLink({ href, icon, label, active, onClick, sub = false }) {
       )}
       <span
         className={cn(
-          "material-symbols-outlined",
-          sub ? "text-[16px]" : "text-[18px]",
+          "material-symbols-outlined shrink-0 leading-none",
+          sub ? "size-4 text-[16px]" : "size-[18px] text-[18px]",
           active ? "fill-1 text-primary" : "group-hover:text-primary transition-colors"
         )}
       >
         {icon}
       </span>
-      <span className="text-[13px] font-medium min-w-0 truncate" title={label}>{label}</span>
+      <span className="text-[13px] font-medium leading-none min-w-0 truncate" title={label}>{label}</span>
     </Link>
   );
 }
@@ -206,7 +206,7 @@ export default function Sidebar({ onClose }) {
           ))}
 
   
-        {/* Workshop section — tools added by this fork */}
+        {/* Workshop section — custom tools added by this fork */}
           <div className="pt-3 mt-2 space-y-0.5">
             <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
               Workshop
@@ -242,8 +242,8 @@ export default function Sidebar({ onClose }) {
               {pathname.startsWith("/dashboard/media-providers") && (
                 <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-primary" />
               )}
-              <span className="material-symbols-outlined text-[18px]">perm_media</span>
-              <span className="text-[13px] font-medium flex-1 text-left min-w-0 truncate" title="Media Providers">Media Providers</span>
+              <span className="material-symbols-outlined size-[18px] text-[18px] leading-none shrink-0">perm_media</span>
+              <span className="text-[13px] font-medium leading-none flex-1 text-left min-w-0 truncate" title="Media Providers">Media Providers</span>
               <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
                 expand_more
               </span>

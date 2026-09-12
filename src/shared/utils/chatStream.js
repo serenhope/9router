@@ -1,6 +1,6 @@
 import { extractAssistantText, formatGatewayError } from "./modelResponse.js";
 
-// One streaming chat-completions client for the dashboard tools (Showdown, PRD
+// One streaming chat-completions client for the dashboard tools (Battle Arena, PRD
 // Writer) so both speak to the gateway through exactly the same code.
 
 function buildError(info, status) {

@@ -45,7 +45,7 @@ export {
   getMitmAlias, setMitmAliasAll,
  } from "./repos/aliasRepo.js";
 
- // Model overrides + Forge (studio) virtual models
+ // Model overrides + custom model (studio) virtual models
 export {
   getStudioModels, getStudioModel, setStudioModel, deleteStudioModel,
   getModelOverrides, setModelOverride, deleteModelOverride,
