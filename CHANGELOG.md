@@ -1,3 +1,13 @@
+# v0.5.78-Custom (2026-09-12)
+
+## Fixes
+- **Showdown streams live**: every contender now paints its answer token by token with a ticking elapsed timer, so a slow model reads as "still working" instead of a frozen spinner with no feedback.
+- **One streaming client for both tools**: Showdown and the PRD Writer now talk to the gateway through the same `streamChatCompletion` helper, so reasoning deltas, usage capture and readable error parsing behave identically on both pages.
+
+## Custom Features & Enhancements
+- **Time-to-first-token is measured**: each battle card reports first token, total time, tokens and cost, and the result table gains a First token column with its own badge.
+- **Battles can be stopped**: the run button turns into Stop while anything is in flight, and a cancelled card keeps its partial answer labelled as stopped instead of showing a red failure.
+
 # v0.5.77-Custom (2026-09-12)
 
 ## Fixes

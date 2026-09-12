@@ -1,10 +1,11 @@
 "use client";
 
-import { Suspense, useState, useCallback, useEffect, useMemo } from "react";
+import { Suspense, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { Card, Button, Input, ModelSelectModal, CardSkeleton } from "@/shared/components";
 import { PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import { getPricingForModel, calculateCostFromTokens, formatCost } from "open-sse/providers/pricing.js";
-import { extractAssistantText, describeEmptyResponse, formatGatewayError } from "@/shared/utils/modelResponse";
+import { describeEmptyResponse } from "@/shared/utils/modelResponse";
+import { streamChatCompletion } from "@/shared/utils/chatStream";
 
 const MAX_MODELS = 4;
 const MIN_MODELS = 1;
@@ -40,6 +41,93 @@ function emptyResult() {
   return { loading: false, data: null };
 }
 
+// Every finished card reads the same fields, so a run that never got there has to
+// answer for them instead of leaving the renderers with holes.
+function slotData() {
+  return {
+    ok: false,
+    kind: "empty",
+    content: "",
+    thinking: "",
+    hint: "",
+    detail: "",
+    status: "",
+    source: "",
+    cooldown: "",
+    ms: null,
+    ttftMs: null,
+    usage: null,
+    cost: null,
+    chars: 0,
+    stopped: false,
+    stoppedNote: "",
+  };
+}
+
+// A stopped card keeps its partial text, so it needs a sentence of its own.
+function stoppedNote(data) {
+  const lines = String(data?.content || "")
+    .split("\n")
+    .filter((line) => line.trim()).length;
+  if (lines) return `Stopped after ${lines} ${lines === 1 ? "line" : "lines"} of output.`;
+  if (String(data?.thinking || "").trim()) return "Stopped while the model was still reasoning.";
+  return "Stopped before any output arrived.";
+}
+
+/**
+ * The one immutable update path for a contender card. Every callback of a running
+ * stream goes through here carrying the battle `run` it belongs to, so concurrent
+ * slots never overwrite each other and chunks from a stopped or superseded run are
+ * dropped rather than resurrecting a finished card.
+ */
+function patchSlot(prev, index, event) {
+  const slot = prev[index];
+  if (!slot || slot.run !== event.run) return prev;
+
+  if (event.type === "delta") {
+    if (!slot.loading) return prev;
+    const data = slot.data || { content: "", thinking: "" };
+    const next = [...prev];
+    next[index] = { ...slot, data: { ...data, [event.sink]: (data[event.sink] || "") + event.chunk } };
+    return next;
+  }
+
+  if (event.type === "idle") {
+    const next = [...prev];
+    next[index] = { ...slot, loading: false, data: null };
+    return next;
+  }
+
+  if (event.type === "stop") {
+    if (!slot.loading) return prev;
+    const partial = slot.data || {};
+    const note = stoppedNote(partial);
+    const kind = partial.content ? "text" : partial.thinking ? "thinking" : "empty";
+    const next = [...prev];
+    next[index] = {
+      ...slot,
+      loading: false,
+      data: {
+        ...slotData(),
+        ok: true,
+        kind,
+        content: partial.content || "",
+        thinking: partial.thinking || "",
+        hint: kind === "empty" ? note : "",
+        stopped: true,
+        stoppedNote: note,
+        ms: event.at - slot.startedAt,
+        chars: (partial.content || "").length,
+      },
+    };
+    return next;
+  }
+
+  const next = [...prev];
+  next[index] = { ...slot, loading: false, data: event.data };
+  return next;
+}
+
 export default function ArenaPage() {
   return (
     <Suspense fallback={<CardSkeleton />}>
@@ -59,6 +147,21 @@ function ArenaContent() {
   const [modelAliases, setModelAliases] = useState({});
   const [studioTargets, setStudioTargets] = useState({});
   const [activeApiKey, setActiveApiKey] = useState("");
+  const controllers = useRef({});
+  const runRef = useRef(0);
+
+  const patch = useCallback(
+    (index, event) => setResults((prev) => patchSlot(prev, index, event)),
+    []
+  );
+
+  // A battle that outlives the page must not keep firing at a dead component.
+  useEffect(() => {
+    const map = controllers;
+    return () => {
+      for (const controller of Object.values(map.current)) controller.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -119,93 +222,91 @@ function ArenaContent() {
   const runBattle = useCallback(async () => {
     if (!prompt.trim()) return;
     const id = runId + 1;
+    runRef.current = id;
     setRunId(id);
     setPick(null);
-    setResults(slots.map(() => ({ loading: true, data: null })));
+    setResults(slots.map(() => ({ loading: true, run: id, startedAt: Date.now(), data: null })));
 
     await Promise.all(
       slots.map(async (model, index) => {
         if (!model.trim()) {
-          setResults((prev) => {
-            const next = [...prev];
-            next[index] = { loading: false, data: null };
-            return next;
-          });
+          patch(index, { type: "idle", run: id });
           return;
         }
+        const controller = new AbortController();
+        controllers.current[index] = controller;
         const started = Date.now();
-        const headers = { "Content-Type": "application/json" };
-        if (activeApiKey) headers["Authorization"] = `Bearer ${activeApiKey}`;
         try {
-          const res = await fetch("/v1/chat/completions", {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              model: model.trim(),
-              messages: [{ role: "user", content: prompt }],
-              stream: false,
-            }),
+          const answer = await streamChatCompletion({
+            model: model.trim(),
+            messages: [{ role: "user", content: prompt }],
+            apiKey: activeApiKey,
+            signal: controller.signal,
+            onDelta: (chunk) => patch(index, { type: "delta", run: id, sink: "content", chunk }),
+            onThinking: (chunk) => patch(index, { type: "delta", run: id, sink: "thinking", chunk }),
           });
-          const ms = Date.now() - started;
-          const payload = await res.json().catch(() => ({}));
-          const ok = res.ok;
-          const answer = ok ? extractAssistantText(payload) : null;
-          const failure = ok ? null : formatGatewayError(payload?.error || payload?.message || payload);
-          if (failure && !failure.status) failure.status = String(res.status);
-          const usage = ok ? payload.usage || {} : null;
-          const content = ok ? answer.text : failure.message;
-          setResults((prev) => {
-            const next = [...prev];
-            next[index] = {
-              loading: false,
-              data: {
-                ok,
-                kind: ok ? answer.kind : "error",
-                content,
-                thinking: ok ? answer.thinking : "",
-                hint: ok && answer.kind === "empty"
-                  ? describeEmptyResponse({ finishReason: answer.finishReason, usage, thinking: answer.thinking })
-                  : "",
-                detail: failure ? failure.detail : "",
-                status: failure ? failure.status : "",
-                source: failure ? failure.model : "",
-                cooldown: failure ? failure.cooldown : "",
-                ms,
-                usage,
-                cost: ok ? estimateCost(model.trim(), usage, studioTargets) : null,
-                chars: (content || "").length,
-              },
-            };
-            return next;
+          const usage = answer.usage || {};
+          const content = answer.kind === "thinking" ? "" : answer.text || "";
+          patch(index, {
+            type: "final",
+            run: id,
+            data: {
+              ...slotData(),
+              ok: true,
+              kind: answer.kind,
+              content,
+              thinking: answer.thinking || "",
+              hint: answer.kind === "empty"
+                ? describeEmptyResponse({ finishReason: answer.finishReason, usage, thinking: answer.thinking })
+                : "",
+              ms: answer.ms,
+              ttftMs: answer.ttftMs,
+              usage,
+              cost: estimateCost(model.trim(), usage, studioTargets),
+              chars: content.length,
+            },
           });
         } catch (err) {
-          const netErr = formatGatewayError(err?.message || "Request failed");
-          setResults((prev) => {
-            const next = [...prev];
-            next[index] = {
-              loading: false,
-              data: {
-                ok: false,
-                kind: "error",
-                content: netErr.message,
-                thinking: "",
-                hint: "",
-                detail: netErr.detail,
-                status: netErr.status,
-                source: netErr.model,
-                cooldown: netErr.cooldown,
-                ms: Date.now() - started,
-                usage: null,
-                cost: null,
-                chars: 0,
-              },
-            };
-            return next;
+          if (err?.name === "AbortError") {
+            patch(index, { type: "stop", run: id, at: Date.now() });
+            return;
+          }
+          patch(index, {
+            type: "final",
+            run: id,
+            data: {
+              ...slotData(),
+              kind: "error",
+              content: err?.message || "The stream failed before the model answered.",
+              detail: err?.detail || "",
+              status: err?.status || "",
+              cooldown: err?.cooldown || "",
+              source: err?.model || "",
+              ms: Date.now() - started,
+            },
           });
+        } finally {
+          if (controllers.current[index] === controller) delete controllers.current[index];
         }
       })
     );
-  }, [prompt, slots, runId, activeApiKey, studioTargets]);
+  }, [prompt, slots, runId, activeApiKey, studioTargets, patch]);
+
+  // Stopping keeps whatever already streamed, so every controller aborts and each
+  // card closes itself through the same patch path the streams use.
+  const stopBattle = useCallback(() => {
+    const run = runRef.current;
+    for (const controller of Object.values(controllers.current)) controller.abort();
+    controllers.current = {};
+    const at = Date.now();
+    setResults((prev) => {
+      let next = prev;
+      for (let index = 0; index < prev.length; index += 1) {
+        next = patchSlot(next, index, { type: "stop", run, at });
+      }
+      return next;
+    });
+  }, []);
 
   const busy = results.some((r) => r.loading);
   const done = results.filter((r) => r.data);
@@ -220,6 +321,9 @@ function ArenaContent() {
         </h1>
         <p className="text-sm text-text-muted">
           Send the same prompt to up to {MAX_MODELS} models and compare speed, cost and output.
+        </p>
+        <p className="text-[11px] text-text-muted">
+          Each answer streams live, so the time to first token shows a slow model still working.
         </p>
       </div>
 
@@ -241,7 +345,7 @@ function ArenaContent() {
                   <Button variant="secondary" icon="search" onClick={() => setShowPicker(index)} />
                 </div>
               </div>
-              {slots.length > MIN_MODELS && (
+              {slots.length > MIN_MODELS && !busy && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -277,11 +381,12 @@ function ArenaContent() {
 
         <div className="flex justify-end">
           <Button
-            icon="play_arrow"
-            onClick={runBattle}
-            disabled={!prompt.trim() || busy || !slots.some((s) => s.trim())}
+            icon={busy ? "stop_circle" : "play_arrow"}
+            onClick={busy ? stopBattle : runBattle}
+            disabled={busy ? false : !prompt.trim() || !slots.some((s) => s.trim())}
+            variant={busy ? "secondary" : "primary"}
           >
-            {busy ? "Fighting..." : "Run Battle"}
+            {busy ? "Stop" : "Run Battle"}
           </Button>
         </div>
       </Card>
@@ -296,16 +401,18 @@ function ArenaContent() {
             const result = results[index]?.data;
             const loading = results[index]?.loading;
             if (!model && !loading && !result) return null;
+            const streamed = loading && result ? result.content || result.thinking : "";
             return (
               <Card key={index} padding="sm" className="h-full flex flex-col min-w-0">
                 <div className="flex items-center justify-between gap-2 pb-3 border-b border-border mb-3">
-                  <span className="font-mono text-sm font-semibold truncate">{model || "—"}</span>
-                  {result && (
+                  <span className="font-mono text-sm font-semibold truncate min-w-0">{model || "—"}</span>
+                  {loading && <Elapsed startedAt={results[index]?.startedAt} />}
+                  {result && !loading && (
                     <span
                       className={`text-xs px-2 py-1 rounded font-mono shrink-0 ${
                         !result.ok
                           ? "bg-red-500/10 text-red-500"
-                          : result.kind === "empty"
+                          : result.kind === "empty" || result.stopped
                             ? "bg-amber-500/10 text-amber-500"
                             : "bg-green-500/10 text-green-500"
                       }`}
@@ -314,18 +421,25 @@ function ArenaContent() {
                         ? result.status
                           ? `HTTP ${result.status}`
                           : "failed"
-                        : result.kind === "empty"
-                          ? "empty"
-                          : `${result.ms}ms`}
+                        : result.stopped
+                          ? "stopped"
+                          : result.kind === "empty"
+                            ? "empty"
+                            : `${result.ms}ms`}
                     </span>
                   )}
                 </div>
 
                 <div className="flex-1 overflow-auto bg-black/5 dark:bg-white/5 rounded-lg p-3 min-w-0">
-                  {loading ? (
+                  {streamed ? (
+                    <pre className="text-sm font-mono whitespace-pre-wrap break-words min-w-0">
+                      {streamed}
+                      <span className="animate-pulse">▍</span>
+                    </pre>
+                  ) : loading ? (
                     <div className="flex flex-col items-center justify-center h-40 gap-3 text-text-muted">
                       <span className="material-symbols-outlined text-3xl animate-spin">progress_activity</span>
-                      <span className="text-sm">Waiting for response...</span>
+                      <span className="text-sm">Waiting for the first token...</span>
                     </div>
                   ) : result ? (
                     <div className="flex flex-col h-full min-w-0">
@@ -366,11 +480,15 @@ function ArenaContent() {
                       ) : result.kind === "empty" ? (
                         <div className="flex flex-col gap-1.5 min-w-0">
                           <p className="text-sm text-amber-500 break-words min-w-0">{result.hint}</p>
-                          <p className="text-[11px] text-text-muted">The provider answered with HTTP 200 and nothing inside.</p>
+                          {!result.stopped && (
+                            <p className="text-[11px] text-text-muted">The provider answered with HTTP 200 and nothing inside.</p>
+                          )}
                         </div>
                       ) : result.kind === "thinking" ? (
                         <div className="flex flex-col gap-1.5 min-w-0 h-full">
-                          <p className="text-[11px] text-text-muted">Only reasoning came back, with no final answer.</p>
+                          {!result.stopped && (
+                            <p className="text-[11px] text-text-muted">Only reasoning came back, with no final answer.</p>
+                          )}
                           <pre className="text-sm font-mono whitespace-pre-wrap flex-1 break-words min-w-0">
                             {result.thinking}
                           </pre>
@@ -394,11 +512,20 @@ function ArenaContent() {
                       )}
                       {result.ok && (
                         <div className="mt-4 pt-3 border-t border-border/50 text-xs text-text-muted flex flex-wrap gap-x-4 gap-y-1">
-                          <span>in {result.usage?.prompt_tokens ?? 0}</span>
-                          <span>out {result.usage?.completion_tokens ?? 0}</span>
-                          <span>total {result.usage?.total_tokens ?? 0}</span>
+                          {result.ttftMs != null && <span>first token in {result.ttftMs}ms</span>}
+                          {result.ms != null && <span>total {result.ms}ms</span>}
+                          {result.usage && (
+                            <>
+                              <span>in {result.usage?.prompt_tokens ?? 0}</span>
+                              <span>out {result.usage?.completion_tokens ?? 0}</span>
+                              <span>total {result.usage?.total_tokens ?? 0}</span>
+                            </>
+                          )}
                           {result.cost != null && <span>~{showCost(result.cost)}</span>}
                         </div>
+                      )}
+                      {result.stopped && result.kind !== "empty" && (
+                        <p className="mt-2 text-[11px] text-amber-500 break-words min-w-0">{result.stoppedNote}</p>
                       )}
                     </div>
                   ) : (
@@ -436,38 +563,52 @@ function ArenaContent() {
  */
 function buildRanking(slots, results) {
   return slots
-    .map((model, index) => ({ model, index, data: results[index]?.data }))
-    .filter((entry) => entry.model && entry.data)
+    .map((model, index) => ({ model, index, slot: results[index] }))
+    // A card that is still streaming holds a partial answer, so it is not rankable.
+    .filter((entry) => entry.model && entry.slot?.data && !entry.slot.loading)
     .map((entry) => ({
-      ...entry,
-      ok: entry.data.ok,
-      answered: entry.data.ok && entry.data.kind !== "empty",
-      ms: entry.data.ms,
-      totalTokens: entry.data.usage?.total_tokens ?? 0,
-      cost: entry.data.cost,
-      chars: entry.data.chars,
+      model: entry.model,
+      index: entry.index,
+      ok: entry.slot.data.ok,
+      answered: entry.slot.data.ok && entry.slot.data.kind !== "empty",
+      stopped: entry.slot.data.stopped,
+      ms: entry.slot.data.ms,
+      ttftMs: entry.slot.data.ttftMs,
+      totalTokens: entry.slot.data.usage?.total_tokens ?? 0,
+      cost: entry.slot.data.cost,
+      chars: entry.slot.data.chars,
     }))
     .sort((a, b) => {
       if (a.answered !== b.answered) return a.answered ? -1 : 1;
       if (a.ok !== b.ok) return a.ok ? -1 : 1;
-      if (a.ms !== b.ms) return a.ms - b.ms;
+      // A cut-off answer is not a finish, so it ranks behind every complete one.
+      if (a.stopped !== b.stopped) return a.stopped ? 1 : -1;
+      const ta = a.ms ?? Number.MAX_SAFE_INTEGER;
+      const tb = b.ms ?? Number.MAX_SAFE_INTEGER;
+      if (ta !== tb) return ta - tb;
       return (a.cost ?? Number.MAX_SAFE_INTEGER) - (b.cost ?? Number.MAX_SAFE_INTEGER);
     });
 }
 
 function FinalResult({ ranked, pick, setPick, runId }) {
-  // An empty 200 response is not a win, so every award needs a real answer.
+  // An empty 200 response is not a win, and neither is an answer the user cut off,
+  // so every award needs a real finished answer.
+  const answered = ranked.filter((r) => r.answered && !r.stopped);
   const winners = {
-    fastest: ranked.filter((r) => r.answered).slice().sort((a, b) => a.ms - b.ms)[0],
-    cheapest: ranked
-      .filter((r) => r.answered && r.cost != null)
+    fastest: answered.slice().sort((a, b) => a.ms - b.ms)[0],
+    cheapest: answered
+      .filter((r) => r.cost != null)
       .slice()
       .sort((a, b) => a.cost - b.cost)[0],
-    leanest: ranked
-      .filter((r) => r.answered && r.totalTokens > 0)
+    leanest: answered
+      .filter((r) => r.totalTokens > 0)
       .slice()
       .sort((a, b) => a.totalTokens - b.totalTokens)[0],
-    richest: ranked.filter((r) => r.answered).slice().sort((a, b) => b.chars - a.chars)[0],
+    richest: answered.slice().sort((a, b) => b.chars - a.chars)[0],
+    firstToken: answered
+      .filter((r) => r.ttftMs != null)
+      .slice()
+      .sort((a, b) => a.ttftMs - b.ttftMs)[0],
   };
 
   const leader = ranked[0];
@@ -483,6 +624,8 @@ function FinalResult({ ranked, pick, setPick, runId }) {
             <p className="text-[11px] text-text-muted">
               {manual ? (
                 <>Your pick: <code className="font-mono">{manual.model}</code></>
+              ) : leader?.stopped ? (
+                "Every run was stopped before it finished."
               ) : leader?.answered ? (
                 <><code className="font-mono">{leader.model}</code> answered fastest — tap “My pick” below for quality.</>
               ) : (
@@ -500,6 +643,7 @@ function FinalResult({ ranked, pick, setPick, runId }) {
             <tr className="text-text-muted border-b border-border">
               <th className="text-left py-2 pr-3 font-medium">Model</th>
               <th className="text-right py-2 px-3 font-medium">Time</th>
+              <th className="text-right py-2 px-3 font-medium">First token</th>
               <th className="text-right py-2 px-3 font-medium">Tokens</th>
               <th className="text-right py-2 px-3 font-medium">Cost</th>
               <th className="text-right py-2 pl-3 font-medium">My pick</th>
@@ -507,7 +651,7 @@ function FinalResult({ ranked, pick, setPick, runId }) {
           </thead>
           <tbody>
             {ranked.map((entry, position) => {
-              const isWinner = position === 0 && entry.answered && pick == null;
+              const isWinner = position === 0 && entry.answered && !entry.stopped && pick == null;
               const isPicked = pick === entry.index;
               return (
                 <tr
@@ -519,13 +663,15 @@ function FinalResult({ ranked, pick, setPick, runId }) {
                       <span className="text-text-muted tabular-nums w-4 shrink-0">{position + 1}</span>
                       <code className="font-mono text-text-main truncate max-w-[220px]">{entry.model}</code>
                       {isWinner && <Badge icon="trophy" text="fastest" />}
+                      {winners.firstToken?.index === entry.index && <Badge icon="bolt" text="first token" />}
                       {winners.cheapest?.index === entry.index && <Badge icon="payments" text="cheapest" />}
                       {winners.richest?.index === entry.index && winners.richest?.index !== winners.leanest?.index && (
                         <Badge icon="article" text="longest" />
                       )}
+                      {entry.stopped && <Badge icon="stop_circle" text="stopped" />}
                       {isPicked && <Badge icon="check" text="your pick" accent />}
                     </div>
-                    {!entry.answered && (
+                    {!entry.answered && !entry.stopped && (
                   <span className={`text-[11px] ${entry.ok ? "text-amber-500" : "text-red-500"}`}>
                     {entry.ok ? "empty answer" : "failed"}
                   </span>
@@ -533,6 +679,9 @@ function FinalResult({ ranked, pick, setPick, runId }) {
                   </td>
                   <td className="py-2 px-3 text-right font-mono tabular-nums">
                     {entry.ok ? `${entry.ms}ms` : "—"}
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono tabular-nums">
+                    {entry.ttftMs != null ? `${entry.ttftMs}ms` : "—"}
                   </td>
                   <td className="py-2 px-3 text-right font-mono tabular-nums">
                     {entry.ok ? entry.totalTokens || "—" : "—"}
@@ -559,6 +708,24 @@ function FinalResult({ ranked, pick, setPick, runId }) {
         </table>
       </div>
     </Card>
+  );
+}
+
+// Ticking lives on the card so a running timer never re-renders the whole grid.
+function Elapsed({ startedAt }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!startedAt) return null;
+  const seconds = Math.max(0, Math.floor((now - startedAt) / 1000));
+  return (
+    <span className="shrink-0 text-[11px] font-mono text-text-muted tabular-nums">
+      {`${seconds}s so far`}
+    </span>
   );
 }
 

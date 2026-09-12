@@ -16,7 +16,8 @@ import {
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import { getPricingForModel, calculateCostFromTokens, formatCost } from "open-sse/providers/pricing.js";
-import { extractAssistantText, describeEmptyResponse, formatGatewayError } from "@/shared/utils/modelResponse";
+import { describeEmptyResponse } from "@/shared/utils/modelResponse";
+import { streamChatCompletion } from "@/shared/utils/chatStream";
 import {
   PRD_TEMPLATES,
   PRD_DEPTHS,
@@ -236,75 +237,18 @@ function PrdContent() {
 
   const streamChat = useCallback(
     async ({ callModel, messages, signal, onDelta }) => {
-      const headers = { "Content-Type": "application/json" };
-      if (activeApiKey) headers.Authorization = `Bearer ${activeApiKey}`;
-      const res = await fetch("/v1/chat/completions", {
-        method: "POST",
-        headers,
+      const answer = await streamChatCompletion({
+        model: callModel,
+        messages,
         signal,
-        body: JSON.stringify({
-          model: callModel,
-          messages,
-          stream: true,
-          ...(Number(maxTokens) > 0 ? { max_tokens: Number(maxTokens) } : {}),
-        }),
+        onDelta,
+        apiKey: activeApiKey,
+        maxTokens,
       });
-      if (!res.ok) {
-        const bad = await res.json().catch(() => ({}));
-        const info = formatGatewayError(bad?.error || bad?.message || `Request failed (${res.status})`);
-        const err = new Error(info.message);
-        err.detail = info.detail;
-        err.status = info.status || String(res.status);
-        err.cooldown = info.cooldown;
-        throw err;
+      if (answer.kind === "empty") {
+        throw new Error(describeEmptyResponse({ finishReason: answer.finishReason, usage: answer.usage }));
       }
-      const type = res.headers.get("content-type") || "";
-      if (!type.includes("event-stream") || !res.body) {
-        const json = await res.json().catch(() => ({}));
-        const answer = extractAssistantText(json);
-        if (answer.kind === "empty") {
-          throw new Error(describeEmptyResponse({ finishReason: answer.finishReason, usage: json?.usage }));
-        }
-        const text = answer.kind === "thinking" ? answer.thinking : answer.text;
-        if (onDelta) onDelta(text);
-        return { text, usage: json?.usage || null };
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let full = "";
-      let seenUsage = null;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let nl = buffer.indexOf("\n");
-        while (nl !== -1) {
-          const line = buffer.slice(0, nl).trim();
-          buffer = buffer.slice(nl + 1);
-          if (line.startsWith("data:")) {
-            const payload = line.slice(5).trim();
-            if (payload === "[DONE]") {
-              nl = -1;
-              break;
-            }
-            try {
-              const parsed = JSON.parse(payload);
-              const delta = parsed?.choices?.[0]?.delta?.content || parsed?.choices?.[0]?.text || "";
-              if (delta) {
-                full += delta;
-                if (onDelta) onDelta(delta);
-              }
-              if (parsed?.usage) seenUsage = parsed.usage;
-            } catch {
-              /* keep-alive and non-JSON frames are ignored */
-            }
-          }
-          nl = buffer.indexOf("\n");
-        }
-      }
-      return { text: full, usage: seenUsage };
+      return { text: answer.kind === "thinking" ? answer.thinking : answer.text, usage: answer.usage };
     },
     [activeApiKey, maxTokens]
   );
