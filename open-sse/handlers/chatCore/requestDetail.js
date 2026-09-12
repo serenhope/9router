@@ -67,7 +67,7 @@ export function extractUsageFromResponse(responseBody) {
 export function buildRequestDetail(base, overrides = {}) {
   return {
     provider: base.provider || "unknown",
-    model: base.model || "unknown",
+    model: base.requestedModel || base.model || "unknown",
     connectionId: base.connectionId || undefined,
     timestamp: new Date().toISOString(),
     latency: base.latency || { ttft: 0, total: 0 },
@@ -76,7 +76,7 @@ export function buildRequestDetail(base, overrides = {}) {
     providerRequest: base.providerRequest || null,
     providerResponse: base.providerResponse || null,
     response: base.response || {},
-    requestedModel: base.requestedModel || undefined,
+    resolvedModel: base.requestedModel && base.requestedModel !== base.model ? base.model : undefined,
  pxpipe: base.pxpipe || undefined,
     status: base.status || "success",
     ...overrides

@@ -199,10 +199,10 @@ export default function UsageTable({
                         chevron_right
                       </span>
                       <span className={`font-medium transition-colors ${group.summary.pending > 0 ? "text-primary" : ""}`}>
-                        {group.summary.requestedModel && group.summary.requestedModel !== group.groupKey ? (
+                        {group.summary.resolvedModel && group.summary.resolvedModel !== group.groupKey ? (
                           <>
-                            <span className="block truncate" title={group.summary.requestedModel}>{group.summary.requestedModel}</span>
-                            <span className="block truncate text-xs font-normal text-text-muted" title={group.groupKey}>→ {group.groupKey}</span>
+                            <span className="block truncate" title={group.groupKey}>{group.groupKey}</span>
+                            <span className="block truncate text-xs font-normal text-text-muted" title={`${group.summary.provider}/${group.summary.resolvedModel}`}>→ {group.summary.provider}/{group.summary.resolvedModel}</span>
                           </>
                         ) : (
                           group.groupKey

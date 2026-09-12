@@ -288,10 +288,10 @@ export default function RequestDetailsTab() {
                     <td className="whitespace-nowrap p-4 text-sm text-text-main">
                       {new Date(detail.timestamp).toLocaleString()}
                     </td>
-                    {detail.requestedModel && detail.requestedModel !== detail.model ? (
+                    {detail.resolvedModel && detail.resolvedModel !== detail.model ? (
                     <td className="max-w-[260px] p-4 font-mono text-sm">
-                      <div className="truncate text-text-main" title={detail.requestedModel}>{detail.requestedModel}</div>
-                      <div className="truncate text-text-muted text-xs" title={detail.provider ? `${detail.provider}/${detail.model}` : detail.model}>→ {detail.provider ? `${detail.provider}/${detail.model}` : detail.model}</div>
+                      <div className="truncate text-text-main" title={detail.model}>{detail.model}</div>
+                      <div className="truncate text-text-muted text-xs" title={`${detail.provider}/${detail.resolvedModel}`}>→ {detail.provider}/{detail.resolvedModel}</div>
                     </td>
                     ) : (
                     <td className="max-w-[260px] truncate p-4 font-mono text-sm text-text-main">
@@ -373,8 +373,8 @@ export default function RequestDetailsTab() {
                </div>
               <div>
                 <span className="text-text-muted">Model:</span>{" "}
-                {selectedDetail.requestedModel && selectedDetail.requestedModel !== selectedDetail.model ? (
-                  <span className="text-text-main font-mono" title={selectedDetail.requestedModel}>{selectedDetail.requestedModel}{" "}<span className="text-text-muted text-xs" title={selectedDetail.provider ? `${selectedDetail.provider}/${selectedDetail.model}` : selectedDetail.model}>→ {selectedDetail.provider ? `${selectedDetail.provider}/${selectedDetail.model}` : selectedDetail.model}</span></span>
+                {selectedDetail.resolvedModel && selectedDetail.resolvedModel !== selectedDetail.model ? (
+                  <span className="text-text-main font-mono" title={selectedDetail.model}>{selectedDetail.model}{" "}<span className="text-text-muted text-xs" title={`${selectedDetail.provider}/${selectedDetail.resolvedModel}`}>→ {selectedDetail.provider}/{selectedDetail.resolvedModel}</span></span>
                 ) : (
                   <span className="text-text-main font-mono">{selectedDetail.model}</span>
                 )}

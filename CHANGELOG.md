@@ -3,7 +3,7 @@
 ## Fixes
 - **Model Studio no longer renames the original model**: a studio name is now resolved through its own record instead of writing a display alias, so `claude-fable-5` appears as an added entry while `custom1/claude-sonnet-5` keeps its own name in every picker.
 - **Legacy studio aliases cleaned up**: display aliases left behind by older builds for studio names are deleted the first time the studio list loads, so previously renamed models reappear under their real name.
-- **Usage shows the called studio name**: the name a client sent is stored in the usage row's metadata and rendered first, with the real target model shown under it as `→ provider/model`.
+- **Usage shows the called studio name everywhere**: the name you call (e.g. `claude-fable-5`) is now recorded as the request's model across Overview, Leaderboard, Logs and Details, with the real backend model kept only as muted `→ provider/model` text and cost still priced from it.
 
 ## Custom Features & Enhancements
 - **MoonshotAI logo is reliable**: compatible nodes created from the MoonshotAI button are tagged with a brand, and that tag (not just the name) now picks the `moonshot-ai.png` logo on cards, the detail page, and its colors.
