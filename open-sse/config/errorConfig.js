@@ -68,6 +68,15 @@ export const ERROR_RULES = [
   { text: "capacity",                 backoff: true },
   { text: "overloaded",               backoff: true },
 
+  // Upstream shape mismatch (wrong content-type, unreadable stream): the transport
+  // is quirky, the credential is not. Locking here puts a working account behind a
+  // cooldown while the client retries blindly, so keep the chain rotating but never
+  // penalise the account.
+  { text: "invalid sse response", lock: false },
+  { text: "invalid json response", lock: false },
+  { text: "returned non-sse", lock: false },
+  { text: "failed to convert streaming response", lock: false },
+
   // --- Status-based rules (fallback when text doesn't match) ---
   { status: 401, cooldownMs: COOLDOWN.long },
   { status: 402, cooldownMs: COOLDOWN.long },

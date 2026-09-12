@@ -17,6 +17,13 @@ import { supportsGrokCliReasoningEffort } from "../config/grokCli.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
 import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
 import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
+import {
+  isEventStreamResponse,
+  isChatCompletionBody,
+  readJsonBody,
+  jsonResponseFromBody,
+  sseResponseFromCompletion,
+} from "../transformer/jsonToStreamConverter.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
@@ -495,6 +502,44 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, requestedModel, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary, reqTag, log };
   const appendLog = (extra) => appendRequestLog({ model, provider, connectionId, ...extra }).catch(() => { });
   const trackDone = () => trackPendingRequest(model, provider, connectionId, false);
+
+  // Upstream shape mismatch: a provider can answer with a finished JSON document
+  // even though we asked it to stream (it ignores the flag, or the client omitted
+  // `stream` so the flag never left). Piping that body through the SSE parser
+  // emits zero frames — the client hangs on an empty stream and usage bills 0
+  // tokens — so branch on what actually arrived, not on what we asked for.
+  if (stream && !isEventStreamResponse(providerResponse)) {
+    const mismatchedBody = await readJsonBody(providerResponse);
+    if (mismatchedBody === null) {
+      // Nothing readable came back and the client never asked for a stream, so it
+      // gets a clean gateway error instead of a response with no body to parse.
+      if (!clientRequestedStreaming) {
+        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+        streamController.handleComplete();
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+      }
+    } else if (clientRequestedStreaming && isChatCompletionBody(mismatchedBody)) {
+      // A streaming client gets the completion replayed as chunks, which the
+      // normal pipeline then reshapes into its own format.
+      providerResponse = sseResponseFromCompletion(mismatchedBody, providerResponse);
+      providerResponseFormat = FORMATS.OPENAI;
+    } else {
+      const result = await handleNonStreamingResponse({
+        ...sharedCtx,
+        stream: clientRequestedStreaming,
+        providerResponse: jsonResponseFromBody(mismatchedBody, providerResponse),
+        sourceFormat,
+        targetFormat: providerResponseFormat,
+        reqLogger,
+        toolNameMap,
+        customToolNames,
+        trackDone,
+        appendLog,
+      });
+      streamController.handleComplete();
+      return result;
+    }
+  }
 
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {

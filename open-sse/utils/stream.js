@@ -6,7 +6,7 @@ import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./str
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 
-import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
+import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER, SSE_DATA_PREFIX, SSE_DONE_DATA } from "./sseConstants.js";
 
 export { COLORS, formatSSE };
 export { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER };
@@ -21,6 +21,38 @@ const STREAM_MODE = {
   TRANSLATE: "translate",    // Full translation between formats
   PASSTHROUGH: "passthrough" // No translation, normalize output, extract usage
 };
+
+/**
+ * Frame payload carried by one upstream line, or null when the line carries none.
+ * Spec-shaped upstreams prefix every frame with "data:", but an upstream streaming
+ * NDJSON under a text/event-stream label puts a bare object on the line — dropping
+ * those makes the whole stream parse to zero frames.
+ * @param {string} line
+ * @returns {string|null}
+ */
+export function framePayload(line) {
+  const trimmed = line.trim();
+  if (trimmed.startsWith(SSE_DATA_PREFIX)) return trimmed.slice(SSE_DATA_PREFIX.length).trim();
+  // SSE field lines ("event:", "id:", "retry:") and ":" comments never start with
+  // "{", so only a whole JSON document can be taken for a frame here.
+  return trimmed.startsWith("{") ? trimmed : null;
+}
+
+/**
+ * Parse one line of an upstream body into a chunk. parseSSELine only accepts a
+ * bare object for Ollama, so whatever it rejected for want of a prefix is retried
+ * with one — Ollama's own path stays as it was.
+ * @param {string} line
+ * @param {string} targetFormat
+ * @returns {object|null}
+ */
+export function parseFrameLine(line, targetFormat) {
+  const trimmed = line.trim();
+  const parsed = parseSSELine(trimmed, targetFormat);
+  if (parsed) return parsed;
+  const payload = framePayload(trimmed);
+  return payload === trimmed ? parseSSELine(`${SSE_DATA_PREFIX} ${payload}`, targetFormat) : null;
+}
 
 /**
  * Create unified SSE transform stream
@@ -136,10 +168,11 @@ export function createSSEStream(options = {}) {
           let output;
           let injectedUsage = false;
           let responsesTerminal = false;
+          const payload = framePayload(trimmed);
 
-          if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
+          if (payload !== null && payload !== SSE_DONE_DATA) {
             try {
-              const parsed = JSON.parse(trimmed.slice(5).trim());
+              const parsed = JSON.parse(payload);
 
               const idFixed = fixInvalidId(parsed);
 
@@ -226,8 +259,11 @@ export function createSSEStream(options = {}) {
           }
 
           if (!injectedUsage) {
-            if (line.startsWith("data:") && !line.startsWith("data: ")) {
-              output = "data: " + line.slice(5) + "\n";
+            if (line.startsWith(SSE_DATA_PREFIX) && !line.startsWith(`${SSE_DATA_PREFIX} `)) {
+              output = `${SSE_DATA_PREFIX} ${line.slice(SSE_DATA_PREFIX.length)}\n`;
+            } else if (payload === trimmed) {
+              // an NDJSON line only reaches the client as a frame once it has a prefix
+              output = `${SSE_DATA_PREFIX} ${payload}\n`;
             } else {
               output = line + "\n";
             }
@@ -243,7 +279,7 @@ export function createSSEStream(options = {}) {
         // Translate mode
         if (!trimmed) continue;
 
-        const parsed = parseSSELine(trimmed, targetFormat);
+        const parsed = parseFrameLine(trimmed, targetFormat);
         if (!parsed) continue;
 
         // Responses API same-format passthrough: preserve event framing + track terminal state
@@ -385,8 +421,13 @@ export function createSSEStream(options = {}) {
         if (mode === STREAM_MODE.PASSTHROUGH) {
           if (buffer) {
             let output = buffer;
-            if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
-              output = "data: " + buffer.slice(5);
+            const payload = framePayload(buffer);
+            if (buffer.startsWith(SSE_DATA_PREFIX) && !buffer.startsWith(`${SSE_DATA_PREFIX} `)) {
+              output = `${SSE_DATA_PREFIX} ${buffer.slice(SSE_DATA_PREFIX.length)}`;
+            } else if (payload === buffer.trim()) {
+              // NDJSON tail: give it the prefix, and a newline to end it, or the
+              // [DONE] emitted below lands on the same line and both frames are lost
+              output = `${SSE_DATA_PREFIX} ${payload}\n`;
             }
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
@@ -412,7 +453,7 @@ export function createSSEStream(options = {}) {
           // Same parse as the transform loop: without targetFormat this only
           // accepts "data: " lines, so an NDJSON provider (Ollama) lost whatever
           // arrived without its closing newline.
-          const parsed = parseSSELine(buffer.trim(), targetFormat);
+          const parsed = parseFrameLine(buffer.trim(), targetFormat);
           // parseSSELine turns the SSE sentinel "data: [DONE]" into { done: true },
           // which must not be translated. An Ollama chunk also carries done:true,
           // but it is the real final chunk — it holds finish_reason and the token

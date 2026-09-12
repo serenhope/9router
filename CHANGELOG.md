@@ -1,3 +1,13 @@
+# v0.5.79-Custom (2026-09-12)
+
+## Fixes
+- **A provider that answers JSON when we asked for a stream no longer hangs**: the gateway now reads the response content-type and either replays the completion as live SSE for a streaming client or serves the normal JSON path, so the answer arrives and tokens are billed.
+- **Unreadable upstream bodies fail loudly**: a body that is neither a stream nor valid JSON now returns a clean gateway error instead of a 200 response with nothing in it.
+- **Event-stream bodies are parsed whatever they contain**: a plain JSON document wearing an SSE label, NDJSON rows, Claude Messages events and Responses-API events all decode into a real answer instead of `Invalid SSE response for non-streaming request`.
+- **NDJSON providers work while streaming too**: lines that arrive without a `data:` prefix are now read as frames instead of being dropped, so those upstreams no longer look like an empty model.
+- **A transport quirk no longer grounds an account**: response-shape errors are classified as `lock: false`, so a provider that answers in the wrong format can no longer put a working credential behind a "(reset after 30s)" cooldown.
+- **Studio names stay separate in Usage**: two Forge names pointing at one model now each keep their own row and stats bucket, because the calls that used to produce no usage record at all are producing one.
+
 # v0.5.78-Custom (2026-09-12)
 
 ## Fixes
