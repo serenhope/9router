@@ -9,6 +9,7 @@ import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
+import { applyModelAlias, calledModelName } from "../../utils/modelAlias.js";
 import { ROLE, RESPONSES_ITEM } from "../../translator/schema/index.js";
 
 function parseToolArguments(value) {
@@ -374,7 +375,9 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     }
   }
 
+  // Log first: the operator has to see the model that actually served the call.
   reqLogger.logConvertedResponse(translatedResponse);
+  applyModelAlias(translatedResponse, calledModelName(requestedModel, model));
 
   const totalLatency = Date.now() - requestStartTime;
   saveRequestDetail(buildRequestDetail({

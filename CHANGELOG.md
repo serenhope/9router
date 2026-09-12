@@ -1,3 +1,9 @@
+# v0.5.82-Custom (2026-09-12)
+
+## Custom Features & Enhancements
+- **A Model Studio name now answers as the model it is**: every outbound payload — non-streaming completions, streamed chunks, Claude `message_start`, Responses events and semantic-cache hits — reports the name the caller spoke, so `claude-opus-5` never answers `qwen3.8-flash` while the console, the request detail and the usage `resolvedModel` still record the real target for debugging.
+- **Failure text keeps the route private too**: the "all accounts unavailable" and "no credentials" replies name the model that was called instead of printing the provider connection id and the model behind it.
+
 # v0.5.81-Custom (2026-09-12)
 
 ## Custom Features & Enhancements

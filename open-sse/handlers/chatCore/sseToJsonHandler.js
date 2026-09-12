@@ -7,6 +7,7 @@ import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLin
 import { translateResponse, initState } from "../../translator/index.js";
 import { toOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { collectJsonFrames } from "../../transformer/jsonToStreamConverter.js";
+import { applyModelAlias, calledModelName } from "../../utils/modelAlias.js";
 import { ROLE, RESPONSES_ITEM, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_EVENT, RESPONSES_EVENT, OPENAI_FINISH, MODEL_FALLBACK } from "../../translator/schema/index.js";
 
 // Frames whose `type` is a provider event name, mapped to the translator format
@@ -360,6 +361,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && isResponsesProvider(provider));
   if (!isSSE) return null; // not handled here
+  const alias = calledModelName(requestedModel, model);
 
   trackDone();
 
@@ -402,6 +404,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
       // Client is Responses API → return as-is
       if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
+        applyModelAlias(jsonResponse, alias);
         return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
       }
 
@@ -458,6 +461,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         };
       }
 
+      applyModelAlias(finalResp, alias);
       return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
     } catch (err) {
       console.error("[ChatCore] Responses API SSE→JSON failed:", err);
@@ -524,6 +528,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     // lost on the non-streaming return path. Inlined (not imported from
     // nonStreamingHandler.js) to avoid a circular import: nonStreamingHandler
     // already imports parseSSEToOpenAIResponse from this module.
+    // Everything above is logging; the document leaving here must name the called model.
+    applyModelAlias(parsed, alias);
     const finalBody = sourceFormat === FORMATS.OPENAI_RESPONSES
       ? chatCompletionToResponses(parsed, customToolNames)
       : parsed;

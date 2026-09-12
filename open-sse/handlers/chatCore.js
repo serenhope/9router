@@ -25,6 +25,7 @@ import {
   sseResponseFromCompletion,
 } from "../transformer/jsonToStreamConverter.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
+import { applyModelAlias, calledModelName } from "../utils/modelAlias.js";
 import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { injectCaveman } from "../rtk/caveman.js";
@@ -91,9 +92,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     const cachedResponse = checkSemanticCache(body, `${provider}/${model}`);
     if (cachedResponse) {
       log?.info?.("CACHE", `⚡ Instant semantic cache hit for ${provider}/${model}`);
+      // A cache hit must not name the model that originally served it either.
+      applyModelAlias(cachedResponse, calledModelName(requestedModel, model));
       return {
         success: true,
-        response: new Response(JSON.stringify(cachedResponse), {
+      response: new Response(JSON.stringify(cachedResponse), {
           headers: { "Content-Type": "application/json", "X-9Router-Cache": "HIT" },
         }),
       };
