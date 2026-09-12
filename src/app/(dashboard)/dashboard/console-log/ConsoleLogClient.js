@@ -83,7 +83,7 @@ export default function ConsoleLogClient() {
       <Card>
         <div className="flex items-center justify-between px-4 pt-3 pb-2">
           <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[18px] text-text-muted">terminal</span>
+            <span className="material-symbols-outlined text-[18px] text-text-muted">receipt_long</span>
             <span className="text-sm font-medium text-text-main">Console Logs</span>
             <span className="text-xs text-text-muted">({logs.length} lines)</span>
           </div>

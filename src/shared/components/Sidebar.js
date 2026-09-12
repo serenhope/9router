@@ -36,7 +36,7 @@ const workshopItems = [
 ];
 
 const debugItems = [
-  { href: "/dashboard/console-log", label: "Console Log", icon: "terminal" },
+  { href: "/dashboard/console-log", label: "Console Log", icon: "monitor" },
   { href: "/dashboard/translator", label: "Translator", icon: "translate" },
 ];
 
