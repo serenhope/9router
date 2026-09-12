@@ -30,8 +30,8 @@ const navItems = [
 
 // Custom features added by this fork — open-ended, new tools land here too.
 const workshopItems = [
- { href: "/dashboard/arena", label: "Model Battle Arena", icon: "swords" },
- { href: "/dashboard/model-editor", label: "Custom Model Editor", icon: "auto_awesome" },
+ { href: "/dashboard/arena", label: "Compare Models", icon: "swords" },
+ { href: "/dashboard/model-editor", label: "Custom Models & Editor", icon: "auto_awesome" },
 ];
 
 const debugItems = [

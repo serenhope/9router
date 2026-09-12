@@ -83,6 +83,8 @@ export async function handleEmbeddings(request) {
   }
 
   const { provider, model } = modelInfo;
+  // A studio name is the model the caller owns, so its usage belongs to that name.
+  const requestedModel = modelStr && modelStr !== `${provider}/${model}` ? modelStr : null;
 
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
@@ -104,7 +106,7 @@ export async function handleEmbeddings(request) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
         const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
         log.warn("EMBEDDINGS", `[${provider}/${model}] ${errorMsg} (${credentials.retryAfterHuman})`);
-        return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
+        return unavailableResponse(status, `[${requestedModel || `${provider}/${model}`}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
       if (excludeConnectionIds.size === 0) {
         log.error("AUTH", `No credentials for provider: ${provider}`);
@@ -139,6 +141,7 @@ export async function handleEmbeddings(request) {
       const usage = exactEmbeddingUsage(result.usage);
       if (usage) {
         saveRequestUsage({
+        requestedModel,
           provider,
           model,
           connectionId: credentials.connectionId,

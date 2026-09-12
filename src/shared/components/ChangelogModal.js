@@ -79,27 +79,54 @@ function splitVersions(md) {
   return sections;
 }
 
-// Render each version as its own bordered card.
+// One card per day: thirty releases on one date read as one block, not thirty borders.
+function groupByReleaseDate(sections) {
+ const groups = [];
+ const byDate = new Map();
+ for (const section of sections) {
+ const date = (section.title.match(/\((\d{4}-\d{2}-\d{2})\)/) || [])[1] || section.title;
+ if (!byDate.has(date)) {
+ const group = { date, items: [] };
+ byDate.set(date, group);
+ groups.push(group);
+ }
+ byDate.get(date).items.push(section);
+ }
+ return groups;
+}
+
+function renderBody(bodyMd) {
+ if (!bodyMd.trim()) return "";
+ const demoted = bodyMd.replace(/^#{2,6}\s/gm, (m) => "#".repeat(Math.min(6, m.length + 2)) + " ");
+ return marked.parse(demoted);
+}
+
 function renderVersionCards(md, accent) {
-  const sections = splitVersions(md);
-  const cardStyle = `margin:0 0 14px;padding:14px 16px;border:1px solid ${accent.border};border-radius:12px;background:${accent.bg};box-sizing:border-box;`;
-  if (!sections.length) {
-    const html = md ? marked.parse(md) : "";
-    return html ? `<div style="${cardStyle}"><div class="changelog-body">${html}</div></div>` : "";
-  }
-  return sections
-    .map((s) => {
-      const bodyMd = s.body.replace(/^#{2,6}\s/gm, (m) => "#".repeat(Math.min(6, m.length + 2)) + " ");
-      const bodyHtml = s.body.trim() ? marked.parse(bodyMd) : "";
-      return `<div style="${cardStyle}">
-  <h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:${accent.color};display:flex;align-items:center;gap:8px;">
-    <span class="material-symbols-outlined" style="font-size:18px;">${accent.icon}</span>
-    ${escapeHtml(s.title)}
-  </h3>
-  <div class="changelog-body">${bodyHtml}</div>
-</div>`;
-    })
-    .join("");
+ const sections = splitVersions(md);
+ const cardStyle = `margin:0 0 14px;padding:14px 16px;border:1px solid ${accent.border};border-radius:12px;background:${accent.bg};box-sizing:border-box;`;
+ const titleStyle = `margin:0 0 10px;font-size:15px;font-weight:700;color:${accent.color};display:flex;align-items:center;gap:8px;`;
+ const subStyle = `margin:16px 0 8px;font-size:13.5px;font-weight:700;color:${accent.color};opacity:.9;`;
+ if (!sections.length) {
+ const html = md ? marked.parse(md) : "";
+ return html ? `<div style="${cardStyle}"><div class="changelog-body">${html}</div></div>` : "";
+ }
+ return groupByReleaseDate(sections)
+ .map((group) => {
+ const head = group.items.length === 1 ? group.items[0].title : `${group.date} · ${group.items.length} releases`;
+ const inner = group.items.length === 1
+ ? renderBody(group.items[0].body)
+ : group.items
+ .map((section) => `<h4 style="${subStyle}">${escapeHtml(section.title)}</h4>${renderBody(section.body)}`)
+ .join("");
+ return `<div style="${cardStyle}">
+ <h3 style="${titleStyle}">
+ <span class="material-symbols-outlined" style="font-size:18px;">${accent.icon}</span>
+ ${escapeHtml(head)}
+ </h3>
+ <div class="changelog-body">${inner}</div>
+ </div>`;
+ })
+ .join("");
 }
 
 const SEREN_ACCENT = {

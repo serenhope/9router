@@ -87,6 +87,8 @@ export function createSSEStream(options = {}) {
     aliasModel = null
   } = options;
 
+  // The live request panel and the usage log name the model the caller spoke.
+  const trackedModel = aliasModel || model;
   let buffer = "";
   let usage = null;
 
@@ -127,9 +129,9 @@ export function createSSEStream(options = {}) {
     }
 
     if (hasValidUsage(finalUsage)) {
-      logUsage(isPassthrough ? provider : (state?.provider || targetFormat), finalUsage, model, connectionId, apiKey);
+      logUsage(isPassthrough ? provider : (state?.provider || targetFormat), finalUsage, trackedModel, connectionId, apiKey);
     } else {
-      appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
+      appendRequestLog({ model: trackedModel, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
     }
 
     if (onStreamComplete) {
@@ -419,7 +421,7 @@ export function createSSEStream(options = {}) {
     flush(controller) {
       const evtSummary = Object.entries(eventTypeCounts).map(([k, v]) => `${k}=${v}`).join(",") || "none";
       dbg("SSE", `flush | provider=${provider} | model=${model} | recvLines=${sseLineCount} | emitted=${sseEmittedCount} | events=[${evtSummary}]`);
-      trackPendingRequest(model, provider, connectionId, false);
+      trackPendingRequest(trackedModel, provider, connectionId, false);
       try {
         const remaining = decoder.decode();
         if (remaining) buffer += remaining;

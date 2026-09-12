@@ -1,7 +1,7 @@
 import { extractAssistantText, formatGatewayError } from "./modelResponse.js";
 
-// One streaming chat-completions client for the dashboard battle arena tool, so it talks
-// to the gateway through exactly the same code.
+// One streaming chat-completions client, so Compare Models talks to the gateway through
+// exactly the same code as any other client.
 
 function buildError(info, status) {
   const err = new Error(info.message);

@@ -1,10 +1,20 @@
-# v0.5.82-Custom (2026-09-12)
+# v0.5.83-Custom (2026-09-13)
+
+## Improvements
+- **The two Workshop tools are named after what they do**: **Compare Models** runs one prompt across models side by side, and **Custom Models & Editor** is where those extra model names live.
+- **The changelog is one card per day**: releases that landed on the same date now share a single bordered block, with each version kept as its own sub-heading inside it.
+
+## Fixes
+- **The live request panel follows the name you called**: in-flight and streaming requests were tracked under the model the gateway resolved to, so Usage could list `claude-sonnet-5` and `qwen-3.8` at the same moment for one key.
+- **Embeddings stopped splitting a custom model into two rows**: its usage record and its failure text named the resolved target, while every other endpoint reported the studio name, which is what made both names pile up in the same leaderboard.
+
+# v0.5.82-Custom (2026-09-13)
 
 ## Custom Features & Enhancements
 - **A Model Studio name now answers as the model it is**: every outbound payload — non-streaming completions, streamed chunks, Claude `message_start`, Responses events and semantic-cache hits — reports the name the caller spoke, so `claude-opus-5` never answers `qwen3.8-flash` while the console, the request detail and the usage `resolvedModel` still record the real target for debugging.
 - **Failure text keeps the route private too**: the "all accounts unavailable" and "no credentials" replies name the model that was called instead of printing the provider connection id and the model behind it.
 
-# v0.5.81-Custom (2026-09-12)
+# v0.5.81-Custom (2026-09-13)
 
 ## Custom Features & Enhancements
 - **Every API key has an on/off switch**: the toggle sits on the left of each key row, is stored through the existing key update endpoint, and a switched-off key is refused with `403 API key is disabled` on chat, embeddings, images, video, speech, transcription, search and web fetch — including while the gateway runs without required keys.
@@ -18,7 +28,7 @@
 - **PRD Document Writer is gone**: its page, prompt library, checklist reader and saved drafts are deleted, and a migration prunes the drafts an install already has so the database stays clean.
 - **Provider Health is gone**: the board page and its snapshot reader are deleted, while `GET /api/health` stays exactly the anonymous `{"ok":true}` liveness probe that tunnels and uptime checkers ping.
 
-# v0.5.80-Custom (2026-09-12)
+# v0.5.80-Custom (2026-09-13)
 
 ## Improvements
 - **Workshop menu names now say what the tool does**: the three custom tools are **Model Battle Arena**, **Custom Model Editor** and **PRD Document Writer** in the sidebar, in each page header and in the model picker group, so nothing has to be guessed from a one-word nickname.

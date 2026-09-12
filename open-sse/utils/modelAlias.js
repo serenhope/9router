@@ -1,5 +1,3 @@
-import { SSE_DATA_PREFIX } from "./sseConstants.js";
-
 /**
  * A Model Studio name is a model of its own to the caller. Whatever answered behind it
  * stays internal: the console, the request details and the provider logs keep the real
@@ -20,7 +18,10 @@ export function calledModelName(requestedModel, model) {
   return alias;
 }
 
-/** Overwrite every model field of one decoded payload. Returns true when it changed. */
+/**
+ * Overwrite every model field of one decoded payload, nested ones included. Returns true
+ * when the payload was rewritten, so callers know they have to re-serialise it.
+ */
 export function applyModelAlias(payload, alias) {
   if (!alias || !payload || typeof payload !== "object") return false;
   let changed = false;

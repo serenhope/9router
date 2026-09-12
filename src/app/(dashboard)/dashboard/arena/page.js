@@ -317,7 +317,7 @@ function ArenaContent() {
       <div className="flex flex-col gap-2">
         <h1 className="text-xl font-bold leading-none flex items-center gap-2">
           <span className="material-symbols-outlined size-[22px] text-[22px] leading-none shrink-0 text-primary">swords</span>
-          Model Battle Arena
+          Compare Models
         </h1>
         <p className="text-sm text-text-muted">
           Send the same prompt to up to {MAX_MODELS} models and compare speed, cost and output.
