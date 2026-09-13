@@ -4,6 +4,8 @@ import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLock
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache } from "./antigravityQuota.js";
+
+export { apiKeyGateFailure } from "./keyGate.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -365,26 +367,3 @@ export async function isValidApiKey(apiKey, requestedModel = null, clientIp = nu
   return await validateApiKey(apiKey, requestedModel, clientIp);
 }
 
-// A validator reason string is a denial, never a pass: comparing it with `!valid`
-// let an over-quota or expired key through every non-chat endpoint.
-const KEY_GATE_FAILURES = {
-  KEY_DISABLED: { status: 403, message: "API key is disabled" },
-  KEY_EXPIRED: { status: 403, message: "API key has expired" },
-  IP_NOT_ALLOWED: { status: 403, message: "Client IP is not authorized to use this API key" },
-  MODEL_NOT_ALLOWED: { status: 403, message: "This model is not allowed for the API key" },
-  QUOTA_EXCEEDED: { status: 429, message: "API key token limit exceeded" },
-  RPM_EXCEEDED: { status: 429, message: "API key rate limit exceeded (RPM limit reached)" },
-  TPM_EXCEEDED: { status: 429, message: "API key rate limit exceeded (TPM limit reached)" },
-};
-
-/**
- * Turn a validateApiKey() result into the response a caller should send, or null to
- * let the request through. A key the owner switched off is refused even while the
- * gateway runs open, because that key is still recognisably theirs.
- */
-export function apiKeyGateFailure(valid, requireApiKey = true) {
-  if (valid === true) return null;
-  if (valid === "KEY_DISABLED") return KEY_GATE_FAILURES.KEY_DISABLED;
-  if (!requireApiKey) return null;
-  return KEY_GATE_FAILURES[valid] || { status: 401, message: "Invalid API key" };
-}
