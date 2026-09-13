@@ -251,7 +251,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
   }
 
-  const { provider, model } = modelInfo;
+  let { provider, model } = modelInfo;
  let effectiveModel = model;
 
  // Model overrides: a Model Studio name wins over a per-model override.
@@ -261,7 +261,17 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const override = studio || (provider ? await getModelOverride(`${provider}|${model}`) : null);
   if (override) {
    if (!studio && override.targetModel) {
-    effectiveModel = override.targetModel;
+    // A model override may point at another provider, and then its target is a model
+    // string too: resolving it keeps a `kr/...` prefix out of the upstream body.
+    const target = String(override.targetModel).trim();
+    const resolvedTarget = target.includes("/") ? await getModelInfo(target) : null;
+    if (resolvedTarget?.provider) {
+     provider = resolvedTarget.provider;
+     model = resolvedTarget.model;
+     effectiveModel = resolvedTarget.model;
+    } else {
+     effectiveModel = target;
+    }
    }
    if (override.systemPrompt) {
     if (Array.isArray(body.messages)) {

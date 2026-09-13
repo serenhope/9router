@@ -1,3 +1,9 @@
+# v0.5.84-Custom (2026-09-13)
+
+## Fixes
+- **A custom model typed with its provider prefix now resolves**: a Model Studio target saved as `kr/gpt-oss-120b` was read with a bare parse, which handed the prefix back as the provider, matched no credentials, and left the usage row named after the base model — the target is now resolved the same way any other call is, so the studio name is what answers and what Usage bills, while `resolvedModel` still records the base model beside it.
+- **A per-model override may name another provider**: an override whose target carries a prefix is resolved first instead of pasting `prefix/model` onto the current provider, which produced a doubled path upstream.
+
 # v0.5.83-Custom (2026-09-13)
 
 ## Improvements
