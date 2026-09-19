@@ -108,6 +108,37 @@ export class OpenCodeExecutor extends BaseExecutor {
       delete body.max_completion_tokens;
       normalizeOpencodeReasoning(model, body);
     }
+    // Free-tier request contract: upstream /zen/v1 answers 403 FreeTierError
+    // unless the body carries stream:true AND a tools array containing the core
+    // OpenCode tool pair bash+read (measured live 2026-09-19: bash+read → 200
+    // on every surface/model; read-only, bash-only, or placeholder-only → 403).
+    // The official client always sends these; a proxied request may not.
+    body.stream = true;
+    const tools = Array.isArray(body.tools) ? body.tools : [];
+    const names = new Set(tools.map((t) => t?.name ?? t?.function?.name));
+    const isResponses = isResponsesModel(model) || body.input;
+    const coreTools = isResponses
+      ? [
+          // Responses surface (/zen/v1/responses) takes the flat function shape.
+          { type: "function", name: "bash", description: "Run a bash command", parameters: { type: "object", properties: { command: { type: "string" } }, required: ["command"] } },
+          { type: "function", name: "read", description: "Read a file", parameters: { type: "object", properties: { filePath: { type: "string" } }, required: ["filePath"] } },
+        ]
+      : body.messages
+        ? [
+            // Chat completions surface (/zen/v1/chat/completions) nests the function.
+            { type: "function", function: { name: "bash", description: "Run a bash command", parameters: { type: "object", properties: { command: { type: "string" } }, required: ["command"] } } },
+            { type: "function", function: { name: "read", description: "Read a file", parameters: { type: "object", properties: { filePath: { type: "string" } }, required: ["filePath"] } } },
+          ]
+        : [
+            // Claude surface (/zen/v1/messages, union-alpha) takes input_schema.
+            { name: "bash", description: "Run a bash command", input_schema: { type: "object", properties: { command: { type: "string" } }, required: ["command"] } },
+            { name: "read", description: "Read a file", input_schema: { type: "object", properties: { filePath: { type: "string" } }, required: ["filePath"] } },
+          ];
+    for (const tool of coreTools) {
+      const name = tool.name ?? tool.function?.name;
+      if (!names.has(name)) tools.push(tool);
+    }
+    body.tools = tools;
     return injectReasoningContent({ provider: this.provider, model, body });
   }
 

@@ -209,7 +209,7 @@ function assistantTextSessionId(scope, body) {
  * @param {string} [opts.scope] - Provider scope to isolate cache keys across providers
  * @returns {{sessionId: string, ephemeral: boolean}} A session id plus whether it is one-shot
  */
-export function resolveSessionIdentity({ headers, body, connectionId, workspaceId, scope = "" } = {}) {
+export function resolveSessionIdentity({ headers, body, connectionId, workspaceId, scope = "", generate } = {}) {
     const client = extractClientSessionId(headers, body, scope);
     if (client) return { sessionId: client, ephemeral: false };
     const fromAssistant = scope === "kiro" ? null : assistantTextSessionId(`${scope}:${connectionId || ""}`, body);
@@ -217,6 +217,9 @@ export function resolveSessionIdentity({ headers, body, connectionId, workspaceI
     const ws = normalizeSessionId(workspaceId);
     if (ws) return { sessionId: ws, ephemeral: false };
     if (scope === "kiro") return { sessionId: generateBinaryStyleId(), ephemeral: true };
+    // Provider-supplied generator (e.g. opencode's ses_+12hex+14base62 shape) wins
+    // over the generic binary-style fallback when the caller provides one.
+    if (typeof generate === "function") return { sessionId: generate(), ephemeral: false };
     return { sessionId: deriveSessionId(connectionId), ephemeral: false };
 }
 

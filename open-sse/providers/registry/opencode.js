@@ -18,6 +18,7 @@ export default {
       "x-opencode-client": "desktop",
     },
     noAuth: true,
+    forceStream: true,
   },
   models: [
     { id: "union-alpha", name: "Union Alpha Free", targetFormat: "claude" },
