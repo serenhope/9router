@@ -24,7 +24,31 @@
 //   ER_ZAI_BROWSER_TIMEOUT_MS  overall request cap (default 150s)
 
 import { createHash } from "node:crypto";
-import { chromium } from "playwright-core";
+import { createRequire } from "node:module";
+
+const _require = createRequire(import.meta.url);
+
+// playwright-core is optional. The browser transport is only reached when Z.ai
+// is called without a caller-supplied proof, so a host that never takes that
+// path should not be forced to ship a browser driver. Resolved on first use
+// instead of at import time, same graceful shape as utils/tlsClient.js.
+let _chromium;
+export function chromium() {
+  if (_chromium === undefined) {
+    try {
+      _chromium = _require("playwright-core").chromium || null;
+    } catch {
+      _chromium = null;
+    }
+  }
+  if (!_chromium) {
+    throw new Error(
+      "playwright-core is not installed. Run `npm install playwright-core` and " +
+        "have a Chrome or Edge channel available to use the Z.ai browser transport."
+    );
+  }
+  return _chromium;
+}
 
 const ZAI_BASE_URL = "https://chat.z.ai";
 const ZAI_USER_AGENT =
