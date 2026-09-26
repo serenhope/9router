@@ -20,7 +20,9 @@ ARG NPM_REGISTRY
 RUN apk add --no-cache python3 make g++ linux-headers
 
 COPY package.json ./
-RUN --mount=type=cache,target=/root/.npm \
+# The id is mandatory for the legacy Dockerfile frontend, so the cache mount
+# parses on every builder instead of only on the one the syntax line pulls in.
+RUN --mount=type=cache,id=9router-npm,target=/root/.npm \
     npm install \
       --registry="${NPM_REGISTRY}" \
       --fetch-retries=5 \

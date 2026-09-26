@@ -1,3 +1,8 @@
+# v0.5.120-Custom (2026-09-26)
+
+## Fixes & Enhancements
+- **The image builds again on hosts that ignore the syntax line**: the npm cache mount was written in its modern form, where the id is optional, and a builder that falls back to its built in frontend still requires one, so the build stopped at the first dependency install with a flag error. The mount now names the cache, which every frontend accepts, and the build cache is kept either way.
+
 # v0.5.119-Custom (2026-09-26)
 
 ## Changes
