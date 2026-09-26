@@ -1,7 +1,7 @@
 # v0.5.120-Custom (2026-09-26)
 
 ## Fixes & Enhancements
-- **The image builds again on hosts that ignore the syntax line**: the npm cache mount was written in its modern form, where the id is optional, and a builder that falls back to its built in frontend still requires one, so the build stopped at the first dependency install with a flag error. The mount now names the cache, which every frontend accepts, and the build cache is kept either way.
+- **The image builds on Railway again**: the dependency install used a cache mount, and Railway's builder wants the id to carry a key it generates per service. The documented form of that key is rejected too, so the mount only ever broke the build, and the first version of the fix, which named the cache, was refused for the same reason. The mount is gone now and the build relies on the layer cache, which already covers the common case because package.json is copied on its own, so an unchanged manifest never reinstalls anything. The syntax line went with it, so the build no longer needs to pull a Dockerfile frontend before it can start.
 
 # v0.5.119-Custom (2026-09-26)
 
