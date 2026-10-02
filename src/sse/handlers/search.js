@@ -15,6 +15,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
+import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 
 /**
@@ -99,9 +100,21 @@ export async function handleSearch(request) {
 
 async function handleSingleProviderSearch(body, providerInput, request, apiKey, settings) {
   const query = body.query;
-  const providerId = resolveProviderId(providerInput);
+  let providerStr = providerInput;
+  let modelStr = null;
+  if (typeof providerStr === "string" && providerStr.includes("/")) {
+    const slashIdx = providerStr.indexOf("/");
+    const prefix = providerStr.slice(0, slashIdx);
+    const resolvedPrefix = resolveProviderId(prefix);
+    if (AI_PROVIDERS[resolvedPrefix]) {
+      providerStr = prefix;
+      modelStr = providerInput.slice(slashIdx + 1);
+    }
+  } else if (body.provider && body.model && body.model !== body.provider) {
+    modelStr = body.model;
+  }
+  const providerId = resolveProviderId(providerStr);
   const resolvedProvider = AI_PROVIDERS[providerId];
-
   if (!resolvedProvider) {
     log.warn("SEARCH", "Unknown provider", { provider: providerInput });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${providerInput}`);
@@ -125,6 +138,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
   const coreBody = {
     query: query.trim(),
     provider: providerId,
+    model: modelStr || undefined,
     max_results: body.max_results,
     search_type: body.search_type,
     country: body.country,
@@ -202,6 +216,14 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
 
     const refreshedCredentials = await checkAndRefreshToken(providerId, credentials);
 
+    // Ensure real project ID is available for providers that need it (Antigravity/Gemini-CLI)
+    if ((providerId === "antigravity" || providerId === "gemini-cli") && !refreshedCredentials.projectId) {
+      const pid = await getProjectIdForConnection(credentials.connectionId, refreshedCredentials.accessToken, providerId);
+      if (pid) {
+        refreshedCredentials.projectId = pid;
+        updateProviderCredentials(credentials.connectionId, { projectId: pid }).catch(() => { });
+      }
+    }
     const result = await handleSearchCore({
       body: coreBody,
       provider: resolvedProvider,

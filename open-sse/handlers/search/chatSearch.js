@@ -5,7 +5,7 @@
  */
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 import { ANTIGRAVITY_IDE_USER_AGENT } from "../../providers/shared.js";
-
+import { getModelUpstreamId } from "../../config/providerModels.js";
 // Default search model + endpoint derive from registry searchViaChat (single source)
 const searchModel = (id) => PROVIDER_MEDIA[id]?.searchViaChat?.defaultModel;
 const searchEndpoint = (id, model) =>
@@ -106,17 +106,29 @@ const CHAT_SEARCH_CONFIG = {
     // Upstream 403s on a missing or fabricated project — surface the real cause
     requireCredentials: (credentials) =>
       credentials?.projectId ? null : "Antigravity account has no projectId — reconnect the account",
-    buildBody: (query, model, credentials) => ({
-      project: credentials.projectId,
-      model,
-      userAgent: AG_CLIENT_NAME,
-      requestType: "search",
-      request: {
-        contents: [{ role: "user", parts: [{ text: query }] }],
-        tools: [{ googleSearch: {} }],
-        generationConfig: AG_SEARCH_GENERATION_CONFIG
+    buildBody: (query, model, credentials) => {
+      // Antigravity models use tiered suffixes in their API ID (e.g. gemini-3.8-flash-low, gemini-3.8-flash-medium)
+      // Default to gemini-3.8-flash-tiered (Antigravity native auto-thinking Flash model)
+      let resolvedModel = "gemini-3.8-flash-tiered";
+      if (model && model !== "gemini-3.8-flash" && model !== "ag" && model !== "antigravity") {
+        const upstream = getModelUpstreamId("antigravity", model);
+        const candidate = (upstream && upstream !== model) ? upstream : model;
+        if (candidate.startsWith("gemini-")) {
+          resolvedModel = candidate.replace(/\([^()]+\)\s*$/, "").trim();
+        }
       }
-    }),
+      return {
+        project: credentials.projectId,
+        model: resolvedModel,
+        userAgent: AG_CLIENT_NAME,
+        requestType: "search",
+        request: {
+          contents: [{ role: "user", parts: [{ text: query }] }],
+          tools: [{ googleSearch: {} }],
+          generationConfig: AG_SEARCH_GENERATION_CONFIG
+        }
+      };
+    },
     buildHeaders: (token) => ({
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
