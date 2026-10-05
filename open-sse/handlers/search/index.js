@@ -176,11 +176,14 @@ export async function handleSearchCore({ body, provider, providerConfig, credent
       globalStartTime
     });
   } else if (provider.searchViaChat) {
+    const searchModel = (normalizedBody.model && normalizedBody.model !== provider.id && normalizedBody.model !== provider.alias)
+      ? normalizedBody.model
+      : provider.searchViaChat.defaultModel;
     result = await handleChatSearch({
       provider: provider.id,
       query: clean,
       maxResults: normalizedBody.max_results,
-      model: provider.searchViaChat.defaultModel,
+      model: searchModel,
       credentials,
       log
     });
@@ -198,11 +201,14 @@ export async function handleSearchCore({ body, provider, providerConfig, credent
     providerConfig
   ) {
     log?.warn?.("SEARCH", `${provider.id} dedicated failed (${result.status}), falling back to chat-based search`);
+    const searchModel = (normalizedBody.model && normalizedBody.model !== provider.id && normalizedBody.model !== provider.alias)
+      ? normalizedBody.model
+      : provider.searchViaChat.defaultModel;
     const fallback = await handleChatSearch({
       provider: provider.id,
       query: clean,
       maxResults: normalizedBody.max_results,
-      model: provider.searchViaChat.defaultModel,
+      model: searchModel,
       credentials,
       log
     });
