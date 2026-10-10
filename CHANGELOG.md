@@ -1,10 +1,8 @@
-# v0.6.0 (2026-10-10) · 11 commits
+# v0.5.164 (2026-10-10) · 11 commits
 
 ## Features
-- **Auth**: dashboard 2FA via self-chosen PIN
-- **Auth**: require TOTP for dashboard password login
-- **Dashboard**: cost mode, hardened tool bridge, cleaner welcome banner
-- **Welcome**: show running version and fuller orientation line
+- **Dashboard**: cost mode in the provider chart, hardened tool bridge, cleaner welcome banner
+- **Welcome**: show the running version and a fuller orientation line
 
 ## Fixes
 - **Marks**: stop old ligatures on model rows; one-surface welcome dialog
@@ -15,7 +13,7 @@
 
 ## Internal
 - **Auth**: drop mandatory 2FA, back to password-only login
-- **Copy**: replace em dashes with plain punctuation
+- **Copy**: replace em dashes with plain punctuation across the UI
 
 # v0.5.163 (2026-10-09) · 1 commit
 
