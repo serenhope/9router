@@ -1,3 +1,22 @@
+# v0.6.0 (2026-10-10) · 11 commits
+
+## Features
+- **Auth**: dashboard 2FA via self-chosen PIN
+- **Auth**: require TOTP for dashboard password login
+- **Dashboard**: cost mode, hardened tool bridge, cleaner welcome banner
+- **Welcome**: show running version and fuller orientation line
+
+## Fixes
+- **Marks**: stop old ligatures on model rows; one-surface welcome dialog
+- **Plugins**: neutral tiles with saturated glyph marks
+- **Plugins**: one mark per card, redrawn as a single family
+- **Welcome**: changelog button now opens the changelog
+- **Welcome**: make Star on GitHub a visible ghost button
+
+## Internal
+- **Auth**: drop mandatory 2FA, back to password-only login
+- **Copy**: replace em dashes with plain punctuation
+
 # v0.5.163 (2026-10-09) · 1 commit
 
 ## Features
