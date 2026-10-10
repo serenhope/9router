@@ -29,6 +29,7 @@ import { GITHUB_CONFIG } from "@/shared/constants/config";
 export default function WelcomeModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [changelogOpen, setChangelogOpen] = useState(false);
+  const [version, setVersion] = useState(null);
 
   useEffect(() => {
     if (localStorage.getItem("9router:welcomeNeverShow") === "true") {
@@ -44,6 +45,18 @@ export default function WelcomeModal() {
     }
   }, []);
 
+
+  // Same endpoint the sidebar reads. Quiet failure: no chip is better than a
+  // chip showing the wrong build.
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch("/api/version", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.currentVersion) setVersion(String(data.currentVersion));
+      })
+      .catch(() => {});
+  }, [isOpen]);
 
   const handleClose = () => {
     setIsOpen(false);
@@ -81,10 +94,17 @@ export default function WelcomeModal() {
             className="size-11 rounded-xl border border-border-subtle"
           />
           <div>
-            <p className="text-lg font-bold tracking-tight leading-tight text-primary">
+            <p className="flex items-center gap-2 text-lg font-bold tracking-tight leading-tight text-primary">
               9Router
+              {version && (
+                <span className="rounded-md border border-border bg-bg-subtle px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-normal text-text-muted">
+                  v{version}
+                </span>
+              )}
             </p>
-            <p className="text-xs text-text-muted">Welcome back. A 30-second tour:</p>
+            <p className="text-xs text-text-muted">
+              Welcome back. Here&apos;s a quick tour of what this dashboard can do:
+            </p>
           </div>
         </div>
 
