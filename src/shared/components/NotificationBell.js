@@ -14,7 +14,7 @@ const SEVERITY_STYLE = {
 
 /**
  * Notification bell: quota pressure, updates and anything the scan route
- * derives. A key-signed session gets nothing — these messages describe this
+ * derives. A key-signed session gets nothing - these messages describe this
  * install, not the caller's own key.
  */
 export default function NotificationBell() {

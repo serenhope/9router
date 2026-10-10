@@ -16,7 +16,7 @@ export default function ErrorClassificationTab({ period }) {
 
  if (loading) return <div className="text-zinc-500 text-sm">Loading error data...</div>;
  if (!data || data.total === 0) {
-    return <EmptyWithAction icon="check_circle" title="No errors in this period" hint="Nothing failed — pick a wider period to see past errors." actionHref="/dashboard/console-log" actionLabel="Open console log" />;
+    return <EmptyWithAction icon="check_circle" title="No errors in this period" hint="Nothing failed - pick a wider period to see past errors." actionHref="/dashboard/console-log" actionLabel="Open console log" />;
   }
 
  return (

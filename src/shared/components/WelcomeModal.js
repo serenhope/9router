@@ -9,8 +9,8 @@ import { GITHUB_CONFIG } from "@/shared/constants/config";
 // Post-login welcome dialog.
 //
 // One surface, not a banner inside a banner. Earlier versions nested a rounded
-// panel (surface-2, border, dot-grid) inside the Modal — which is itself a
-// rounded bordered panel — and put three more mini-cards inside that. Three
+// panel (surface-2, border, dot-grid) inside the Modal - which is itself a
+// rounded bordered panel - and put three more mini-cards inside that. Three
 // layers of the same container reads as decoration, and the middle layer was
 // carrying no information the surrounding dialog did not already carry.
 //
@@ -18,14 +18,14 @@ import { GITHUB_CONFIG } from "@/shared/constants/config";
 // the product mark and wordmark as the header (replacing the generic Modal
 // title, so the brand is stated once), one specific line of what it is, three
 // plain facts as a list, then the actions. Colour comes from the theme tokens
-// alone — text-primary on the wordmark is the only accent.
+// alone - text-primary on the wordmark is the only accent.
 //
 // Every control works: Get started dismisses, View changelog closes this dialog
 // and mounts the same ChangelogModal the header menu uses (as a sibling, so two
 // overlays never stack) and Star on GitHub opens the repo. There is no opt-out:
 // the dialog only appears right after a login. Modal renders its X on mobile
 // only and this dialog sets
-// closeOnOverlay={false}, so Get started is the desktop exit — it must stay.
+// closeOnOverlay={false}, so Get started is the desktop exit - it must stay.
 export default function WelcomeModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [changelogOpen, setChangelogOpen] = useState(false);
@@ -84,24 +84,21 @@ export default function WelcomeModal() {
             <p className="text-lg font-bold tracking-tight leading-tight text-primary">
               9Router
             </p>
-            <p className="text-xs text-text-muted">Welcome back — here is the quick tour</p>
+            <p className="text-xs text-text-muted">Welcome back. A 30-second tour:</p>
           </div>
         </div>
 
         <p className="mt-4 text-sm text-text-muted leading-relaxed">
-          An OpenAI-compatible gateway in front of the models you connect — built-in
+          One OpenAI-compatible gateway for every model you connect. Use built-in
           providers, your own endpoints, or a combo of both.
         </p>
 
         {/* Plain facts, no cards: the dialog is the container, so the list does
             not need its own. */}
-        <ul className="mt-4 space-y-2 text-sm text-text-main">
+        <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-text-main marker:text-text-muted">
           {facts.map((fact) => (
-            <li key={fact} className="flex gap-2 leading-relaxed">
-              <span className="text-text-muted select-none" aria-hidden="true">
-                —
-              </span>
-              <span>{fact}</span>
+            <li key={fact} className="leading-relaxed">
+              {fact}
             </li>
           ))}
         </ul>

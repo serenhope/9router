@@ -1,4 +1,4 @@
-// Public API barrel — all DB functions
+// Public API barrel - all DB functions
 import { getAdapter } from "./driver.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
 

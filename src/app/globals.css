@@ -37,7 +37,7 @@
 html:not(.fonts-loading) .material-symbols-outlined { opacity: 1; transition: opacity .12s ease-out; }
 
 /* ============================================================
-   9Router palette — adopted from 9remote_private/web
+   9Router palette - adopted from 9remote_private/web
    Brand orange (dark) / soft coral (light), neutral warm bases
    ============================================================ */
 :root {
@@ -357,7 +357,7 @@ input, textarea {
 .traffic-light.yellow { background: #FFBD2E; }
 .traffic-light.green { background: #27C93F; }
 
-/* Material Symbols — layered so a text-[..] utility can still size each icon */
+/* Material Symbols - layered so a text-[..] utility can still size each icon */
 @layer base {
 .material-symbols-outlined {
   font-family: 'Material Symbols Outlined', sans-serif;
@@ -397,7 +397,7 @@ button {
   user-select: none;
 }
 
-/* Tailwind v4 dropped default button cursor — restore globally */
+/* Tailwind v4 dropped default button cursor - restore globally */
 button:not(:disabled),
 [role="button"]:not([aria-disabled="true"]),
 label[for],
@@ -666,7 +666,7 @@ button:disabled,
 }
 
 /* ============================================================
-   Glassmorphism theme — dark base with frosted translucent surfaces
+   Glassmorphism theme - dark base with frosted translucent surfaces
    Applied as `<html class="dark glass">`.
 
    Why explicit colours instead of token overrides: `@theme inline` bakes each

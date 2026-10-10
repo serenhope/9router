@@ -61,7 +61,7 @@ const PROVIDER_ORDER = [
   ...Object.keys(APIKEY_PROVIDERS),
 ];
 
-// Providers that need no auth — always show in model selector.
+// Providers that need no auth - always show in model selector.
 // Hidden entries stay out: their upstream channel is gone, but they keep
 // `noAuth` so the request path still resolves if an old model id is replayed.
 const NO_AUTH_PROVIDER_IDS = Object.keys(FREE_PROVIDERS).filter(
@@ -410,7 +410,7 @@ export default function ModelSelectModal({
           };
         }
       } else if (isCustomProvider) {
-        // Custom (openai/anthropic-compatible) providers are LLM-only — skip for typed media kinds
+        // Custom (openai/anthropic-compatible) providers are LLM-only - skip for typed media kinds
         if (kindFilter && TYPED_KINDS.has(kindFilter)) return;
         // Find connection object to get prefix synchronously without waiting for providerNodes fetch
         const connection = activeProviders.find(p => p.provider === providerId);
@@ -531,7 +531,7 @@ export default function ModelSelectModal({
     //
     // They used to be pushed into the first provider with passthroughModels, which
     // merged unrelated models under that provider's heading and rewrote their
-    // value to that provider's prefix — so picking one silently retargeted the
+    // value to that provider's prefix - so picking one silently retargeted the
     // request at a provider the model never belonged to.
     const groupedModelIds = new Set(
       Object.values(groups).flatMap((g) => (g.models || []).map((m) => m.id))
@@ -646,7 +646,7 @@ export default function ModelSelectModal({
     return groups;
   }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, cursorModels, clineModels, clinepassModels, studioModels, showStudioTargets, allowedModelPatterns]);
 
-  // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
+  // Filter combos by search query (and hide combos when kindFilter is set - combos are LLM-only by design)
   const filteredCombos = useMemo(() => {
     if (kindFilter || capFilter) return [];
     let list = combos;

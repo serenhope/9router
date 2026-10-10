@@ -55,7 +55,7 @@ export default function TokenSavingsTab({ period }) {
 
   if (loading) return <div className="text-zinc-500 text-sm">Loading savings...</div>;
   if (!data || !data.totals) {
-    return <div className="text-zinc-500 text-sm">Couldn't load savings — refresh the page and try again.</div>;
+    return <div className="text-zinc-500 text-sm">Couldn't load savings - refresh the page and try again.</div>;
   }
 
   const rows = (data.models || []).filter((m) =>

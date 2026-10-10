@@ -55,7 +55,7 @@ function activeLocks(connection) {
   return out;
 }
 
-// GET /api/usage/available-models — read-only catalog for the signing-in key.
+// GET /api/usage/available-models - read-only catalog for the signing-in key.
 // A key session that holds only viewUsage cannot open /api/models or
 // /api/combos, so this endpoint rebuilds that same catalog server side and
 // narrows it to the session's allowedModels before answering. No writes.
@@ -285,8 +285,8 @@ export async function GET() {
       } else {
         contextWindow = lookupContext(entry.provider, entry.model);
       }
-      // A row is reachable as its full id, its bare model id, and — for a
-      // combo — the combo name, so all of them are offered to the resolver. A
+      // A row is reachable as its full id, its bare model id, and - for a
+      // combo - the combo name, so all of them are offered to the resolver. A
       // combo inherits the marks of its members, matching /api/models.
       const markIds =
         entry.origin === "combo"

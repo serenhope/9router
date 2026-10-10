@@ -68,7 +68,7 @@ export default function Modal({
         {(title || showTrafficLights) && (
           <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border-subtle min-h-[52px]">
             <div className="flex items-center min-w-0 flex-1">
-              {/* Traffic lights — desktop only */}
+              {/* Traffic lights - desktop only */}
               {showTrafficLights && (
                 <div className="hidden md:flex items-center gap-2 mr-4 ml-1 shrink-0">
                   <Tooltip text="Close" position="top" color="#FF5F56">
@@ -89,7 +89,7 @@ export default function Modal({
                 <h2 className="text-base font-semibold text-text-main truncate min-w-0">{title}</h2>
               )}
             </div>
-            {/* X button — mobile only */}
+            {/* X button - mobile only */}
             <button
               onClick={onClose}
               aria-label="Close"
