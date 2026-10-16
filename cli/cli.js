@@ -283,7 +283,7 @@ function killAllAppProcesses(appPort) {
       if (platform === "win32") {
         // Windows: use WMI to get full CommandLine (tasklist /V doesn't include it)
         try {
-          const psCmd = `powershell -NonInteractive -WindowStyle Hidden -Command "Get-WmiObject Win32_Process -Filter 'Name=\\"node.exe\\"' | Select-Object ProcessId,CommandLine | ConvertTo-Csv -NoTypeInformation"`;
+          const psCmd = `powershell -NonInteractive -WindowStyle Hidden -Command "Get-WmiObject Win32_Process -Filter 'Name=\\"node.exe\\" or Name=\\"bun.exe\\"' | Select-Object ProcessId,CommandLine | ConvertTo-Csv -NoTypeInformation"`;
           const output = execSync(psCmd, {
             encoding: "utf8",
             windowsHide: true,
@@ -294,8 +294,9 @@ function killAllAppProcesses(appPort) {
             // Whitelist: real node process running 9router/cli.js, or next-server.
             // Avoids killing editors/grep/strace/cursor that just have "9router" in cmdline.
             const cmd = line.toLowerCase();
+            const isRuntime = cmd.includes("node") || cmd.includes("bun");
             const isAppProcess =
-              (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("\\9router") || cmd.includes("/9router")))
+              (isRuntime && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("\\9router") || cmd.includes("/9router")))
               || cmd.includes("next-server");
             if (isAppProcess) {
               const match = line.match(/^"(\d+)"/);
@@ -320,8 +321,9 @@ function killAllAppProcesses(appPort) {
             // Whitelist: real node process running 9router/cli.js, or next-server.
             // Avoids killing grep/strace/editors/cursor that incidentally match "9router".
             const cmd = line.toLowerCase();
+            const isRuntime = cmd.includes("node") || cmd.includes("bun");
             const isAppProcess =
-              (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("/9router")))
+              (isRuntime && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("/9router")))
               || cmd.includes("next-server");
             if (isAppProcess) {
               const parts = line.trim().split(/\s+/);

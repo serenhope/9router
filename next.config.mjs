@@ -29,7 +29,6 @@ function stampBuild() {
 const tracingRoot = process.env.NEXT_TRACING_ROOT_MODE === "workspace"
   ? join(projectRoot, "..")
   : projectRoot;
-const proxyClientMaxBodySize = process.env.NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE || "128mb";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -45,10 +44,6 @@ const nextConfig = {
   // @aws-sdk/credential-providers must stay external for the same class of reason: it reads
   // ~/.aws/config and the SSO token cache from disk at runtime and resolves its credential
   // plugins by dynamic require, neither of which survives bundling.
-  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "open", "@aws-sdk/credential-providers"],
-  turbopack: {
-    root: tracingRoot
-  },
   images: {
     unoptimized: true
   },
@@ -68,13 +63,15 @@ const nextConfig = {
         "**/Cookies/**/*",
       ],
     },
-    // Next 14 reads this key (top-level serverExternalPackages is Next 15+ and
-    // ignored with a warning). Keep both so the db adapters stay external.
-    serverComponentsExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "open"],
-    // #1529/#1572: LLM clients can send long context or base64 image payloads through /v1 rewrites.
-    proxyClientMaxBodySize,
-    // Cache fetch responses across HMR refreshes for faster dev reloads.
-    serverComponentsHmrCache: true,
+    // Next 14 reads this key for external server components/packages.
+    serverComponentsExternalPackages: [
+      "better-sqlite3",
+      "sql.js",
+      "node:sqlite",
+      "bun:sqlite",
+      "open",
+      "@aws-sdk/credential-providers",
+    ],
     // Tree-shake heavy barrel imports to cut compile + bundle size
     optimizePackageImports: ["@xyflow/react", "@dnd-kit/core", "@dnd-kit/sortable", "material-symbols", "marked"],
   },

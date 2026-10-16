@@ -16,8 +16,10 @@
   "scripts": {
     "dev": "nodemon -I --watch cli.js --watch src --watch hooks --ext js,json cli.js",
     "build": "node scripts/build-cli.js",
+    "build:bun": "bun scripts/build-cli.js",
     "build:tray-arm64": "node scripts/buildTrayArm64.js",
     "pack:cli": "npm run build && npm pack --pack-destination ..",
+    "pack:cli:bun": "bun run build:bun && bun pm pack --destination ..",
     "publish:cli": "npm run build && npm publish",
     "postinstall": "node hooks/postinstall.js",
     "prepublishOnly": "npm run build"

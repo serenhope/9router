@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
+
 import { getRequestDetails } from "@/lib/usageDb";
 import { getSessionContext } from "@/lib/auth/dashboardPermissions";
 import { parseAllowedModels } from "@/lib/db/repos/allowedModels.js";

@@ -1,30 +1,46 @@
 "use client";
 
 import { create } from "zustand";
-import { THEME_CONFIG } from "@/shared/constants/config";
 
 // Two modes, both dark-based: glass is the default (a glassmorphism variant
 // that keeps the exact same palette while surfaces turn translucent), and solid
 // dark stays as the fallback.
 export const THEME_IDS = ["glass", "dark"];
 
-// The mode belongs to the installation, not to one browser. It is stored in
-// settings.theme, written only by a password session, and mirrored into the
-// document for every visitor, so switching it changes the whole site at once
-// instead of quietly applying to whoever happened to click.
 function normalize(theme) {
   return THEME_IDS.includes(theme) ? theme : "glass";
 }
 
+function getStoredTheme() {
+  if (typeof localStorage === "undefined") return "glass";
+  try {
+    const raw = localStorage.getItem("theme");
+    if (!raw) return "glass";
+    const parsed = JSON.parse(raw);
+    const id = parsed?.state?.theme || parsed?.theme || raw;
+    return normalize(id);
+  } catch {
+    return "glass";
+  }
+}
+
+function saveStoredTheme(theme) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem("theme", JSON.stringify({ state: { theme: normalize(theme) } }));
+  } catch {}
+}
+
 const useThemeStore = create((set, get) => ({
   theme: "glass",
-  canChangeTheme: false,
+  canChangeTheme: true,
   hydrated: false,
 
   /** Called by the shell with the server value; also used for the SSR default. */
-  setServerTheme: (theme, canChange = false) => {
-    const id = normalize(theme);
+  setServerTheme: (theme, canChange = true) => {
+    const id = theme ? normalize(theme) : getStoredTheme();
     set({ theme: id, canChangeTheme: !!canChange, hydrated: true });
+    saveStoredTheme(id);
     applyTheme(id);
   },
 
@@ -33,30 +49,31 @@ const useThemeStore = create((set, get) => ({
    * when the session is not allowed to change it (an API-key sign-in), so the
    * control can never repaint the site behind the administrator's back.
    */
-  setTheme: async (theme) => {
+  setTheme: (theme) => {
     if (!get().canChangeTheme) return false;
     const id = normalize(theme);
     set({ theme: id });
+    saveStoredTheme(id);
     applyTheme(id);
-    try {
-      const res = await fetch("/api/theme", {
+
+    // Sync to server settings if available (fail-open if unauthenticated or network error)
+    if (typeof fetch !== "undefined") {
+      fetch("/api/theme", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theme: id }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return true;
-    } catch (error) {
-      // Roll back so the document never shows a mode the server refused.
-      const previous = get().theme;
-      set({ theme: previous });
-      applyTheme(previous);
-      console.error("Theme change rejected:", error);
-      return false;
+      }).catch(() => {});
     }
+    return true;
   },
 
   toggleTheme: () => get().setTheme(get().theme === "glass" ? "dark" : "glass"),
+
+  initTheme: () => {
+    const id = getStoredTheme();
+    set({ theme: id });
+    applyTheme(id);
+  },
 }));
 
 // Apply theme to document. "dark" always stays on (both modes are dark);

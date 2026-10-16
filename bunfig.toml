@@ -1,0 +1,13 @@
+# Configuration for Bun runtime, test runner, and package manager
+
+[test]
+root = "tests"
+pathIgnorePatterns = [
+  "**/node_modules/**",
+  "**/.claude/**",
+  "**/dist/**",
+  "**/real/**"
+]
+
+[install]
+lockfile = { save = true }

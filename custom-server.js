@@ -4,6 +4,14 @@ const fs = require("fs");
 const crypto = require("crypto");
 const { pathToFileURL } = require("url");
 
+// Suppress Node 22+/26+ syntax detection warnings for ESM files imported without "type": "module"
+const origEmitWarning = process.emitWarning.bind(process);
+process.emitWarning = function (warning, ...args) {
+  if (typeof warning === "string" && warning.includes("MODULE_TYPELESS_PACKAGE_JSON")) return;
+  if (warning && (warning.name === "MODULE_TYPELESS_PACKAGE_JSON" || warning.code === "MODULE_TYPELESS_PACKAGE_JSON" || warning.code === "DEP0205")) return;
+  return origEmitWarning(warning, ...args);
+};
+
 const origCreate = http.createServer.bind(http);
 
 // Per-process secret proving x-9r-real-ip was stamped below rather than sent by the client.
@@ -130,7 +138,12 @@ function getGuardModule() {
       const hooksPath = path.join(__dirname, "scripts", "auth-guard-hooks.mjs");
       const guardPath = path.join(__dirname, "src", "dashboardGuard.js");
       if (!fs.existsSync(hooksPath) || !fs.existsSync(guardPath)) return null;
-      require("node:module").register(pathToFileURL(hooksPath).href);
+      const nodeModule = require("node:module");
+      if (typeof nodeModule.registerHooks === "function") {
+        nodeModule.registerHooks(pathToFileURL(hooksPath).href);
+      } else if (typeof nodeModule.register === "function") {
+        nodeModule.register(pathToFileURL(hooksPath).href);
+      }
       return await import(pathToFileURL(guardPath).href);
     })().catch((error) => {
       console.error("[AuthGuard] load failed:", error && error.message);
@@ -464,6 +477,18 @@ http.createServer = (...args) => {
 };
 
 if (require.main === module) {
+  const portIndex = process.argv.findIndex((arg) => arg === "--port" || arg === "-p");
+  if (portIndex !== -1 && process.argv[portIndex + 1]) {
+    process.env.PORT = process.argv[portIndex + 1];
+  } else if (!process.env.PORT) {
+    process.env.PORT = "20128";
+  }
+  const hostIndex = process.argv.findIndex((arg) => arg === "--host" || arg === "-H");
+  if (hostIndex !== -1 && process.argv[hostIndex + 1]) {
+    process.env.HOSTNAME = process.argv[hostIndex + 1];
+  } else if (!process.env.HOSTNAME) {
+    process.env.HOSTNAME = "127.0.0.1";
+  }
   const standalone = path.join(__dirname, "server.js");
   if (fs.existsSync(standalone)) {
     require(standalone);

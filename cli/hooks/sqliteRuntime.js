@@ -96,13 +96,30 @@ function summarizeNpmError(stderr = "") {
 }
 
 function runNpmInstall({ cwd, pkgs, extraArgs = [], timeout = 180000 }) {
-  const args = ["install", ...pkgs, "--no-audit", "--no-fund", "--prefer-online", ...extraArgs];
-  const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-  const res = spawnSync(npmCmd, args, {
+  let isBun = false;
+  let cmd = process.platform === "win32" ? "npm.cmd" : "npm";
+  try {
+    const testNpm = spawnSync(cmd, ["--version"], { stdio: "ignore", timeout: 3000 });
+    if (testNpm.status !== 0) throw new Error("npm missing");
+  } catch {
+    try {
+      const testBun = spawnSync("bun", ["--version"], { stdio: "ignore", timeout: 3000 });
+      if (testBun.status === 0) {
+        cmd = "bun";
+        isBun = true;
+      }
+    } catch {}
+  }
+
+  const args = isBun
+    ? ["add", ...pkgs]
+    : ["install", ...pkgs, "--no-audit", "--no-fund", "--prefer-online", ...extraArgs];
+
+  const res = spawnSync(cmd, args, {
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
     timeout,
-    shell: process.platform === "win32",
+    shell: process.platform === "win32" && !isBun,
     encoding: "utf8",
   });
   return { ok: res.status === 0, code: res.status, stderr: res.stderr || "", stdout: res.stdout || "" };
@@ -136,8 +153,13 @@ function isSqlJsWasmValid() {
 }
 
 function ensureSqliteRuntime({ silent = false } = {}) {
-  ensureRuntimeDir();
+  // Bun runtime includes high-performance native SQLite (bun:sqlite) out of the box
+  if (typeof process.versions.bun !== "undefined") {
+    if (!silent) console.log("✅ SQLite engine ready (built-in bun:sqlite)");
+    return { betterSqlite: false, sqlJs: true, bunSqlite: true };
+  }
 
+  ensureRuntimeDir();
   let sqlJsOk = isSqlJsWasmValid();
   if (!sqlJsOk) {
     sqlJsOk = npmInstall([`sql.js@${SQL_JS_VERSION}`], { silent });

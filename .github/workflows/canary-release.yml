@@ -1,0 +1,154 @@
+name: Build and Publish Canary / Release
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      force_channel:
+        description: "Force release channel (canary or stable)"
+        required: false
+        type: choice
+        options:
+          - auto
+          - canary
+          - stable
+        default: auto
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile || bun install
+
+      - name: Build Standalone CLI Package
+        run: bun cli/scripts/build-cli.js
+
+      - name: Pack CLI package to tarball
+        run: |
+          cd cli
+          bun pm pack --destination .. --filename 9router.tgz
+
+      - name: Determine Release Channel
+        id: channel
+        run: |
+          FORCE="${{ inputs.force_channel }}"
+          REF_TYPE="${{ github.ref_type }}"
+          REF_NAME="${{ github.ref_name }}"
+
+          if [ "$FORCE" = "stable" ] || [ "$REF_TYPE" = "tag" ]; then
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+            echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "branch=dist" >> "$GITHUB_OUTPUT"
+          else
+            echo "channel=canary" >> "$GITHUB_OUTPUT"
+            echo "tag=canary" >> "$GITHUB_OUTPUT"
+            echo "branch=canary" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANNEL: ${{ steps.channel.outputs.channel }}
+          TAG: ${{ steps.channel.outputs.tag }}
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)
+
+          if [ "$CHANNEL" = "canary" ]; then
+            echo "Publishing to canary release..."
+            
+            # Ensure git tag 'canary' points to current HEAD
+            git tag -f canary HEAD
+            git push -f origin canary || true
+
+            if gh release view canary >/dev/null 2>&1; then
+              gh release edit canary \
+                --title "Canary ($SHORT_SHA)" \
+                --notes "Automated canary build from master ($SHORT_SHA). Updated $(date -u +'%Y-%m-%d %H:%M UTC').
+
+**Install with Bun (No build required):**
+\`\`\`bash
+bun add -g https://github.com/${{ github.repository }}/releases/download/canary/9router.tgz
+\`\`\`
+or from the \`canary\` branch:
+\`\`\`bash
+bun add -g ${{ github.repository }}#canary
+\`\`\`" \
+                --prerelease
+              gh release upload canary 9router.tgz --clobber
+            else
+              gh release create canary 9router.tgz \
+                --title "Canary ($SHORT_SHA)" \
+                --notes "Automated canary build from master ($SHORT_SHA).
+
+**Install with Bun (No build required):**
+\`\`\`bash
+bun add -g https://github.com/${{ github.repository }}/releases/download/canary/9router.tgz
+\`\`\`
+or from the \`canary\` branch:
+\`\`\`bash
+bun add -g ${{ github.repository }}#canary
+\`\`\`" \
+                --prerelease
+            fi
+          else
+            echo "Publishing stable release $TAG..."
+            gh release create "$TAG" 9router.tgz \
+              --title "9Router $TAG" \
+              --notes "Release $TAG.
+
+**Install with Bun (No build required):**
+\`\`\`bash
+bun add -g https://github.com/${{ github.repository }}/releases/download/$TAG/9router.tgz
+\`\`\`
+or from the \`dist\` branch:
+\`\`\`bash
+bun add -g ${{ github.repository }}#dist
+\`\`\`" \
+              --generate-notes || gh release upload "$TAG" 9router.tgz --clobber
+          fi
+
+      - name: Deploy pre-built files to branch
+        env:
+          TARGET_BRANCH: ${{ steps.channel.outputs.branch }}
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          
+          # Prepare an isolated git repository inside cli/ to push as root
+          cd cli
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Force-add all files including the compiled app/ directory
+          git add -A -f
+          git commit -m "build($TARGET_BRANCH): pre-built bundle from $SHORT_SHA"
+          
+          # Force-push single commit to target branch
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:"$TARGET_BRANCH"
+          echo "Successfully pushed prebuilt package to branch $TARGET_BRANCH"

@@ -24,12 +24,13 @@ export async function GET() {
 // than a per-browser preference.
 export async function POST(request) {
   try {
+    const settings = await getSettings();
     const cookieStore = await cookies();
     const session = await getDashboardAuthSession(cookieStore.get("auth_token")?.value);
-    if (!session) {
+    if (settings.requireLogin !== false && !session) {
       return NextResponse.json({ error: "Sign in to change the theme" }, { status: 401 });
     }
-    if (session.role === "apikey") {
+    if (session && session.role === "apikey") {
       return NextResponse.json(
         { error: "The theme applies to the whole site and can only be changed from a password sign-in" },
         { status: 403 }
