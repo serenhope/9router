@@ -19,12 +19,21 @@ function deepCopyBody(body) {
   const copyItem = (m) => ({ ...m, content: Array.isArray(m.content) ? m.content.map(b => ({ ...b })) : m.content });
   const copyContentsItem = (m) => ({ ...m, parts: Array.isArray(m.parts) ? m.parts.map(b => ({ ...b })) : m.parts });
   const copyInputItem = (m) => ({ ...m, content: Array.isArray(m.content) ? m.content.map(b => ({ ...b })) : m.content });
-  return {
+  const copy = {
     ...body,
     ...(Array.isArray(body.messages) ? { messages: body.messages.map(copyItem) } : {}),
     ...(Array.isArray(body.contents) ? { contents: body.contents.map(copyContentsItem) } : {}),
     ...(Array.isArray(body.input)    ? { input:    body.input.map(copyInputItem)    } : {}),
   };
+  if (Array.isArray(body._appliedPromptInjections)) {
+    Object.defineProperty(copy, "_appliedPromptInjections", {
+      value: [...body._appliedPromptInjections],
+      writable: true,
+      configurable: true,
+      enumerable: false,
+    });
+  }
+  return copy;
 }
 
 // Prefixes used when flattening tool turns into plain prose for panel models.

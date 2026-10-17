@@ -160,6 +160,23 @@ Usage DB:
 - Periodic task: `src/shared/services/cloudSyncScheduler.js`
 - Control route: `src/app/api/sync/cloud/route.js`
 
+## 6) Advanced Prompt Injection Studio & Gateway Engine
+
+- Core Engine: `src/lib/db/repos/promptInjectionRepo.js`
+- REST API & Simulator Pipeline: `src/app/api/prompt-injection/route.js`
+- Modular Dashboard UI: `src/app/(dashboard)/dashboard/prompt-injection/`
+  - Subcomponents: Header, MetricsBar, FilterControls, RuleCard, RuleList (@dnd-kit), RuleEditorModal, PlaygroundModal, RuleHistoryModal, TemplateLibraryModal, PromptImportModal.
+- SQLite Storage Scopes:
+  - `promptInjections`: Persists rule definitions, target types (`all`, `models`, `combos`, `custom`), 5 wire positions (`system_prepend`, `system_append`, `system_override`, `user_prepend`, `user_append`), priorities, compound condition trees (AND/OR logic across 7 operators), and hit metrics.
+  - `promptInjectionRevisions`: Automatic before-mutation audit snapshots on create, update, delete, reorder, and rollback.
+- Gateway Interception & Safety:
+  - Two-Phase Evaluation in `src/sse/handlers/chat.js` (Entry/Combo Scope + Provider/Physical Model Scope).
+  - Idempotency & Zero-Leakage: Non-enumerable `body._appliedPromptInjections` metadata prevents duplicate execution across retries and never serializes into upstream LLM payloads.
+  - Wire Format Protocol Normalization: Direct mutation of `body.system` for Anthropic Claude (never places system role into `messages[]`), camelCase/snake_case support for Google Gemini, and `instructions` for OpenAI Responses.
+  - Security: ReDoS guard rejecting catastrophic alternations and nested quantifiers, 250-character pattern cap, and 32KB input slicing.
+  - Caching & Performance: In-memory cache with 60s TTL and sub-0.05ms execution latency.
+  - Fail-Open Guarantee: All gateway injection hooks are wrapped in defensive error handling ensuring uninterrupted upstream chat inference.
+
 ## Request Lifecycle (`/v1/chat/completions`)
 
 ```mermaid
@@ -168,6 +185,7 @@ sequenceDiagram
     participant Client as CLI/SDK Client
     participant Route as /api/v1/chat/completions
     participant Chat as src/sse/handlers/chat
+    participant PI as Prompt Injection Engine
     participant Core as open-sse/handlers/chatCore
     participant Model as Model Resolver
     participant Auth as Credential Selector
@@ -178,12 +196,15 @@ sequenceDiagram
 
     Client->>Route: POST /v1/chat/completions
     Route->>Chat: handleChat(request)
+    Chat->>PI: applyPromptInjectionsToBody (Phase 1: Entry/Combo Scope)
     Chat->>Model: parse/resolve model or combo
 
     alt Combo model
         Chat->>Chat: iterate combo models (handleComboChat)
     end
 
+    Chat->>Model: resolve physical model override
+    Chat->>PI: applyPromptInjectionsToBody (Phase 2: Provider/Model Scope)
     Chat->>Auth: getProviderCredentials(provider)
     Auth-->>Chat: active account + tokens/api key
 

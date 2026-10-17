@@ -6,15 +6,34 @@ import {
   updatePromptInjection,
   deletePromptInjection,
   reorderPromptInjections,
+  listPromptInjectionRevisions,
+  rollbackPromptInjectionRevision,
+  applyPromptInjectionsToBody,
   isRuleMatching,
+  evaluateRuleMatch,
   interpolateVariables,
   executeInjection,
   extractUserText,
-} from "@/lib/db/repos/promptInjectionRepo.js";
+} from "../../../lib/db/repos/promptInjectionRepo.js";
 
-// GET /api/prompt-injection - list all rules
-export async function GET() {
+// GET /api/prompt-injection - list all rules or revisions history
+export async function GET(request) {
   try {
+    let action = null;
+    let ruleId = null;
+    let limit = 30;
+    if (request?.url) {
+      const { searchParams } = new URL(request.url);
+      action = searchParams.get("action");
+      ruleId = searchParams.get("ruleId") || null;
+      limit = parseInt(searchParams.get("limit") || "30", 10);
+    }
+
+    if (action === "revisions" || action === "history") {
+      const revisions = await listPromptInjectionRevisions({ ruleId, limit });
+      return NextResponse.json({ revisions });
+    }
+
     const rules = await getPromptInjections();
     return NextResponse.json({ rules });
   } catch (error) {
@@ -23,12 +42,55 @@ export async function GET() {
   }
 }
 
-// POST /api/prompt-injection - create rule or test dry-run
+// POST /api/prompt-injection - create rule, test dry-run, or rollback
 export async function POST(request) {
   try {
     const body = await request.json();
 
-    // Dry-run simulation mode
+    // Rollback to a past revision snapshot
+    if (body.action === "rollback") {
+      const { revisionId } = body;
+      if (!revisionId) {
+        return NextResponse.json({ error: "Revision ID is required for rollback" }, { status: 400 });
+      }
+      try {
+        const restoredRule = await rollbackPromptInjectionRevision(revisionId);
+        return NextResponse.json({ success: true, rule: restoredRule });
+      } catch (err) {
+        return NextResponse.json({ error: err.message || "Failed to rollback revision" }, { status: 400 });
+      }
+    }
+
+    // Full gateway pipeline simulation
+    if (body.simulate || body.action === "simulate") {
+      const sampleBody = JSON.parse(JSON.stringify(body.body || {
+        messages: [{ role: "user", content: "Hello world" }]
+      }));
+      const originalBody = JSON.parse(JSON.stringify(sampleBody));
+      const context = {
+        modelStr: body.model || "openai/gpt-4o",
+        comboName: body.comboName || "",
+        apiKey: body.apiKey || "",
+        provider: (body.model || "").includes("/") ? body.model.split("/")[0] : "",
+        model: (body.model || "").includes("/") ? body.model.split("/")[1] : body.model || "gpt-4o",
+      };
+
+      const injectionRes = await applyPromptInjectionsToBody(sampleBody, context, {
+        skipHitTracking: true,
+        onlyRuleId: body.ruleId || undefined,
+      });
+      return NextResponse.json({
+        modified: injectionRes.modified,
+        injectedRules: injectionRes.injectedRules,
+        appliedRules: injectionRes.appliedRules || [],
+        skippedRules: injectionRes.skippedRules || [],
+        trace: injectionRes.trace || [],
+        originalBody,
+        body: sampleBody,
+      });
+    }
+
+    // Dry-run simulation mode for a specific rule
     if (body.action === "test") {
       const { rule, sampleBody, context } = body;
       const testBody = JSON.parse(JSON.stringify(sampleBody || {
@@ -37,16 +99,20 @@ export async function POST(request) {
       const testContext = context || { modelStr: "gpt-4o" };
       const userText = testContext.userText !== undefined ? testContext.userText : extractUserText(testBody);
 
-      const matches = await isRuleMatching(rule, { ...testContext, userText });
+      const evalRes = await evaluateRuleMatch(rule, { ...testContext, userText });
       let promptText = "";
-      if (matches && rule?.content) {
+      let didMutate = false;
+      if (evalRes.matches && rule?.content) {
         promptText = interpolateVariables(rule.content, testContext);
-        executeInjection(testBody, rule.position, promptText);
+        const mutRes = executeInjection(testBody, rule.position, promptText, testContext);
+        didMutate = !!mutRes?.mutated;
       }
 
       return NextResponse.json({
-        matches,
+        matches: evalRes.matches,
+        reason: evalRes.reason,
         promptText,
+        didMutate,
         resultBody: testBody,
       });
     }
@@ -66,7 +132,7 @@ export async function POST(request) {
       name,
       description: body.description,
       enabled: body.enabled !== false,
-      targetType: body.targetType || "models",
+      targetType: body.targetType || "all",
       targetCombos: body.targetCombos || [],
       targetModels: body.targetModels || [],
       targetKeys: body.targetKeys || [],

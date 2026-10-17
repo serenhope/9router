@@ -770,12 +770,9 @@ button:disabled,
   background-color: transparent !important;
 }
 
-/* Modal and long-task scrim. The glass body paints a colourful aurora, so the
-   dark theme's 55% black veil turned every overlay muddy brown-black. A
-   lighter veil keeps the frost readable and lets the theme's colour survive
-   underneath instead of being buried. */
+/* Modal and long-task scrim. */
 .dark.glass {
-  --color-scrim: rgba(8, 11, 16, 0.34);
+  --color-scrim: rgba(8, 11, 16, 0.65);
 }
 
 /* Derived surfaces follow the same frost ladder the explicit utilities above
@@ -797,6 +794,18 @@ button:disabled,
 .dark.glass [class*="bg-surface"] {
   backdrop-filter: blur(16px) saturate(150%);
   -webkit-backdrop-filter: blur(16px) saturate(150%);
+}
+
+/* Modals and dialog overlays need high contrast and solid backing to prevent background bleed-through */
+.dark.glass [role="dialog"] {
+  background-color: rgba(24, 24, 27, 0.96) !important;
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+.glass:not(.dark) [role="dialog"] {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
 }
 
 /* Inputs keep a solid base; a translucent field loses the caret against blur. */

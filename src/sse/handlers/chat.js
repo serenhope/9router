@@ -251,10 +251,16 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         const { getStudioModel } = await import("@/lib/db/repos/modelEditorRepo.js");
         const entryStudio = comboEntryName !== modelStr ? await getStudioModel(modelStr) : null;
         if (entryStudio?.systemPrompt) {
-          if (Array.isArray(body.messages)) {
+          if (typeof body.system !== "undefined") {
+            if (typeof body.system === "string") {
+              body.system = entryStudio.systemPrompt + "\n\n" + body.system;
+            } else if (Array.isArray(body.system)) {
+              body.system.unshift({ type: "text", text: entryStudio.systemPrompt });
+            } else {
+              body.system = entryStudio.systemPrompt;
+            }
+          } else if (Array.isArray(body.messages)) {
             body.messages.unshift({ role: "system", content: entryStudio.systemPrompt });
-          } else if (typeof body.system === "string") {
-            body.system = entryStudio.systemPrompt + "\n\n" + body.system;
           } else {
             body.system = entryStudio.systemPrompt;
           }
@@ -331,12 +337,19 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     }
    }
    if (override.systemPrompt) {
-    if (Array.isArray(body.messages)) {
-     body.messages.unshift({ role: "system", content: override.systemPrompt });
-    } else if (typeof body.system === "string") {
-     body.system = override.systemPrompt + "\n\n" + body.system;
+    const isClaude = provider === "anthropic" || provider === "claude" || typeof body.system !== "undefined";
+    if (isClaude) {
+      if (typeof body.system === "string") {
+        body.system = override.systemPrompt + "\n\n" + body.system;
+      } else if (Array.isArray(body.system)) {
+        body.system.unshift({ type: "text", text: override.systemPrompt });
+      } else {
+        body.system = override.systemPrompt;
+      }
+    } else if (Array.isArray(body.messages)) {
+      body.messages.unshift({ role: "system", content: override.systemPrompt });
     } else {
-     body.system = override.systemPrompt;
+      body.system = override.systemPrompt;
     }
    }
    if (studio) {
