@@ -12,6 +12,36 @@ function maskApiKey(key) {
   return key.slice(0, 8) + "***" + key.slice(-4);
 }
 
+function buildComboMemberMap(db) {
+  const map = {};
+  if (!db) return map;
+  try {
+    const rows = db.all(`SELECT name, models FROM combos`);
+    for (const c of rows) {
+      const list = parseJson(c.models, []);
+      if (Array.isArray(list)) {
+        for (const m of list) {
+          const lower = String(m).toLowerCase();
+          map[lower] = c.name;
+          const slash = lower.indexOf("/");
+          if (slash !== -1) {
+            map[lower.slice(slash + 1)] = c.name;
+          }
+        }
+      }
+    }
+  } catch {}
+  return map;
+}
+
+function resolveDisplayModel(model, comboMemberMap) {
+  if (!model) return model;
+  const lower = String(model).toLowerCase();
+  const slash = lower.indexOf("/");
+  const bare = slash !== -1 ? lower.slice(slash + 1) : lower;
+  return comboMemberMap?.[lower] || comboMemberMap?.[bare] || model;
+}
+
 const PENDING_TIMEOUT_MS = 60 * 1000;
 const RING_CAP = 50;
 const CONN_CACHE_TTL_MS = 30 * 1000;
@@ -225,7 +255,9 @@ export async function getActiveRequests(filterApiKey = null, allowedModels = "*"
   }
 
   const patterns = parseAllowedModels(allowedModels);
-  const modelAllowed = (model) => matchesModelPatterns(patterns, model);
+  const db = await getAdapter();
+  const comboMemberMap = buildComboMemberMap(db);
+  const modelAllowed = (model) => matchesModelPatterns(patterns, model, comboMemberMap);
 
   await ensureRingInitialized();
   const seen = new Set();
@@ -235,8 +267,9 @@ export async function getActiveRequests(filterApiKey = null, allowedModels = "*"
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .map((e) => {
       const t = e.tokens || {};
+      const displayModel = resolveDisplayModel(e.model, comboMemberMap);
       return {
-        timestamp: e.timestamp, model: e.model, provider: e.provider || "",
+        timestamp: e.timestamp, model: displayModel, provider: e.provider || "",
         promptTokens: t.prompt_tokens || t.input_tokens || 0,
         completionTokens: t.completion_tokens || t.output_tokens || 0,
         cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
@@ -387,8 +420,9 @@ function loadDaysInRange(adapter, maxDays) {
 export async function getUsageStats(period = "all", filterApiKey = null, allowedModels = "*") {
   const db = await getAdapter();
 
+  const comboMemberMap = buildComboMemberMap(db);
   const patterns = parseAllowedModels(allowedModels);
-  const modelAllowed = (model) => matchesModelPatterns(patterns, model);
+  const modelAllowed = (model) => matchesModelPatterns(patterns, model, comboMemberMap);
 
   const [{ getProviderConnections }, { getApiKeys }, { getProviderNodes }] = await Promise.all([
     import("./connectionsRepo.js"),
@@ -422,8 +456,9 @@ export async function getUsageStats(period = "all", filterApiKey = null, allowed
   const recentRequests = recentRows
     .map((r) => {
       const t = parseJson(r.tokens, {}) || {};
+      const displayModel = resolveDisplayModel(r.model, comboMemberMap);
       return {
-        timestamp: r.timestamp, model: r.model, provider: r.provider || "",
+        timestamp: r.timestamp, model: displayModel, provider: r.provider || "",
         promptTokens: t.prompt_tokens || t.input_tokens || 0,
         completionTokens: t.completion_tokens || t.output_tokens || 0,
         cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
@@ -547,9 +582,10 @@ export async function getUsageStats(period = "all", filterApiKey = null, allowed
       stats.byProvider[r.provider].cachedTokens += cachedTokens;
       stats.byProvider[r.provider].cost += entryCost;
 
-      const modelKey = r.provider ? `${r.model} (${r.provider})` : r.model;
+      const canonicalModel = resolveDisplayModel(r.model, comboMemberMap);
+      const modelKey = r.provider ? `${canonicalModel} (${r.provider})` : canonicalModel;
       if (!stats.byModel[modelKey]) {
-        stats.byModel[modelKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, resolvedModel: (parseJson(r.meta, {}) || {}).resolvedModel || undefined, lastUsed: r.timestamp };
+        stats.byModel[modelKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: canonicalModel, provider: providerDisplayName, resolvedModel: (parseJson(r.meta, {}) || {}).resolvedModel || (canonicalModel !== r.model ? r.model : undefined), lastUsed: r.timestamp };
       }
       stats.byModel[modelKey].requests++;
       stats.byModel[modelKey].promptTokens += promptTokens;
@@ -785,9 +821,10 @@ export async function getUsageStats(period = "all", filterApiKey = null, allowed
       stats.byProvider[r.provider].cachedTokens += cachedTokens;
       stats.byProvider[r.provider].cost += entryCost;
 
-      const modelKey = r.provider ? `${r.model} (${r.provider})` : r.model;
+      const canonicalModel = resolveDisplayModel(r.model, comboMemberMap);
+      const modelKey = r.provider ? `${canonicalModel} (${r.provider})` : canonicalModel;
       if (!stats.byModel[modelKey]) {
-      stats.byModel[modelKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, resolvedModel: (parseJson(r.meta, {}) || {}).resolvedModel || undefined, lastUsed: r.timestamp };
+      stats.byModel[modelKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: canonicalModel, provider: providerDisplayName, resolvedModel: (parseJson(r.meta, {}) || {}).resolvedModel || (canonicalModel !== r.model ? r.model : undefined), lastUsed: r.timestamp };
       }
       stats.byModel[modelKey].requests++;
       stats.byModel[modelKey].promptTokens += promptTokens;
@@ -851,8 +888,9 @@ export async function getChartData(period = "7d", filterApiKey = null, allowedMo
   const db = await getAdapter();
   const now = Date.now();
 
+  const comboMemberMap = buildComboMemberMap(db);
   const patterns = parseAllowedModels(allowedModels);
-  const modelAllowed = (model) => matchesModelPatterns(patterns, model);
+  const modelAllowed = (model) => matchesModelPatterns(patterns, model, comboMemberMap);
 
   // For "today" and "24h", use hourly buckets from usageHistory (already has filterApiKey support)
   if (period === "today") {
@@ -1025,8 +1063,9 @@ export async function getChartData(period = "7d", filterApiKey = null, allowedMo
 export async function getSparks(period = "30d", filterApiKey = null, allowedModels = "*") {
   const db = await getAdapter();
 
+  const comboMemberMap = buildComboMemberMap(db);
   const patterns = parseAllowedModels(allowedModels);
-  const modelAllowed = (model) => matchesModelPatterns(patterns, model);
+  const modelAllowed = (model) => matchesModelPatterns(patterns, model, comboMemberMap);
 
   const DAYS = { today: 1, "24h": 1, "7d": 7, "30d": 30, "60d": 60, all: 60 }[period] || 30;
 
