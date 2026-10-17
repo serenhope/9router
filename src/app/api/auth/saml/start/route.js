@@ -4,6 +4,12 @@ import { getSettings } from "@/lib/localDb";
 import { buildSamlAuthorizeUrl, getSamlBaseUrl, isSamlConfigured } from "@/lib/auth/saml.js";
 import { shouldUseSecureCookie } from "@/lib/auth/dashboardSession";
 
+// Force dynamic rendering: this route reads settings/cookies per request. Without
+// this, `next build` statically probes it during page-data collection, opening the
+// sqlite DB from multiple build workers at once -> "database is locked" -> fatal
+// export error. (Build fix, 2026-10-12.)
+export const dynamic = "force-dynamic";
+
 export async function GET(request) {
   const settings = await getSettings();
   const origin = getSamlBaseUrl(request, settings);
