@@ -101,16 +101,31 @@ describe("Prompt Injection - Rule Matching", () => {
     };
     expect(await isRuleMatching(regexRule, { userText: "generate a report" })).toBe(true);
     expect(await isRuleMatching(regexRule, { userText: "can you generate a report" })).toBe(false);
+
+    const notContainsRule = {
+      enabled: true,
+      content: "test",
+      targetType: "all",
+      matchCondition: {
+        type: "not_contains",
+        pattern: "no-translate, raw-json",
+        caseSensitive: false,
+      },
+    };
+    expect(await isRuleMatching(notContainsRule, { userText: "translate this text" })).toBe(true);
+    expect(await isRuleMatching(notContainsRule, { userText: "translate this raw-json output" })).toBe(false);
   });
 });
 
 describe("Prompt Injection - Variable Interpolation", () => {
   it("interpolates {{model}}, {{provider}}, and date/time", () => {
-    const tpl = "Model: {{model}}, Provider: {{provider}}, Date: {{date}}";
-    const res = interpolateVariables(tpl, { modelStr: "gpt-4o", provider: "openai" });
+    const tpl = "Model: {{model}}, Provider: {{provider}}, Combo: {{comboName}}, Day: {{weekday}}, Date: {{date}}";
+    const res = interpolateVariables(tpl, { modelStr: "gpt-4o", provider: "openai", comboName: "my-super-combo" });
 
     expect(res).toContain("Model: gpt-4o");
     expect(res).toContain("Provider: openai");
+    expect(res).toContain("Combo: my-super-combo");
+    expect(res).toMatch(/Day: (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/);
     expect(res).toMatch(/Date: \d{4}-\d{2}-\d{2}/);
   });
 });
@@ -192,5 +207,12 @@ describe("Prompt Injection - Execution Mutations", () => {
       ],
     };
     expect(extractUserText(body)).toBe("Hello world!");
+  });
+
+  it("handles in-memory cache invalidation correctly", async () => {
+    const { invalidatePromptInjectionCache } = await import("../../src/lib/db/repos/promptInjectionRepo.js");
+    expect(typeof invalidatePromptInjectionCache).toBe("function");
+    // Invalidate should run cleanly without throwing
+    expect(() => invalidatePromptInjectionCache()).not.toThrow();
   });
 });

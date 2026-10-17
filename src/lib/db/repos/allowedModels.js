@@ -17,17 +17,36 @@ export function parseAllowedModels(allowedModels) {
   return patterns.length ? patterns : null;
 }
 
-/** Exact, `prefix*` and `*suffix` patterns, matched case-insensitively. */
-export function matchesAllowedModels(patterns, requestedModel) {
+/** Exact, `prefix*` and `*suffix` patterns, matched case-insensitively. Optionally resolves via comboMap. */
+export function matchesAllowedModels(patterns, requestedModel, comboMap = null) {
   if (!patterns) return true;
   const req = String(requestedModel || "").trim().toLowerCase();
   if (!req) return false;
-  return patterns.some((allowed) => {
-    if (allowed === "*" || allowed === req) return true;
-    if (allowed.endsWith("*")) return req.startsWith(allowed.slice(0, -1));
-    if (allowed.startsWith("*")) return req.endsWith(allowed.slice(1));
+
+  const slash = req.indexOf("/");
+  const bare = slash !== -1 ? req.slice(slash + 1) : req;
+
+  const matchesDirect = patterns.some((allowed) => {
+    if (allowed === "*" || allowed === req || allowed === bare) return true;
+    if (allowed.endsWith("*")) {
+      const p = allowed.slice(0, -1);
+      return req.startsWith(p) || bare.startsWith(p);
+    }
+    if (allowed.startsWith("*")) {
+      const s = allowed.slice(1);
+      return req.endsWith(s) || bare.endsWith(s);
+    }
     return false;
   });
+  if (matchesDirect) return true;
+
+  if (comboMap) {
+    const lookup = typeof comboMap.get === "function" ? (k) => comboMap.get(k) : (k) => comboMap[k];
+    const parent = lookup(req) || (slash !== -1 ? lookup(bare) : null);
+    if (parent && matchesAllowedModels(patterns, parent)) return true;
+  }
+
+  return false;
 }
 
 /**

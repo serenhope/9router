@@ -30,6 +30,22 @@ export async function GET(request) {
     const patterns = parseAllowedModels(ctx.allowedModels || "*");
 
     const db = await getAdapter();
+    const comboMap = {};
+    try {
+      const comboRows = db.all(`SELECT name, models FROM combos`);
+      for (const c of comboRows) {
+        try {
+          const list = typeof c.models === "string" ? JSON.parse(c.models) : c.models;
+          for (const m of (list || [])) {
+            const lower = String(m).toLowerCase();
+            comboMap[lower] = c.name;
+            const slash = lower.indexOf("/");
+            if (slash !== -1) comboMap[lower.slice(slash + 1)] = c.name;
+          }
+        } catch {}
+      }
+    } catch {}
+
     const conds = [];
     const params = [];
     if (cutoff) { conds.push("timestamp >= ?"); params.push(cutoff); }
@@ -51,7 +67,7 @@ export async function GET(request) {
     let errors = 0;
 
     for (const row of rows) {
-      if (!matchesAllowedModels(patterns, row.model)) continue;
+      if (!matchesAllowedModels(patterns, row.model, comboMap)) continue;
       const status = String(row.status || "ok").trim();
       const count = Number(row.count) || 0;
       const tokens = Number(row.totalTokens) || 0;

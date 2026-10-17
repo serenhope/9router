@@ -4,7 +4,11 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
 export PORT=30128
-export DATA_DIR="$ROOT_DIR/.test-data"
+if command -v cygpath >/dev/null 2>&1; then
+  export DATA_DIR="$(cygpath -m "$ROOT_DIR/.test-data")"
+else
+  export DATA_DIR="$ROOT_DIR/.test-data"
+fi
 export NEXT_DIST_DIR=".next-test"
 export NODE_ENV=development
 

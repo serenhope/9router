@@ -581,23 +581,34 @@ export const PATTERN_CAPABILITIES = [
  * @param {number} [_depth] internal recursion depth guard
  * @returns {object|null} full capabilities object, or null for empty input
  */
-export function aggregateComboCapabilities(comboModels, comboLookup = null, resolveCaps = null, _depth = 0) {
+export function aggregateComboCapabilities(comboModels, comboLookup = null, resolveCaps = null, _depth = 0, contextOverride = 0) {
+  // Backward compatibility: callers written before resolveCaps existed passed
+  // (comboModels, comboLookup, depth, contextOverride) - shift when arg3 is a number.
+  if (typeof resolveCaps === "number") {
+    contextOverride = Number(_depth) || 0;
+    _depth = resolveCaps;
+    resolveCaps = null;
+  }
+  const resolve = typeof resolveCaps === "function" ? resolveCaps : null;
   if (!comboModels?.length || _depth > 6) return null;
   const allCaps = comboModels.map((fullId) => {
     // Nested combo: bare name (no slash) that exists in the lookup — recurse
     if (!fullId.includes("/") && comboLookup?.[fullId]) {
-      return aggregateComboCapabilities(comboLookup[fullId], comboLookup, resolveCaps, _depth + 1)
-          ?? resolveCaps?.(fullId)
+      return aggregateComboCapabilities(comboLookup[fullId], comboLookup, resolve, _depth + 1, contextOverride)
+          ?? resolve?.(fullId)
           ?? getCapabilitiesForModel(null, fullId);
     }
     const slash = fullId.indexOf("/");
     const provider = slash === -1 ? null : fullId.slice(0, slash);
     const model = slash === -1 ? fullId : fullId.slice(slash + 1);
     const local = getCapabilitiesForModel(provider, model);
-    const override = resolveCaps?.(fullId);
+    const override = resolve?.(fullId);
     return override ? { ...local, ...override } : local;
   });
   const first = allCaps[0];
+  const windows = allCaps.map((c) => c.contextWindow).filter(Number.isFinite);
+  const outputs = allCaps.map((c) => c.maxOutput).filter(Number.isFinite);
+  const override = Number(contextOverride);
   return {
     vision:      allCaps.some((c) => c.vision),
     pdf:         allCaps.some((c) => c.pdf),
@@ -611,8 +622,10 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, reso
     thinkingFormat:     first.thinkingFormat,
     thinkingCanDisable: first.thinkingCanDisable,
     thinkingRange:      first.thinkingRange,
-    contextWindow: Math.min(...allCaps.map((c) => c.contextWindow)),
-    maxOutput:     Math.max(...allCaps.map((c) => c.maxOutput)),
+    contextWindow: Number.isFinite(override) && override > 0
+      ? override
+      : (windows.length ? Math.max(...windows) : DEFAULT_CAPABILITIES.contextWindow),
+    maxOutput:     outputs.length ? Math.max(...outputs) : DEFAULT_CAPABILITIES.maxOutput,
   };
 }
 

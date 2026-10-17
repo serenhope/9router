@@ -35,6 +35,22 @@ export async function GET(request) {
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
 
     const db = await getAdapter();
+    const comboMap = {};
+    try {
+      const comboRows = db.all(`SELECT name, models FROM combos`);
+      for (const c of comboRows) {
+        try {
+          const list = typeof c.models === "string" ? JSON.parse(c.models) : c.models;
+          for (const m of (list || [])) {
+            const lower = String(m).toLowerCase();
+            comboMap[lower] = c.name;
+            const slash = lower.indexOf("/");
+            if (slash !== -1) comboMap[lower.slice(slash + 1)] = c.name;
+          }
+        } catch {}
+      }
+    } catch {}
+
     const rows = db.all(
       `SELECT model, provider,
               COUNT(*) as requests,
@@ -49,19 +65,25 @@ export async function GET(request) {
     );
 
     const leaderboard = rows
-      .filter(r => r.model && matchesAllowedModels(patterns, r.model))
-      .map((r) => ({
-        model: r.model,
-        provider: r.provider || "",
-        requests: r.requests || 0,
-        successes: r.successes || 0,
-        successRate: r.requests > 0 ? ((r.successes / r.requests) * 100).toFixed(1) : "0.0",
-        promptTokens: r.promptTokens || 0,
-        completionTokens: r.completionTokens || 0,
-        totalTokens: r.totalTokens || 0,
-        avgTokensPerRequest: r.requests > 0 ? Math.round(r.totalTokens / r.requests) : 0,
-        totalCost: r.totalCost || 0,
-      }))
+      .filter(r => r.model && matchesAllowedModels(patterns, r.model, comboMap))
+      .map((r) => {
+        const lower = String(r.model).toLowerCase();
+        const slash = lower.indexOf("/");
+        const bare = slash !== -1 ? lower.slice(slash + 1) : lower;
+        const displayModel = comboMap[lower] || comboMap[bare] || r.model;
+        return {
+          model: displayModel,
+          provider: r.provider || "",
+          requests: r.requests || 0,
+          successes: r.successes || 0,
+          successRate: r.requests > 0 ? ((r.successes / r.requests) * 100).toFixed(1) : "0.0",
+          promptTokens: r.promptTokens || 0,
+          completionTokens: r.completionTokens || 0,
+          totalTokens: r.totalTokens || 0,
+          avgTokensPerRequest: r.requests > 0 ? Math.round(r.totalTokens / r.requests) : 0,
+          totalCost: r.totalCost || 0,
+        };
+      })
       .slice(0, 50);
 
     return NextResponse.json({ period, leaderboard });
