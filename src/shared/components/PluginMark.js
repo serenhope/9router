@@ -84,7 +84,87 @@ const PLUGIN_MARKS = {
       <path d="M8 8.6h8" />
     </>
   ),
-};
+
+  // Agent roles: a robot head, differentiated by the visor accent drawn per role.
+  agentFse: (
+    <>
+      <rect x="5" y="8" width="14" height="10" rx="2.5" />
+      <path d="M12 8V4.5" /><circle cx="12" cy="3.6" r="1.1" fill="currentColor" stroke="none" />
+      <path d="M9 12.2h2.2" /><path d="M12.8 12.2H15" />
+      <path d="M9.5 15h5" />
+    </>
+  ),
+  agentQa: (
+    <>
+      <rect x="5" y="8" width="14" height="10" rx="2.5" />
+      <path d="M12 8V4.5" /><circle cx="12" cy="3.6" r="1.1" fill="currentColor" stroke="none" />
+      <path d="M9 12.5l1.8 1.8 3.4-3.6" />
+      <path d="M9.5 15.2h5" />
+    </>
+  ),
+  agentSecurity: (
+    <>
+      <rect x="5" y="8" width="14" height="10" rx="2.5" />
+      <path d="M12 8V4.5" /><circle cx="12" cy="3.6" r="1.1" fill="currentColor" stroke="none" />
+      <path d="M8.5 12h7" /><path d="M12 12v3.2" /><path d="M9.8 15.2h4.4" />
+    </>
+  ),
+  agentRea: (
+    <>
+      <rect x="5" y="8" width="14" height="10" rx="2.5" />
+      <path d="M12 8V4.5" /><circle cx="12" cy="3.6" r="1.1" fill="currentColor" stroke="none" />
+      <path d="M8.5 11.5L10.5 13.5L8.5 15.5" />
+      <path d="M13.5 11.5L15.5 13.5L13.5 15.5" />
+    </>
+  ),
+  agentSqli: (
+    <>
+      <rect x="5" y="8" width="14" height="10" rx="2.5" />
+      <path d="M12 8V4.5" /><circle cx="12" cy="3.6" r="1.1" fill="currentColor" stroke="none" />
+      <path d="M9 13.5h2" /><path d="M12.8 12.8l2.4 2.4M15.2 12.8l-2.4 2.4" />
+    </>
+  ),
+  agentRag: (
+    <>
+      <rect x="5" y="8" width="14" height="10" rx="2.5" />
+      <path d="M12 8V4.5" /><circle cx="12" cy="3.6" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="9.3" cy="12.6" r="1.4" /><circle cx="14.7" cy="12.6" r="1.4" />
+      <path d="M10.7 12.6h2.6" />
+    </>
+  ),
+  
+  // Temperature Guard: a thermometer inside a brace - clamped, controlled heat.
+  tempGuard: (
+    <>
+      <path d="M10 4.5h4" /><path d="M12 4.5v9" />
+      <circle cx="12" cy="16.5" r="2.5" />
+      <path d="M12 14v-0.5" />
+    </>
+  ),
+  // Output Cap: a full gauge with a clamp bar across it.
+  outputCap: (
+    <>
+      <path d="M4.5 14.5h15" />
+      <path d="M6.5 14.5a5.5 5.5 0 0 1 11 0" />
+      <path d="M12 14.5L15 10" />
+      <path d="M4.5 18h15" />
+    </>
+  ),
+  // Stop Sequence Guard: an octagon stop sign outline with a slash breaking the run.
+  stopGuard: (
+    <>
+      <path d="M9 4.5h6l4.5 4.5v6L15 19.5H9L4.5 15V9z" />
+      <path d="M9.5 9.5l5 5" />
+    </>
+  ),
+  // Prompt Base: an open book with a grounding pin at the spine.
+  promptBase: (
+    <>
+      <path d="M12 5.5c-1.8-1.2-4-1.5-7-1.2v12.4c3-.3 5.2 0 7 1.2 1.8-1.2 4-1.5 7-1.2V4.3c-3-.3-5.2 0-7 1.2z" />
+      <path d="M12 5.5v12.4" />
+    </>
+  ),
+  };
 
 /**
  * One wrapper for every mark so stroke weight, caps and sizing live in one place

@@ -39,7 +39,8 @@ const workshopItems = [
 // conditions to review, not places you visit to work.
 const debugItems = [
   { href: "/dashboard/console-log", label: "Console Log", icon: "monitor" },
-  { href: "/dashboard/translator", label: "Translator", icon: "translate" },
+      { href: "/dashboard/monitoring", label: "Monitoring", icon: "monitor_heart" },
+      { href: "/dashboard/translator", label: "Translator", icon: "translate" },
 ];
 
 const systemItems = [
@@ -156,7 +157,7 @@ export default function Sidebar({ onClose }) {
 
   return (
     <>
-      <aside className="flex w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 min-h-full">
+      <aside className="flex w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 h-full">
 
         {/* Logo */}
         <div className="px-6 py-4 flex flex-col gap-2">
@@ -180,7 +181,7 @@ export default function Sidebar({ onClose }) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 min-h-0 px-4 py-2 space-y-0.5 overflow-y-auto overscroll-contain custom-scrollbar">
           {filteredNavItems.map((item) => (
             <NavLink
               key={item.href}

@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: ["master", "custom*"]
+  pull_request:
+    branches: ["master"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Syntax & lint check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify patched files exist
+        run: |
+          set -e
+          test -f src/app/api/models/route.js
+          test -f src/app/api/v1/models/route.js
+          test -f src/app/(dashboard)/dashboard/monitoring/page.js
+          test -f open-sse/providers/registry/antigravity.js
+          test -f scripts/entrypoint.sh
+          echo "All custom-patched files present."
+
+      - name: Verify combo capabilities fix is applied
+        run: |
+          set -e
+          ! grep -n "aggregateComboCapabilities(.*[^n]0)" src/app/api/models/route.js || {
+            # tolerate a literal 0 only if it is NOT the buggy bare-zero argument
+            true;
+          }
+          node -e "
+            const fs = require('fs');
+            for (const f of ['src/app/api/models/route.js','src/app/api/v1/models/route.js']) {
+              const src = fs.readFileSync(f, 'utf8');
+              if (/aggregateComboCapabilities\([^)]*?[^a-zA-Z0-9_.]0\s*[,)]/.test(src)) {
+                console.error('BUG PRESENT in ' + f + ': aggregateComboCapabilities called with 0');
+                process.exit(1);
+              }
+            }
+            console.log('aggregateComboCapabilities fix verified.');
+          "
+
+      - name: Shell syntax check (entrypoint)
+        run: sh -n scripts/entrypoint.sh
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Next.js build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+        run: npm run build
+
+  docker-build:
+    name: Docker image build check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: 9router-ci-check:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
