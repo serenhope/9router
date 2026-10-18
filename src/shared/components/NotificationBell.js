@@ -6,7 +6,6 @@ import BellMenu from "./BellMenu";
 import NotifToast, { mergeLiveTasks } from "./NotifToast";
 import { useSessionStore } from "@/store/sessionStore";
 import { useTaskStore } from "@/store/taskStore";
-import { revealBackgroundedTasks } from "./LongTaskBanner";
 
 const POLL_MS = 60000;
 
@@ -198,9 +197,6 @@ export default function NotificationBell() {
   // page that owns the run.
   const handlePick = (task) => {
     setOpen(false);
-    // A page-level banner the operator had collapsed comes back, so the run
-    // they opened the bell for is on screen again.
-    revealBackgroundedTasks();
     if (task.href && typeof window !== "undefined") {
       window.location.assign(task.href);
     }

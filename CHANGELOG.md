@@ -1,3 +1,9 @@
+# v0.5.205 (2026-10-18) · 2 commits
+
+## What Was Fixed
+
+- **No floating progress UI left**: `LongTaskBanner` no longer renders its `fixed inset-0` scrim or the collapsed `bottom-20 right-4` corner chip — a fixed banner returns `null`. Progress for every long task now lives solely in the notification bell (`taskStore` → `NotifToast`), so nothing duplicates it in a screen corner. The no-op helpers (`revealBackgroundedTasks`, `subscribeToTaskReveal`) stay exported for existing callers. Inline in-modal `ProgressCard fixed={false}` readouts are unchanged.
+
 # v0.5.204 (2026-10-18) · 2 commits
 
 ## What Was Fixed
