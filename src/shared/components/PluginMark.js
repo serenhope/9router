@@ -5,96 +5,101 @@
 // SVG rather than the material-symbols font on purpose. The project ships only a
 // 143-glyph subset of that font, so a name outside the subset renders blank, and
 // a ligature is shared with every other surface that uses it - a plugin mark
-// could not be told apart from an unrelated button. These paths are unique per
-// mark and legible at 12px and at 24px.
+// could not be told apart from an unrelated button.
 //
-// One drawing language:
-//   * a single shape + one accent, 24x24 grid, round caps, strokes >= 1.9;
+// One drawing language, all outline:
+//   * gridded primitives - a frame, a lens, a staircase, a node graph, a bolt,
+//     braces, a press, an arch, a funnel. Nothing hand-drawn, no detail finer
+//     than 2.4 units, max 17 units on the 24 grid so every mark carries the same
+//     optical weight;
+//   * uniform 2.0 stroke with round caps and joins - a 24px card tile and a 12px
+//     model row differ only in weight, never in language;
+//   * one filled accent, used only for the thing being acted on: a pupil, the
+//     payload, the deepest step, the active node, the crossing at the apex.
+//     Everything else stays hollow, so the set never reads as half-wireframe;
 //   * colour is NOT carried by the glyph - the caller picks the ink, so the
-//     plugin card can wear the theme accent and a dense model row can stay
-//     muted without a second set of marks. Seven pictograms in seven saturated
-//     hues read as seven unrelated brands; seven glyphs in one ink read as one
-//     system;
-//   * a mark must survive being drawn at 12px in a model row next to another,
-//     so no hairlines and no detail finer than 2.4 units.
+//     plugin card wears the theme accent and a dense model row stays muted
+//     without a second set of marks.
 //
-// Native vision and reasoning keep their own drawings. Image Vision is a
-// viewfinder, native vision is a filled eye - the ring is stroked, never filled,
-// so the two cannot blur together on a model row where both are possible.
+// Image Vision and native vision are deliberately opposite constructions (a
+// frame around a dot, a lens around a dot) so they cannot be confused when both
+// appear on one model row.
 
 const PLUGIN_MARKS = {
-  // Image Vision: viewfinder corners around a hollow lens ring - the frame a
-  // picture goes into.
+  // Image Vision: viewfinder corners around a subject - the picture goes into
+  // the frame. Corners rather than a full rect so it survives 12px and never
+  // reads as native vision's lens.
   imageVision: (
     <>
-      <path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16" />
-      <circle cx="12" cy="12" r="3" />
+      <path d="M4 8.4V6.2A2.2 2.2 0 0 1 6.2 4h2.2M15.6 4h2.2A2.2 2.2 0 0 1 20 6.2v2.2M20 15.6v2.2a2.2 2.2 0 0 1-2.2 2.2h-2.2M8.4 20H6.2A2.2 2.2 0 0 1 4 17.8v-2.2" />
+      <circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none" />
     </>
   ),
-  // Native vision: an eye - an almond lens with a solid pupil. "Sees the image."
+  // Native vision: the lens itself - a closed almond with a solid pupil.
   vision: (
     <>
-      <path d="M2.8 12S6.2 6.8 12 6.8 21.2 12 21.2 12 17.8 17.2 12 17.2 2.8 12 2.8 12z" />
-      <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+      <path d="M2.6 12c2.6-3.8 5.8-5.6 9.4-5.6s6.8 1.8 9.4 5.6c-2.6 3.8-5.8 5.6-9.4 5.6S5.2 15.8 2.6 12z" />
+      <circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none" />
     </>
   ),
-  // Think Deeper: plates narrowing into the page with a chevron driving down
-  // through them - depth. (Equal-width bars read as a hamburger menu with a
-  // chevron under it.)
+  // Think Deeper: a staircase descending into the page - each step carries the
+  // last one further down, and the filled tread is the depth it reached. A
+  // staircase, not narrowing bars, so it cannot be read as a sort/filter glyph
+  // or mistaken for the funnel.
   thinkDeeper: (
     <>
-      <path d="M4.5 5.5h15" />
-      <path d="M7 10h10" />
-      <path d="M9.5 14.5h5" />
-      <path d="M9.3 17.6l2.7 2.7 2.7-2.7" />
+      <path d="M5.5 8.5h3.6v3.6h3.6v3.6h3.6" />
+      <circle cx="16.3" cy="15.7" r="1.9" fill="currentColor" stroke="none" />
     </>
   ),
-  // Native reasoning: three concepts joined - a chain of thought drawn as a
-  // graph. Nodes are large enough that at 12px they do not blur into the links.
+  // Native reasoning: a chain of thought - one node feeding two. The active node
+  // is the only filled one; the branches stay hollow.
   reasoning: (
     <>
-      <path d="M6.4 8.6l5.6 3.1 5.6-3.1M12 11.7v4.5" />
-      <circle cx="6" cy="7.2" r="2.4" />
-      <circle cx="18" cy="7.2" r="2.4" />
-      <circle cx="12" cy="17.4" r="2.4" />
+      <path d="M12 10.4v3.2M8.6 17.4l3.4-3.8 3.4 3.8" />
+      <circle cx="12" cy="7.6" r="2.7" fill="currentColor" stroke="none" />
+      <circle cx="6.6" cy="18.4" r="2.4" />
+      <circle cx="17.4" cy="18.4" r="2.4" />
     </>
   ),
-  // Speed Mode: a lightning bolt - the answer comes back now, no thinking
-  // first. The bolt alone is the whole mark; it needs no second reading.
-  speedMode: <path d="M13.5 3.5L6.2 13H11l-0.5 7.5 7.3-9.8h-4.9z" />,
-  // JSON Guard: braces sealing a checked value - the structure is valid.
+  // Speed Mode: the bolt. One stroked polygon, one reading - the answer comes
+  // back now, before any thinking. Gridded so its counter holds at 12px.
+  speedMode: <path d="M13.4 3.2 5.8 13.6h5l-.8 7.2 7.8-10.4h-5z" />,
+  // JSON Guard: open braces - the shape a valid payload lives in. Braces alone
+  // already say "code" without ambiguity; the payload dot this used to carry
+  // collided with Image Vision's frame-dot at 12px, where both collapse into
+  // "two ticks flanking a blob".
   jsonGuard: (
     <>
-      <path d="M9.4 4.5C7.9 4.5 7.5 5.3 7.5 6.6v2c0 1.2-.6 1.9-1.7 1.9 1.1 0 1.7.7 1.7 1.9v2c0 1.3.4 2.1 1.9 2.1" />
-      <path d="M14.6 4.5c1.5 0 1.9.8 1.9 2.1v2c0 1.2.6 1.9 1.7 1.9-1.1 0-1.7.7-1.7 1.9v2c0 1.3-.4 2.1-1.9 2.1" />
-      <path d="M9.6 12.2l1.7 1.7 3.2-3.4" />
+      <path d="M9.4 5c-1.4 0-1.8.8-1.8 2.1v2.1c0 1.2-.6 1.8-1.7 1.8 1.1 0 1.7.6 1.7 1.8v2.1c0 1.3.4 2.1 1.8 2.1" />
+      <path d="M14.6 5c1.4 0 1.8.8 1.8 2.1v2.1c0 1.2.6 1.8 1.7 1.8-1.1 0-1.7.6-1.7 1.8v2.1c0 1.3-.4 2.1-1.8 2.1" />
     </>
   ),
-  // Context Squeezer: two presses closing on a stack from the sides - same
-  // content, less room. Squeezing sideways keeps it apart from Think Deeper's
-  // downward chevron.
+  // Context Squeezer: one piece of content with both walls closing on it - same
+  // content, less room. Two chevrons and a single bar, so it stays open at 12px
+  // and cannot read as a stack or as expand/collapse.
   contextSqueezer: (
     <>
-      <path d="M9.4 8.5h5.2M9.4 12h5.2M9.4 15.5h5.2" />
-      <path d="M6.6 6.5L4.5 12l2.1 5.5" />
-      <path d="M17.4 6.5l2.1 5.5-2.1 5.5" />
+      <path d="M9.4 12h5.2" />
+      <path d="M7.8 7.4 5.2 12l2.6 4.6" />
+      <path d="M16.2 7.4 18.8 12l-2.6 4.6" />
     </>
   ),
-  // OpenAI Tool Bridge: two docks joined by one cable arcing over like a
-  // bridge, the recovered call crossing at the apex dot.
+  // OpenAI Tool Bridge: two docks and one cable arcing over them, the recovered
+  // call crossing at the apex. A true arch, not an S-curve.
   openaiToolBridge: (
     <>
-      <path d="M5 6.5v11" />
-      <path d="M19 6.5v11" />
-      <path d="M5 12c2.5 0 3-5 7-5s4.5 5 7 5" />
-      <circle cx="12" cy="7" r="1.8" fill="currentColor" stroke="none" />
+      <path d="M6.2 15.6v-5.4M17.8 15.6v-5.4" />
+      <path d="M6.2 10.2c2.2-3 3.8-4.6 5.8-4.6s3.6 1.6 5.8 4.6" />
+      <circle cx="12" cy="5.6" r="1.8" fill="currentColor" stroke="none" />
     </>
   ),
-  // Anti Slop: a funnel - the flow passes, the specks are caught at the neck.
+  // Anti Slop: a filter - everything passes the mouth, the specks stop at the
+  // throat. A compact trapezoid and a centred stem, gridded.
   antiSlop: (
     <>
-      <path d="M4.5 5.5h15l-4.6 6.4v5.2l-5.8 2.6v-7.8z" />
-      <path d="M8 8.6h8" />
+      <path d="M4.8 5.6h14.4l-5.6 6.6h-3.2z" />
+      <path d="M12 12.2v6.2" />
     </>
   ),
 

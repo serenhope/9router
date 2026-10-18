@@ -1,3 +1,18 @@
+# v0.5.213 (2026-10-18) · 1 commit
+
+- refactor(ui): the nine plugin/capability marks are redrawn as one gridded,
+  single-outline family.
+  - All marks share the same 2.0 round-cap stroke, live in the same 17-unit box
+    and use at most two gridded primitives; the hand-drawn arcs, the 14% plates
+    and the mixed fill/outline grammar are gone.
+  - One filled accent per mark, only on the thing being acted on: the pupil,
+    the payload tread, the active node, the crossing at the apex. JSON Guard
+    drops its payload dot - braces already say code, and the dot collided with
+    Image Vision's frame-dot at 12px.
+  - Think Deeper is a descending staircase with a filled tread (it used to read
+    as a sort/filter bar set and tangled with the funnel), and Context Squeezer
+    is a single bar pressed by two chevrons.
+
 # v0.5.212 (2026-10-18) · 1 commit
 
 - refactor(ui): the marks are drawn glyphs again, not text monograms.
