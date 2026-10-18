@@ -1,3 +1,10 @@
+# v0.5.203 (2026-10-18) · 2 commits
+
+## What Was Fixed
+
+- **Proxy pool fallback for no-auth providers**: Support automatic fallback and exclusion for rotating proxy pools on free/no-auth providers (`opencode`). Tag virtual connections with `proxy:<id>` so 403 `FreeTierError`, 429, and 5xx trigger seamless fallback across healthy pools without prematurely aborting requests.
+- **OpenCode DeepSeek V4.1 Flash**: Aligned `OPENCODE_FAMILIES` regex to properly match `deepseek-v4.1-flash-free` and registered it with full format support (`[openai, claude, openai-responses]`).
+
 # v0.5.202 (2026-10-17) · 2 commits
 
 ## What Was Fixed
