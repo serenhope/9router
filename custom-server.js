@@ -13,6 +13,24 @@ const origCreate = http.createServer.bind(http);
 const PEER_TOKEN = crypto.randomBytes(24).toString("hex");
 process.env.NINEROUTER_PEER_TOKEN = PEER_TOKEN;
 
+function findAppRoot() {
+  const candidates = [
+    __dirname,
+    path.resolve(__dirname, "..", ".."),
+    path.resolve(__dirname, ".."),
+  ];
+  for (const dir of candidates) {
+    if (
+      fs.existsSync(path.join(dir, "src", "dashboardGuard.js")) &&
+      fs.existsSync(path.join(dir, "scripts", "auth-guard-hooks.mjs"))
+    ) {
+      return dir;
+    }
+  }
+  return __dirname;
+}
+const APP_ROOT = findAppRoot();
+
 let backgroundRefreshStarted = false;
 
 // Arm the automatic-backup scheduler as soon as the HTTP server is listening.
@@ -25,6 +43,7 @@ function startAutoBackupFromCustomServer() {
   if (autoBackupStarted) return;
   autoBackupStarted = true;
   const candidates = [
+    path.join(APP_ROOT, "src", "shared", "services", "telegramBackup.js"),
     path.join(__dirname, "src", "shared", "services", "telegramBackup.js"),
     path.join(__dirname, "..", "src", "shared", "services", "telegramBackup.js"),
   ];
@@ -49,7 +68,7 @@ function startBackgroundTokenRefreshFromCustomServer() {
   backgroundRefreshStarted = true;
   // Prefer source path (repo / standalone that still has src). Fail-open if missing
   // - initializeApp also starts the same scheduler when the Next app boots.
-  const modPath = path.join(__dirname, "src", "sse", "services", "backgroundTokenRefresh.js");
+  const modPath = path.join(APP_ROOT, "src", "sse", "services", "backgroundTokenRefresh.js");
   import(pathToFileURL(modPath).href)
     .then((m) => {
       try {
@@ -84,7 +103,8 @@ function applyDotEnvPort() {
   for (const name of [".env.local", ".env"]) {
     let text;
     try {
-      text = fs.readFileSync(path.join(__dirname, name), "utf8");
+      const p = fs.existsSync(path.join(__dirname, name)) ? path.join(__dirname, name) : path.join(APP_ROOT, name);
+      text = fs.readFileSync(p, "utf8");
     } catch {
       continue; // no such file - fine
     }
@@ -127,8 +147,8 @@ let guardModulePromise = null;
 function getGuardModule() {
   if (!guardModulePromise) {
     guardModulePromise = (async () => {
-      const hooksPath = path.join(__dirname, "scripts", "auth-guard-hooks.mjs");
-      const guardPath = path.join(__dirname, "src", "dashboardGuard.js");
+      const hooksPath = path.join(APP_ROOT, "scripts", "auth-guard-hooks.mjs");
+      const guardPath = path.join(APP_ROOT, "src", "dashboardGuard.js");
       if (!fs.existsSync(hooksPath) || !fs.existsSync(guardPath)) return null;
       require("node:module").register(pathToFileURL(hooksPath).href);
       return await import(pathToFileURL(guardPath).href);
@@ -151,7 +171,7 @@ let securityRepoPromise = null;
 function getSecurityRepo() {
   if (!securityRepoPromise) {
     securityRepoPromise = import(
-      pathToFileURL(path.join(__dirname, "src", "lib", "db", "repos", "securityLogRepo.js")).href
+      pathToFileURL(path.join(APP_ROOT, "src", "lib", "db", "repos", "securityLogRepo.js")).href
     );
   }
   return securityRepoPromise;
@@ -161,7 +181,7 @@ let sessionModulePromise = null;
 function getSessionModule() {
   if (!sessionModulePromise) {
     sessionModulePromise = import(
-      pathToFileURL(path.join(__dirname, "src", "lib", "auth", "dashboardSession.js")).href
+      pathToFileURL(path.join(APP_ROOT, "src", "lib", "auth", "dashboardSession.js")).href
     );
   }
   return sessionModulePromise;

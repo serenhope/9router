@@ -48,6 +48,21 @@ describe("standalone build assets", () => {
       .toBe("wrapper");
   });
 
+  it("copies scripts and src into standalone output when present", () => {
+    const projectRoot = createBuildFixture(".next");
+    mkdirSync(join(projectRoot, "scripts"), { recursive: true });
+    mkdirSync(join(projectRoot, "src"), { recursive: true });
+    writeFileSync(join(projectRoot, "scripts", "auth-guard-hooks.mjs"), "hooks");
+    writeFileSync(join(projectRoot, "src", "dashboardGuard.js"), "guard");
+
+    copyStandaloneAssets({ projectRoot, distDir: ".next" });
+
+    expect(readFileSync(join(projectRoot, ".next", "standalone", "scripts", "auth-guard-hooks.mjs"), "utf8"))
+      .toBe("hooks");
+    expect(readFileSync(join(projectRoot, ".next", "standalone", "src", "dashboardGuard.js"), "utf8"))
+      .toBe("guard");
+  });
+
   it("does not modify workspace-traced CLI builds", () => {
     const projectRoot = createBuildFixture(".next-cli-build");
     const previousMode = process.env.NEXT_TRACING_ROOT_MODE;

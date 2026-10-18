@@ -37,6 +37,21 @@ export function copyStandaloneAssets({ projectRoot = process.cwd(), distDir = pr
     cpSync(serverWrapperSource, serverWrapperDestination, { force: true });
     console.log(`[standalone-assets] Copied custom-server.js to ${serverWrapperDestination}`);
   }
+
+  // custom-server.js requires scripts/ and server-side src/ modules (auth guard, repos).
+  const scriptsSource = resolve(projectRoot, "scripts");
+  const scriptsDestination = resolve(standaloneDir, "scripts");
+  if (existsSync(scriptsSource)) {
+    cpSync(scriptsSource, scriptsDestination, { recursive: true, force: true });
+    console.log(`[standalone-assets] Copied scripts to ${scriptsDestination}`);
+  }
+
+  const srcSource = resolve(projectRoot, "src");
+  const srcDestination = resolve(standaloneDir, "src");
+  if (existsSync(srcSource)) {
+    cpSync(srcSource, srcDestination, { recursive: true, force: true });
+    console.log(`[standalone-assets] Copied src to ${srcDestination}`);
+  }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(dirname(fileURLToPath(import.meta.url)), "copy-standalone-assets.mjs")) {
