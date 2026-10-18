@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Card, Button, Toggle, Input, Select, DownloadBackupModal, ProgressCard } from "@/shared/components";
+import { Card, Button, Toggle, Input, Select, DownloadBackupModal } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import SettingsHistory from "@/shared/components/SettingsHistory";
@@ -137,12 +137,15 @@ export default function ProfilePage() {
   const certFileRef = useRef(null);
 
   const importFileRef = useRef(null);
-  // Progress overlay state. `busy` holds { title, message, section, progress };
-  // ProgressCard from the shared Loading module renders it directly.
+  // Progress state for backup export/import and test runs. `busy` holds
+  // { title, message, section, progress }. It has no overlay of its own: the
+  // task store below is the only surface it reaches, so the run is announced in
+  // the notification bell instead of taking over the page with a fixed scrim
+  // anchored bottom-right.
   const [busy, setBusy] = useState(null);
   const profileTaskRef = useRef(null);
 
-  // Sync busy progress card with the bell notification task store
+  // Report the backup run into the bell task store (no page overlay).
   useEffect(() => {
     if (busy) {
       const taskId = "profile-backup-task";
@@ -2054,16 +2057,6 @@ export default function ProfilePage() {
         loading={dbLoading}
       />
 
-      {/* Blocking progress card for backup export/import and test runs.
-          Backdrop-blurred and centered, same card everywhere a long
-          operation runs. */}
-      {busy ? (
-        <ProgressCard
-          title={busy.title}
-          message={busy.message}
-          progress={busy.progress}
-        />
-      ) : null}
 
       <Modal
         isOpen={dbAuth.open}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { Badge, Button, Card, CardSkeleton, Input, Modal, Pagination, ProgressCard, Toggle, ConfirmModal, PageShell } from "@/shared/components";
+import { Badge, Button, Card, CardSkeleton, Input, Modal, Pagination, Toggle, ConfirmModal, PageShell } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useTaskStore } from "@/store/taskStore";
 import {
@@ -610,7 +610,7 @@ export default function ProxyPoolsPage() {
   // kept its own `fixed inset-0` overlay on screen for the whole deploy, and the
   // success path called these closers *while* `deploying` was still true, so
   // `if (deploying) return` turned the close into a no-op and the dialog never
-  // went away. Progress for the page's own card lives in ProgressCard.
+  // went away. Deploy progress is announced through the bell task store.
   const closeVercelModal = () => {
     setShowVercelModal(false);
   };
@@ -1169,12 +1169,6 @@ export default function ProxyPoolsPage() {
         )}
       </Card>
 
-      {deploying && (
-        <ProgressCard
-          title={deployLabel || "Deploying relay"}
-          message="Pushing worker build to the edge, this can take about a minute"
-        />
-      )}
 
       <Modal
         isOpen={showBatchImportModal}

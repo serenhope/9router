@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import PropTypes from "prop-types";
-import { Button, ProgressCard } from "@/shared/components";
+import { Button } from "@/shared/components";
 import { useTaskStore } from "@/store/taskStore";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
@@ -76,7 +76,6 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [importTotals, setImportTotals] = useState(null);
   const [testingModelId, setTestingModelId] = useState(null);
   const [modelTestResults, setModelTestResults] = useState({});
 
@@ -179,17 +178,14 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         message: `0/${models.length} models`,
         progress: 0,
       });
-      setImportTotals({ done: 0, total: models.length });
       let importedCount = 0;
       for (let index = 0; index < models.length; index += 1) {
         const model = models[index];
         const modelId = model.id || model.name || model.model;
         if (!modelId) {
-          setImportTotals({ done: index + 1, total: models.length });
           continue;
         }
         if (allModels.some((entry) => entry.id === modelId)) {
-          setImportTotals({ done: index + 1, total: models.length });
           continue;
         }
         await onAddCustomModel(modelId);
@@ -198,7 +194,6 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
           message: `${index + 1}/${models.length} models`,
           progress: Math.round(((index + 1) / models.length) * 100),
         });
-        setImportTotals({ done: index + 1, total: models.length });
       }
       if (importedCount === 0) {
         alert("No new models were added.");
@@ -208,7 +203,6 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     } finally {
       useTaskStore.getState().finish(taskId);
       setImporting(false);
-      setImportTotals(null);
     }
   };
 
@@ -265,28 +259,8 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         </div>
       )}
 
-      {importing && (
-        // Wrapped in a positioned box. `fixed={false}` renders the card as
-        // `absolute inset-0`, and without a positioned ancestor that resolves
-        // against the whole page - so the scrim covered the dashboard for the
-        // whole import while only this section's progress needed showing.
-        <div className="relative">
-          <ProgressCard
-            fixed={false}
-            title="Importing models"
-            message={
-              importTotals && importTotals.total > 0
-                ? `${importTotals.done}/${importTotals.total} models`
-                : "Fetching model list"
-            }
-            progress={
-              importTotals && importTotals.total > 0
-                ? Math.round((importTotals.done / importTotals.total) * 100)
-                : null
-            }
-          />
-        </div>
-      )}
+      {/* No section-covering scrim here: handleImport() reports into the task
+          store, so the notification bell is the only progress surface. */}
     </div>
   );
 }

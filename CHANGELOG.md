@@ -1,3 +1,9 @@
+# v0.5.204 (2026-10-18) · 2 commits
+
+## What Was Fixed
+
+- **Loading states consolidated into the notification bell**: Importing/exporting the database, importing models, batch-testing provider connections, and deploying proxy relays no longer render a blocking `fixed inset-0` scrim or a `fixed bottom-right` corner chip. Every long-running operation now reports only through the bell task store (`taskStore` → `NotifToast`), matching the v0.5.198 contract. Modal-inline `ProgressCard` instances (`fixed={false}`) are retained.
+
 # v0.5.203 (2026-10-18) · 2 commits
 
 ## What Was Fixed

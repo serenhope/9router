@@ -8,7 +8,6 @@ import {
   Badge,
   Button,
   Toggle,
-  ProgressCard,
 } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import PageShell from "@/shared/components/PageShell";
@@ -715,17 +714,9 @@ export default function ProvidersPage() {
         }}
         />
 
-      {/* Test Results Modal */}
-      {testingMode && (
-        <ProgressCard
-          title="Testing connections"
-          message={
-            testingMode === "provider"
-              ? "Testing every connection on this provider"
-              : `Testing all ${testingMode === "oauth" ? "OAuth" : testingMode === "free" ? "Free tier" : "API key"} connections`
-          }
-        />
-      )}
+      {/* No overlay while a batch test runs: handleBatchTest() reports it into
+          the task store, so the bell owns the readout and the page stays
+          usable. The results modal below is the outcome, not the progress. */}
 
       {testResults && (
         <div
