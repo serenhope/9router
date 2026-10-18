@@ -187,7 +187,10 @@ export default function LoginPage() {
         <div className="landing-grid absolute inset-0 pointer-events-none" aria-hidden="true" />
         <div className="relative z-10 w-full max-w-md">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-primary mb-2">9Router</h1>
+            <div className="flex items-center justify-center gap-3 mb-2">
+            <img src="/logo-mark.svg" alt="9Router" className="size-11 sm:size-12" width={48} height={48} />
+            <h1 className="text-3xl font-bold text-primary">9Router</h1>
+          </div>
             <p className="text-text-muted">This API key is signed in but holds no dashboard permission</p>
           </div>
           <Card>
@@ -211,7 +214,10 @@ export default function LoginPage() {
       <div className="landing-grid absolute inset-0 pointer-events-none" aria-hidden="true" />
       <div className="relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary mb-2">9Router</h1>
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <img src="/logo-mark.svg" alt="9Router" className="size-11 sm:size-12" width={48} height={48} />
+            <h1 className="text-3xl font-bold text-primary">9Router</h1>
+          </div>
           <p className="text-text-muted">
             {samlAvailable
               ? "Sign in with SAML 2.0 Single Sign-On"
