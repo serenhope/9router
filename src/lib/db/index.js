@@ -121,8 +121,6 @@ export async function exportDb(options = null) {
   }
   if (isIncluded("combos")) {
     out.combos = db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt }));
-    out.promptInjections = {};
-    for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'promptInjections'`)) out.promptInjections[r.key] = parseJson(r.value);
   }
   if (isIncluded("usage")) {
     out.usageHistory = db.all(`SELECT * FROM usageHistory ORDER BY id`);
@@ -372,12 +370,6 @@ export async function importDb(payload) {
       }
     }
 
-    if (payload.promptInjections !== undefined) {
-      db.run(`DELETE FROM kv WHERE scope = 'promptInjections'`);
-      for (const [key, value] of Object.entries(payload.promptInjections || {})) {
-        db.run(`INSERT OR REPLACE INTO kv(scope, key, value) VALUES('promptInjections', ?, ?)`, [key, stringifyJson(value)]);
-      }
-    }
 
     // autoBackup rides in its own KV scope. Only touch it when the backup actually
     // carries the section: an old or partial backup must not reset the schedule.

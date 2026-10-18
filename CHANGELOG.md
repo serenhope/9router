@@ -1,3 +1,57 @@
+# v0.5.212 (2026-10-18) · 1 commit
+
+- refactor(ui): the marks are drawn glyphs again, not text monograms.
+  - PluginMark is back to unique SVG paths (viewfinder, eye, narrowing plates,
+    chain graph, bolt, braces, presses, bridge, funnel) that stay legible at
+    12px and 24px; a text render stopped reading as an icon.
+  - The single-accent rule from v0.5.211 stays: no hue in the constants, the
+    caller picks the ink (theme accent on the tile, muted on a dense row).
+  - Stroke weights are explicit where the surface needs them (1.9 in
+    CapacityBadges, 2.4 on 12px model rows).
+
+# v0.5.211 (2026-10-18) · 1 commit
+
+- refactor(ui): the plugin marks are monograms in one accent instead of seven
+  pictograms in seven saturated hues.
+  - PluginMark draws two letters (IV, TD, SM, JG, CS, OB, AS) in the caller's
+    ink; native vision and reasoning get EY and RN so they cannot collide with
+    Image Vision's IV on a shared model row.
+  - Colour left the constants: CAPACITY_META and PLUGIN_MARK_META carry no hue,
+    so a plugin tile is themed with the primary accent and a dense row stays
+    muted from the same component.
+  - The plugin card tile now states its own state - accent tint plus ring when
+    on, flat neutral when off - instead of colouring the glyph.
+
+# v0.5.210 (2026-10-18) · 2 commits
+
+## What Was Removed
+
+- **Prompt Injection feature and menu deleted**: the dashboard page (`/dashboard/prompt-injection`), its API (`/api/prompt-injection`), the `promptInjectionRepo`, the chat-handler call sites (combo/model and provider/model), the sidebar entry, the guard's protected-path entry, the permission rules, and the DB backup/restore carrying of the `promptInjections` kv scope are all gone; the feature's test suite is removed with it. Existing `promptInjections` kv rows are left in place (forward-only, no destructive migration) but nothing reads or writes them any more.
+
+# v0.5.209 (2026-10-18) · 2 commits
+
+## What Was Fixed
+
+- **API-key quota card no longer under-reports after log cleanup**: `/api/usage/api-keys` summed `usageHistory` only, so a key at 20.65M/100M showed 6.4M (6%) once history rows were pruned by export/import cycles. The card now shows `max(apiKeys.usedTokens column, window sum)` — the column is what `validateApiKey` enforces, the log stays a fallback that still wins right after a window rollover.
+
+# v0.5.208 (2026-10-18) · 2 commits
+
+## What Was Fixed
+
+- **Invalid API-key logins now count toward the lockout**, same as wrong passwords: `POST /api/auth/login` with an unknown/disabled/expired/IP-locked key replies `Invalid API key. N attempt(s) left before lockout.`, burns the same `recordFail` counter via `loginLimiter`, and reaches the same 429 `Too many failed attempts` lock after the limit. Quota-exhausted keys still sign in (v0.5.207). Audit event now carries the remaining attempts.
+
+# v0.5.207 (2026-10-18) · 2 commits
+
+## What Was Fixed
+
+- **Exhausted API keys can still sign in to the dashboard**: `POST /api/auth/login` previously rejected `QUOTA_EXCEEDED` with 401, so a key at its token limit (e.g. 100M/100M) could never open the dashboard to see its own usage bar. The login route now lets a quota-exhausted key through (session + audit event `apikey_login_quota`); request-side enforcement is unchanged — `/v1/*` still fails because the SSE handler validates the key again. Disabled/expired/IP-locked keys are still rejected at login.
+
+# v0.5.206 (2026-10-18) · 2 commits
+
+## What Was Fixed
+
+- **Relay deploy jobs no longer fail with `Cannot find module '@/app/api/proxy-pools/cloudflare-deploy/route'`**: `deploy-relay` resolved its route with `await import(modPath)` from a variable map, which webpack cannot trace (it emitted `Critical dependency: the request of a dependency is an expression`), so at runtime Node saw the raw `@/` alias and threw. The map now holds static importer functions (`() => import("@/app/api/proxy-pools/<provider>-deploy/route")`), so every route is a literal webpack bundles. `health-check`, which already used a literal, was unaffected.
+
 # v0.5.205 (2026-10-18) · 2 commits
 
 ## What Was Fixed

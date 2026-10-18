@@ -32,7 +32,6 @@ const workshopItems = [
   { href: "/dashboard/arena", label: "Compare Models", icon: "swords" },
   { href: "/dashboard/model-editor", label: "Custom Models", icon: "auto_awesome" },
   { href: "/dashboard/plugins", label: "Custom Plugins", icon: "widgets" },
-  { href: "/dashboard/prompt-injection", label: "Prompt Injection", icon: "tune" },
 ];
 
 // Security Log and Inbox Error live in the bell, not the menu - they are
@@ -120,7 +119,7 @@ export default function Sidebar({ onClose }) {
 
   const filteredWorkshopItems = workshopItems.filter((item) => {
     if (!isApiKeyUser) return true;
-    if (item.href === "/dashboard/model-editor" || item.href === "/dashboard/arena" || item.href === "/dashboard/prompt-injection") {
+    if (item.href === "/dashboard/model-editor" || item.href === "/dashboard/arena") {
       return permissions.manageModels;
     }
     if (item.href === "/dashboard/plugins") return permissions.managePlugins;

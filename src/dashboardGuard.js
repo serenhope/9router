@@ -63,7 +63,6 @@ const PROTECTED_API_PATHS = [
   "/api/combos",
   "/api/models",
   "/api/model-editor",
-  "/api/prompt-injection",
   "/api/usage",
   "/api/oauth",
   "/api/cloud",

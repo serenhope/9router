@@ -6,35 +6,41 @@
 // 143-glyph subset of that font, so a name outside the subset renders blank, and
 // a ligature is shared with every other surface that uses it - a plugin mark
 // could not be told apart from an unrelated button. These paths are unique per
-// mark and legible at 14px and at 24px.
+// mark and legible at 12px and at 24px.
 //
 // One drawing language:
-//   * a single shape + one accent, 24x24 grid, round caps, strokes >= 2.0;
-//   * colour is NOT carried by the tile - the caller's tile is neutral and the
-//     glyph itself is the accent, so seven plugins read as one system instead of
-//     seven unrelated coloured chips;
-//   * a mark must survive being drawn at 14px in a model row next to another,
+//   * a single shape + one accent, 24x24 grid, round caps, strokes >= 1.9;
+//   * colour is NOT carried by the glyph - the caller picks the ink, so the
+//     plugin card can wear the theme accent and a dense model row can stay
+//     muted without a second set of marks. Seven pictograms in seven saturated
+//     hues read as seven unrelated brands; seven glyphs in one ink read as one
+//     system;
+//   * a mark must survive being drawn at 12px in a model row next to another,
 //     so no hairlines and no detail finer than 2.4 units.
+//
+// Native vision and reasoning keep their own drawings. Image Vision is a
+// viewfinder, native vision is a filled eye - the ring is stroked, never filled,
+// so the two cannot blur together on a model row where both are possible.
 
 const PLUGIN_MARKS = {
-  // Vision: an eye - an almond lens with a solid pupil. "Sees the image."
   // Image Vision: viewfinder corners around a hollow lens ring - the frame a
-  // picture goes into. The ring is stroked, never filled, so it cannot read
-  // as native vision's solid pupil on a model row. (The old mark reused the
-  // same solid dot and the two blurred together at 14px.)
+  // picture goes into.
   imageVision: (
     <>
       <path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16" />
       <circle cx="12" cy="12" r="3" />
     </>
   ),
-  // Reasoning: three concepts joined - a chain of thought drawn as a graph.
-  // Nodes grew from r=2.3 to r=2.6 and the links were re-seated on their
-  // edges; at 14px the old nodes blurred into the links and the graph read
-  // as a triangle doodle.
+  // Native vision: an eye - an almond lens with a solid pupil. "Sees the image."
+  vision: (
+    <>
+      <path d="M2.8 12S6.2 6.8 12 6.8 21.2 12 21.2 12 17.8 17.2 12 17.2 2.8 12 2.8 12z" />
+      <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+    </>
+  ),
   // Think Deeper: plates narrowing into the page with a chevron driving down
-  // through them - depth. (The old equal-width bars read as a hamburger menu
-  // with a chevron under it.)
+  // through them - depth. (Equal-width bars read as a hamburger menu with a
+  // chevron under it.)
   thinkDeeper: (
     <>
       <path d="M4.5 5.5h15" />
@@ -43,9 +49,18 @@ const PLUGIN_MARKS = {
       <path d="M9.3 17.6l2.7 2.7 2.7-2.7" />
     </>
   ),
+  // Native reasoning: three concepts joined - a chain of thought drawn as a
+  // graph. Nodes are large enough that at 12px they do not blur into the links.
+  reasoning: (
+    <>
+      <path d="M6.4 8.6l5.6 3.1 5.6-3.1M12 11.7v4.5" />
+      <circle cx="6" cy="7.2" r="2.4" />
+      <circle cx="18" cy="7.2" r="2.4" />
+      <circle cx="12" cy="17.4" r="2.4" />
+    </>
+  ),
   // Speed Mode: a lightning bolt - the answer comes back now, no thinking
   // first. The bolt alone is the whole mark; it needs no second reading.
-  // (The old play triangle with a bar read as "next track".)
   speedMode: <path d="M13.5 3.5L6.2 13H11l-0.5 7.5 7.3-9.8h-4.9z" />,
   // JSON Guard: braces sealing a checked value - the structure is valid.
   jsonGuard: (
@@ -57,8 +72,7 @@ const PLUGIN_MARKS = {
   ),
   // Context Squeezer: two presses closing on a stack from the sides - same
   // content, less room. Squeezing sideways keeps it apart from Think Deeper's
-  // downward chevron. (The old vertical chevrons around a full-width bar read
-  // as expand/collapse.)
+  // downward chevron.
   contextSqueezer: (
     <>
       <path d="M9.4 8.5h5.2M9.4 12h5.2M9.4 15.5h5.2" />
@@ -67,8 +81,7 @@ const PLUGIN_MARKS = {
     </>
   ),
   // OpenAI Tool Bridge: two docks joined by one cable arcing over like a
-  // bridge, the recovered call crossing at the apex dot. (The old S-curve
-  // sagged through the middle and read as a squiggle at 14px.)
+  // bridge, the recovered call crossing at the apex dot.
   openaiToolBridge: (
     <>
       <path d="M5 6.5v11" />
