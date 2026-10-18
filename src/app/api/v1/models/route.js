@@ -369,7 +369,10 @@ export async function buildModelsList(kindFilter, options = {}) {
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {
       entry.kind = combo.kind;
     } else {
-      const comboCaps = aggregateComboCapabilities(combo.models, comboByName, 0, Number(combo.contextWindow) || 0);
+      // Signature baru (resolveCaps di slot 3): arg lama (…, 0, window) melempar
+      // "e is not a function". Override window combo diterapkan manual.
+      const comboCaps = aggregateComboCapabilities(combo.models, comboByName);
+      if (comboCaps && Number(combo.contextWindow) > 0) comboCaps.contextWindow = Number(combo.contextWindow);
       if (comboCaps) {
         entry.capabilities = comboCaps;
         // Same reason single models publish it: a client that only reads

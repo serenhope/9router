@@ -582,6 +582,7 @@ export const PATTERN_CAPABILITIES = [
  * @returns {object|null} full capabilities object, or null for empty input
  */
 export function aggregateComboCapabilities(comboModels, comboLookup = null, resolveCaps = null, _depth = 0) {
+  if (typeof resolveCaps !== "function") resolveCaps = null;
   if (!comboModels?.length || _depth > 6) return null;
   const allCaps = comboModels.map((fullId) => {
     // Nested combo: bare name (no slash) that exists in the lookup — recurse

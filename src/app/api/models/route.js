@@ -246,7 +246,11 @@ export async function GET() {
     for (const combo of combos) {
       const members = Array.isArray(combo.models) ? combo.models : [];
       if (members.length === 0) continue;
-      const aggregated = aggregateComboCapabilities(members, comboByName, 0, Number(combo.contextWindow) || 0);
+      // aggregateComboCapabilities sekarang (comboModels, comboLookup, resolveCaps, _depth).
+      // Call lama (…, 0, window) membuat 0 masuk slot resolveCaps → TypeError. Override
+      // window combo diterapkan manual karena param contextOverride sudah dihapus upstream.
+      const aggregated = aggregateComboCapabilities(members, comboByName);
+      if (aggregated && Number(combo.contextWindow) > 0) aggregated.contextWindow = Number(combo.contextWindow);
       if (!aggregated) continue;
       const comboCaps = { ...aggregated };
       // A combo's marks come from its members: the plugin selection was made per
