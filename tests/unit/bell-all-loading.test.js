@@ -50,6 +50,16 @@ describe("bell all loading tasks integration", () => {
     expect(file).toContain('useTaskStore.getState().finish(taskId)');
   });
 
+  it("providers/[id]/page.js registers useTaskStore for Qoder and Cline model imports", () => {
+    const file = fs.readFileSync("src/app/(dashboard)/dashboard/providers/[id]/page.js", "utf-8");
+    expect(file).toContain('import { useTaskStore } from "@/store/taskStore";');
+    expect(file).toContain("import-qoder-models-");
+    expect(file).toContain("import-cline-models-");
+    expect(file).toContain("useTaskStore.getState().start");
+    expect(file).toContain("useTaskStore.getState().update(taskId, {");
+    expect(file).toContain("finishImportTask(taskId,");
+  });
+
   it("tracks batch test lifecycle in taskStore correctly", () => {
     const store = useTaskStore.getState();
     store.start({
