@@ -34,6 +34,26 @@ export async function GET() {
     const otbModels = new Set(customPlugins.openaiToolBridge?.models || []);
     const asEnabled = Boolean(customPlugins.antiSlop?.enabled);
     const asModels = new Set(customPlugins.antiSlop?.models || []);
+    const fsEnabled = Boolean(customPlugins.agentFse?.enabled);
+    const fsModels = new Set(customPlugins.agentFse?.models || []);
+    const qaEnabled = Boolean(customPlugins.agentQa?.enabled);
+    const qaModels = new Set(customPlugins.agentQa?.models || []);
+    const secEnabled = Boolean(customPlugins.agentSecurity?.enabled);
+    const secModels = new Set(customPlugins.agentSecurity?.models || []);
+    const reaEnabled = Boolean(customPlugins.agentRea?.enabled);
+    const reaModels = new Set(customPlugins.agentRea?.models || []);
+    const sqliEnabled = Boolean(customPlugins.agentSqli?.enabled);
+    const sqliModels = new Set(customPlugins.agentSqli?.models || []);
+    const ragEnabled = Boolean(customPlugins.agentRag?.enabled);
+    const ragModels = new Set(customPlugins.agentRag?.models || []);
+    const tgEnabled = Boolean(customPlugins.tempGuard?.enabled);
+    const tgModels = new Set(customPlugins.tempGuard?.models || []);
+    const ocEnabled = Boolean(customPlugins.outputCap?.enabled);
+    const ocModels = new Set(customPlugins.outputCap?.models || []);
+    const sgEnabled = Boolean(customPlugins.stopGuard?.enabled);
+    const sgModels = new Set(customPlugins.stopGuard?.models || []);
+    const pbEnabled = Boolean(customPlugins.promptBase?.enabled);
+    const pbModels = new Set(customPlugins.promptBase?.models || []);
 
     // One resolver for every branch below. It used to be five copies of the same
     // five statements, so any change had to be made five times and a missed copy
@@ -46,6 +66,16 @@ export async function GET() {
       ["contextSqueezer", csEnabled, csModels, { contextSqueezer: true }],
       ["openaiToolBridge", otbEnabled, otbModels, { openaiToolBridge: true }],
       ["antiSlop", asEnabled, asModels, { antiSlop: true }],
+      ["agentFse", fsEnabled, fsModels, { agentFse: true }],
+      ["agentQa", qaEnabled, qaModels, { agentQa: true }],
+      ["agentSecurity", secEnabled, secModels, { agentSecurity: true }],
+      ["agentRea", reaEnabled, reaModels, { agentRea: true }],
+      ["agentSqli", sqliEnabled, sqliModels, { agentSqli: true }],
+      ["agentRag", ragEnabled, ragModels, { agentRag: true }],
+      ["tempGuard", tgEnabled, tgModels, { tempGuard: true }],
+      ["outputCap", ocEnabled, ocModels, { outputCap: true }],
+      ["stopGuard", sgEnabled, sgModels, { stopGuard: true }],
+      ["promptBase", pbEnabled, pbModels, { promptBase: true }],
     ];
 
     /**

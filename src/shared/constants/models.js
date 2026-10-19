@@ -133,4 +133,44 @@ export const PLUGIN_MARK_META = {
     label: "Anti Slop",
     desc: "Anti Slop plugin: injects the antislop rules so the model avoids generic AI UI, copy and code",
   },
+  agentFse: {
+    label: "Full Stack Engineer",
+    desc: "Full Stack Software Engineer agent: architecture-first production code delivery",
+  },
+  agentQa: {
+    label: "QA Engineer",
+    desc: "QA Engineer agent: test cases, failure injection and severity-ranked findings",
+  },
+  agentSecurity: {
+    label: "Security Engineer",
+    desc: "Security Engineer agent: OWASP/STRIDE review with hardening fixes",
+  },
+  agentRea: {
+    label: "Rapid Assistant",
+    desc: "Rapid Engineering Assistant: smallest viable change, fastest working result",
+  },
+  agentSqli: {
+    label: "SQLi Specialist",
+    desc: "SQL Injection Specialist agent: authorized injectable-surface analysis with fixes",
+  },
+  agentRag: {
+    label: "RAG Engineer",
+    desc: "RAG Engineer agent: chunking, hybrid retrieval, reranking and retrieval metrics",
+  },
+  tempGuard: {
+    label: "Temp Guard",
+    desc: "Temperature Guard plugin: pins sampling temperature to a deterministic 0.2 ceiling",
+  },
+  outputCap: {
+    label: "Output Cap",
+    desc: "Output Cap plugin: hard 4096-token ceiling on completion size",
+  },
+  stopGuard: {
+    label: "Stop Guard",
+    desc: "Stop Sequence Guard plugin: adds safe stop sequences for structured output",
+  },
+  promptBase: {
+    label: "Prompt Base",
+    desc: "Prompt Base plugin: factual-grounding baseline system prompt",
+  },
 };
