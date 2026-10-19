@@ -15,16 +15,28 @@
  */
 export const WEB_COOKIE_PROVIDERS = new Set(["gemini-web", "kimi-web", "deepseek-web", "xiaomi-mimo"]);
 
+/**
+ * Providers whose REST endpoint is fronted by a per-account free-tier queue.
+ * OpenCode free models (oc/*) routinely take 20-70s to first byte even when
+ * healthy - the snappy budget below reads them as dead when they are not.
+ */
+export const QUEUED_FREE_PROVIDERS = new Set(["oc"]);
+
 /** Default per-probe budget for ordinary REST providers (fail fast). */
 export const PROBE_TIMEOUT_MS = 15000;
 
 /** Per-probe budget for cookie-based web providers. */
 export const WEB_COOKIE_PROBE_TIMEOUT_MS = 90000;
 
+/** Per-probe budget for free-tier queued REST providers. */
+export const QUEUED_FREE_PROBE_TIMEOUT_MS = 90000;
+
 /**
  * Probe budget for one model id of the form "<provider>/<model>".
  */
 export function probeTimeoutMs(model) {
   const provider = String(model).split("/")[0];
-  return WEB_COOKIE_PROVIDERS.has(provider) ? WEB_COOKIE_PROBE_TIMEOUT_MS : PROBE_TIMEOUT_MS;
+  if (WEB_COOKIE_PROVIDERS.has(provider)) return WEB_COOKIE_PROBE_TIMEOUT_MS;
+  if (QUEUED_FREE_PROVIDERS.has(provider)) return QUEUED_FREE_PROBE_TIMEOUT_MS;
+  return PROBE_TIMEOUT_MS;
 }
