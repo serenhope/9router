@@ -25,6 +25,9 @@ export default function ToolDetailClient({ toolId, machineId }) {
   const [tailscaleEnabled, setTailscaleEnabled] = useState(false);
   const [tailscaleUrl, setTailscaleUrl] = useState("");
   const [apiKeys, setApiKeys] = useState([]);
+  const [testAllRunning, setTestAllRunning] = useState(false);
+  const [testResults, setTestResults] = useState({});
+  const [testSummary, setTestSummary] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -126,6 +129,37 @@ export default function ToolDetailClient({ toolId, machineId }) {
     return "http://localhost:20128";
   };
 
+  // Probe every model this CLI page exposes, sequentially, and surface the
+  // tally next to the button. Rows are provider-qualified ids, the same
+  // strings the CLI itself would call through.
+  const handleTestAllModels = async () => {
+    const models = getAllAvailableModels();
+    if (testAllRunning || !models.length) return;
+    setTestAllRunning(true);
+    setTestResults({});
+    try {
+      let ok = 0;
+      for (const m of models) {
+        try {
+          const res = await fetch("/api/models/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model: m.value }),
+          });
+          const data = await res.json().catch(() => null);
+          const good = Boolean(res.ok && data && data.ok);
+          if (good) ok += 1;
+          setTestResults(prev => ({ ...prev, [m.value]: good ? "ok" : "error" }));
+        } catch {
+          setTestResults(prev => ({ ...prev, [m.value]: "error" }));
+        }
+      }
+      setTestSummary(`${ok}/${models.length} models ok`);
+    } finally {
+      setTestAllRunning(false);
+    }
+  };
+
   const renderToolCard = () => {
     const availableModels = getAllAvailableModels();
     const hasActiveProviders = availableModels.length > 0;
@@ -197,9 +231,27 @@ export default function ToolDetailClient({ toolId, machineId }) {
         <span className="material-symbols-outlined text-[18px]">arrow_back</span>
         Back to CLI Tools
       </Link>
-      <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-text-main sm:text-2xl">{tool.name}</h1>
-        <p className="text-sm text-text-muted">{tool.description}</p>
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="text-xl font-semibold text-text-main sm:text-2xl">{tool.name}</h1>
+          <p className="text-sm text-text-muted">{tool.description}</p>
+        </div>
+        {!loading && (
+          <div className="flex shrink-0 items-center gap-2">
+            {testSummary && <span className="text-xs text-text-muted">{testSummary}</span>}
+            <button
+              type="button"
+              onClick={handleTestAllModels}
+              disabled={testAllRunning}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-surface px-2.5 py-1 text-xs font-medium text-text-main transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span className={`material-symbols-outlined text-[14px] ${testAllRunning ? "animate-spin" : ""}`}>
+                {testAllRunning ? "progress_activity" : "play_arrow"}
+              </span>
+              {testAllRunning ? "Testing..." : "Test All"}
+            </button>
+          </div>
+        )}
       </div>
       {loading ? <CardSkeleton /> : renderToolCard()}
     </div>

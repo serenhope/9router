@@ -78,6 +78,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   const [importing, setImporting] = useState(false);
   const [testingModelId, setTestingModelId] = useState(null);
   const [modelTestResults, setModelTestResults] = useState({});
+  const [testAllRunning, setTestAllRunning] = useState(false);
 
   const handleTestModel = async (modelId) => {
     if (testingModelId) return;
@@ -94,6 +95,20 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
     } finally {
       setTestingModelId(null);
+    }
+  };
+
+  // Probe every listed model once, sequentially, reusing the single-test path
+  // so each row keeps its own ok/error pill while the run walks the list.
+  const handleTestAllModels = async () => {
+    if (testAllRunning || !allModels.length) return;
+    setTestAllRunning(true);
+    try {
+      for (const { id } of allModels) {
+        await handleTestModel(id);
+      }
+    } finally {
+      setTestAllRunning(false);
     }
   };
 
@@ -233,6 +248,18 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         <Button size="sm" variant="secondary" icon="download" onClick={handleImport} disabled={!canImport || importing}>
           Import from /models
         </Button>
+        {allModels.length > 0 && connections.length > 0 && (
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={testAllRunning ? "progress_activity" : "play_arrow"}
+            onClick={handleTestAllModels}
+            disabled={testAllRunning}
+            title="Test every model one after another"
+          >
+            {testAllRunning ? "Testing..." : "Test All"}
+          </Button>
+        )}
       </div>
 
       {!canImport && (
