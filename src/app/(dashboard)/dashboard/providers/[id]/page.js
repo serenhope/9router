@@ -1238,6 +1238,23 @@ export default function ProviderDetailPage() {
 
   // Test every listed model once, sequentially so slow providers do not pile
   // up probes. Each row reuses the same result path as its single test.
+  // Add every suggested free model, then probe each one sequentially, so a
+  // free tier provider can be brought up with one click instead of add-test
+  // rounds per model.
+  const handleAddAndTestAllFree = async (ids) => {
+    if (testAllRunning || !ids.length) return;
+    setTestAllRunning(true);
+    setModelsTestError("");
+    try {
+      for (const id of ids) {
+        try { await handleAddCustomModel(id, "llm", providerStorageAlias); } catch {}
+        await handleTestModel(id);
+      }
+    } finally {
+      setTestAllRunning(false);
+    }
+  };
+
   const handleTestAllModels = async (ids) => {
     if (testAllRunning || !ids.length) return;
     setTestAllRunning(true);
@@ -1403,7 +1420,21 @@ export default function ProviderDetailPage() {
           if (notAdded.length === 0 && !suggestedModelsError) return null;
           return (
             <div className="w-full mt-2">
-              <p className="text-xs text-text-muted mb-2">Suggested free models ({freeSuggested.length}):</p>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <p className="text-xs text-text-muted">Suggested free models ({freeSuggested.length}):</p>
+                {freeSuggested.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={testAllRunning ? "progress_activity" : "bolt"}
+                    onClick={() => handleAddAndTestAllFree(freeSuggested.map((m) => m.id))}
+                    disabled={testAllRunning}
+                    title="Add every suggested free model and probe each one"
+                  >
+                    {testAllRunning ? "Testing..." : "Add & Test All"}
+                  </Button>
+                )}
+              </div>
               {suggestedModelsError && (
                 <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-2">{suggestedModelsError}</p>
               )}
@@ -1912,6 +1943,7 @@ export default function ProviderDetailPage() {
             const allIds = [
               ...models,
               ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
+              ...(customModels || []).filter((m) => m.type === "llm").map((m) => m.id),
             ].filter((m) => { const k = getModelKind(m); return !k || k === "llm"; }).map((m) => m.id);
             const activeIds = allIds.filter((id) => !disabledModelIds.includes(id));
             return (
