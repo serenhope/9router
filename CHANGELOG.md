@@ -1,3 +1,9 @@
+# v0.5.223 (2026-10-19) · 1 commit
+
+## What Was Fixed
+
+- **The update banner no longer flashes for an API-key session**: the card had the right final guard (`if (isApiKeyUser) return null;`) but derived that flag from its own `/api/auth/status` fetch, so until the response landed it treated a key session as an admin and ran the `/api/version` poll at mount. A release sitting on the server therefore painted "Update available" for a restricted session for the length of the round trip, then vanished — visible, brief, and exactly the surface an API key with dashboard-only access is not supposed to manage. It now reads `role` and `loaded` from the session store the sidebar already resolves once for the whole shell: the duplicate status request is gone, the version poll waits for `sessionReady`, and a key session never fetches version data at all. A password session is unchanged. `tests/unit/update-banner-apikey.test.js` (4 tests) pins it; 3 fail against the previous banner.
+
 # v0.5.222 (2026-10-19) · 1 commit
 
 ## What Was Fixed
