@@ -68,6 +68,7 @@ export default function ProviderDetailPage() {
   const [modelTestResults, setModelTestResults] = useState({});
   const [modelsTestError, setModelsTestError] = useState("");
   const [testingModelIds, setTestingModelIds] = useState(() => new Set());
+  const [testAllRunning, setTestAllRunning] = useState(false);
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
   const [selectedConnectionIds, setSelectedConnectionIds] = useState([]);
   const [bulkProxyPoolId, setBulkProxyPoolId] = useState("__none__");
@@ -1235,6 +1236,21 @@ export default function ProviderDetailPage() {
     }
   };
 
+  // Test every listed model once, sequentially so slow providers do not pile
+  // up probes. Each row reuses the same result path as its single test.
+  const handleTestAllModels = async (ids) => {
+    if (testAllRunning || !ids.length) return;
+    setTestAllRunning(true);
+    setModelsTestError("");
+    try {
+      for (const id of ids) {
+        await handleTestModel(id);
+      }
+    } finally {
+      setTestAllRunning(false);
+    }
+  };
+
   const renderModelsSection = () => {
     if (isCompatible) {
       return (
@@ -1908,6 +1924,18 @@ export default function ProviderDetailPage() {
                 {activeIds.length > 0 && (
                   <Button size="sm" variant="secondary" icon="block" onClick={() => handleDisableAll(activeIds)}>
                     Disable All
+                  </Button>
+                )}
+                {activeIds.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={testAllRunning ? "progress_activity" : "play_arrow"}
+                    onClick={() => handleTestAllModels(activeIds)}
+                    disabled={testAllRunning}
+                    title="Test every active model one after another"
+                  >
+                    {testAllRunning ? "Testing..." : "Test All"}
                   </Button>
                 )}
               </div>
