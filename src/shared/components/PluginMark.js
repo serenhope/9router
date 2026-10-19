@@ -194,8 +194,6 @@ const PLUGIN_MARKS = {
 
 };
 
-};
-
 /**
  * One wrapper for every mark so stroke weight, caps and sizing live in one place
  * and cannot drift between the card tile and a model row. An unknown name
