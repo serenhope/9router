@@ -314,7 +314,7 @@ function bufferedResponse(text, original) {
  * the first attempt cannot be resent, and strictProxy keeps its contract of
  * never leaving over another path — both return the rejection as-is.
  */
-async function replayFreeTierRejectionDirect(url, options, proxied) {
+async function replayFreeTierRejectionDirect(url, options, proxied, proxyUrl) {
   if (proxied.status !== 403) return proxied;
   let text;
   try {
@@ -324,6 +324,10 @@ async function replayFreeTierRejectionDirect(url, options, proxied) {
   }
   if (!text.includes(FREE_TIER_ERROR_MARKER)) return bufferedResponse(text, proxied);
   if (options?.body && typeof options.body.getReader === "function" && options.body.locked) {
+    return bufferedResponse(text, proxied);
+  }
+  if (proxyUrl) {
+    console.warn(`[ProxyFetch] Proxy egress rejected by OpenCode free-tier gate (403 FreeTierError); direct replay skipped to protect main IP: ${targetHost(url)}`);
     return bufferedResponse(text, proxied);
   }
   console.warn(`[ProxyFetch] Proxy egress rejected by the OpenCode free-tier gate (403 FreeTierError); replaying direct: ${targetHost(url)}`);
@@ -399,14 +403,11 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       }
       // strictProxy never leaves the configured path — pass the rejection through.
       if (proxyOptions?.strictProxy === true) return res;
-      return await replayFreeTierRejectionDirect(url, options, res);
+      return await replayFreeTierRejectionDirect(url, options, res, proxyUrl);
     } catch (proxyError) {
-      // If strictProxy is enabled, fail hard instead of falling back to direct
-      if (proxyOptions?.strictProxy === true) {
-        throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
-      }
-      console.warn(`[ProxyFetch] Proxy failed, falling back to direct: ${proxyError.message}`);
-      return originalFetch(url, options);
+      // If a proxy was configured, never fall back to direct egress which leaks
+      // the host's main IP.
+      throw new Error(`[ProxyFetch] Proxy required but failed (${proxyError.message}); direct fallback blocked to protect main IP.`);
     }
   }
 

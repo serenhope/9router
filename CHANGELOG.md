@@ -1,3 +1,16 @@
+# v0.5.225 (2026-10-19) · 2 commits
+
+## What Was Fixed
+- Fix proxy egress falling back to direct host IP on 403 FreeTierError or proxy failures, preventing host main IP leaks to upstream abuse detection gates.
+
+---
+
+# v0.5.224 (2026-10-19) · 1 commit
+
+## What Was Fixed
+
+- **A deploy no longer leaves the browser showing the previous build**: Next marks prerendered pages `Cache-Control: s-maxage=31536000, stale-while-revalidate`, which is a CDN directive — it leaves the browser free to heuristically cache the HTML using `Last-Modified`. Rendered HTML is not content-addressed: it names the chunk hashes of the build that produced it, so a cached page from before a deploy points at files this build no longer ships and the user sees stale screens (or chunks that 404) until a hard refresh. `custom-server.js` now intercepts `setHeader` for document requests and rewrites a long-lived `s-maxage` cache-control into `public, max-age=0, must-revalidate`, so every HTML load revalidates and picks up the new chunk names. Hashed assets under `/_next/static` keep `max-age=31536000, immutable`, and API responses keep whatever Next's own `no-store` says — only the document rewrite changed. Verified on production: `/login`, `/landing` report `max-age=0, must-revalidate`, the webpack chunk still reports `immutable`, `/api/version` still reports `no-store`.
+
 # v0.5.223 (2026-10-19) · 1 commit
 
 ## What Was Fixed
