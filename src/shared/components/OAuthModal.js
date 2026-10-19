@@ -363,11 +363,8 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       } else if (provider === "xai") {
         redirectUri = "http://127.0.0.1:56121/callback";
  } else if (provider === "antigravity" || provider === "gemini-cli") {
- // Remote host: the Google client registered for this deployment accepts the
- // site origin as redirect_uri, so the callback lands on the domain itself
- // instead of a loopback port the browser cannot reach.
- // Localhost keeps the loopback URI the public CLI clients expect.
- redirectUri = `${window.location.origin}/callback`;
+ // Google Client ID is registered only with localhost redirect_uri
+ redirectUri = `http://localhost:${appPort}/callback`;
       } else {
         redirectUri = `${window.location.origin}/callback`;
       }
@@ -458,10 +455,14 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         if (!popupRef.current) {
           setStep("input");
         }
+      } else if (typeof window !== "undefined" && !window.location.hostname.includes("localhost") && !window.location.hostname.includes("127.0.0.1") && (provider === "antigravity" || provider === "gemini-cli")) {
+        // Remote host with the public Google CLI client: Google redirects to
+        // http://localhost:{appPort}/callback which only exists on the user's
+        // machine, so show manual copy-paste instructions instead of a popup.
+        setStep("input");
+        window.open(data.authUrl, "_blank");
       } else {
-        // Antigravity/Gemini on a remote host: the deployment's Google client
-        // redirects to the site origin /callback, which is same-origin, so the
-        // popup postMessage path works like any local provider.
+        // Localhost (or standard providers): Open popup and wait for message
         setStep("waiting");
         popupRef.current = window.open(data.authUrl, "oauth_popup", "width=600,height=700");
         if (!popupRef.current) {
