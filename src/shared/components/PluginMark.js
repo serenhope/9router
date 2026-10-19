@@ -96,6 +96,104 @@ const PLUGIN_MARKS = {
     </>
   ),
 
+
+  // Full Stack Software Engineer: layered stack - three tiers of an app
+  // (data, service, UI) with a build spark on the top tier.
+  agentFse: (
+    <>
+      <ellipse cx="12" cy="18.2" rx="7.5" ry="2.6" />
+      <path d="M4.5 13.4v4.8c0 1.4 3.4 2.6 7.5 2.6s7.5-1.2 7.5-2.6v-4.8" />
+      <path d="M4.5 8.6v4.8c0 1.4 3.4 2.6 7.5 2.6s7.5-1.2 7.5-2.6V8.6" />
+      <ellipse cx="12" cy="8.6" rx="7.5" ry="2.6" />
+      <path d="m12 2.2 1 2.2 2.2 1-2.2 1-1 2.2-1-2.2-2.2-1 2.2-1z" fill="currentColor" stroke="none" />
+    </>
+  ),
+  // QA Engineer: magnifier over a checklist - inspecting what shipped.
+  agentQa: (
+    <>
+      <path d="M4 4.5h9M4 8.5h6" />
+      <path d="M4 13.5h4M4 17.5h5" />
+      <circle cx="15.2" cy="15.2" r="4.6" />
+      <path d="m18.6 18.6 3 3" />
+      <path d="m13.4 15.2 1.4 1.4 2.4-2.6" />
+    </>
+  ),
+  // Security Engineer: a padlock - hardening with a keyhole that reads as a lock.
+  agentSecurity: (
+    <>
+      <rect x="5.5" y="10.5" width="13" height="9.5" rx="2.5" />
+      <path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" />
+      <circle cx="12" cy="14.6" r="1.2" fill="currentColor" stroke="none" />
+      <path d="M12 15.8v2" />
+    </>
+  ),
+  // REA: a lightning bolt in a circular arrow - rapid assist that loops.
+  agentRea: (
+    <>
+      <path d="M19.4 9.2A8 8 0 1 0 20 13.4" />
+      <path d="m20.4 4.6-.6 5-5-.6" />
+      <path d="M12.9 7.5 9.8 12.6h3.4l-2.1 4.4 4.9-5.8h-3.2z" fill="currentColor" stroke="none" />
+    </>
+  ),
+  // SQL Injection Specialist: a database cylinder with an injected needle.
+  agentSqli: (
+    <>
+      <ellipse cx="9.5" cy="5.4" rx="6" ry="2.4" />
+      <path d="M3.5 5.4v13.2c0 1.3 2.7 2.4 6 2.4 1.4 0 2.7-.2 3.7-.5" />
+      <path d="M3.5 12c0 1.3 2.7 2.4 6 2.4 1.2 0 2.3-.1 3.2-.4" />
+      <path d="m14.5 12.5 4.6-4.6 2 2-4.6 4.6-2.6.6z" />
+      <path d="m17.5 9.5 1.2 1.2" />
+    </>
+  ),
+  // RAG Engineer: a document with a retrieval funnel - knowledge pulled in.
+  agentRag: (
+    <>
+      <path d="M6 3.5h8.5L19 8v4.5" />
+      <path d="M6 3.5v17h5.5" />
+      <path d="M14 3.5V8h5" />
+      <path d="M14.5 14.5h6.5l-2.6 3v4l-1.7-1-1.6 1v-4z" />
+      <path d="M8.5 9.5h4M8.5 12.5h3" />
+    </>
+  ),
+  // Temperature Guard: a thermometer with a snowflake notch - keeps sampling temp in range.
+  tempGuard: (
+    <>
+      <path d="M10 13.6V5.5a2 2 0 0 1 4 0v8.1a4.2 4.2 0 1 1-4 0z" />
+      <circle cx="12" cy="17.4" r="1.6" fill="currentColor" stroke="none" />
+      <path d="M12 15.8v-8" />
+      <path d="M19 5.2v4M17.2 6.2l1.8 1 1.8-1M17.2 8.2l1.8-1 1.8 1" />
+    </>
+  ),
+  // Output Cap: a gauge with a cut line - the response ceiling, needle pinned at max.
+  outputCap: (
+    <>
+      <path d="M4 16.5a8 8 0 1 1 16 0" />
+      <path d="m4.8 19.2 14.4-9.6" />
+      <path d="M12 8.5v-3M5.6 11.5l-2.1-1.6M18.4 11.5l2.1-1.6" />
+    </>
+  ),
+  // Stop Sequence Guard: a hand raised - halt before the forbidden token.
+  stopGuard: (
+    <>
+      <path d="M8 12.5V5.8a1.6 1.6 0 0 1 3.2 0v5.4" />
+      <path d="M11.2 11V4.6a1.6 1.6 0 0 1 3.2 0v6.4" />
+      <path d="M14.4 11.4V6.4a1.6 1.6 0 0 1 3.2 0V14" />
+      <path d="M8 12.5v-1a1.7 1.7 0 0 0-3.2.8V15a7 7 0 0 0 7 7h.8a6.8 6.8 0 0 0 5.2-2.4 7 7 0 0 0 1.8-4.6V14" />
+    </>
+  ),
+  // Prompt Base: a database cylinder with a bookmark - the stored prompt library.
+  promptBase: (
+    <>
+      <ellipse cx="10" cy="5.4" rx="6.5" ry="2.5" />
+      <path d="M3.5 5.4v13c0 1.4 2.9 2.5 6.5 2.5 1 0 2-.1 2.8-.3" />
+      <path d="M3.5 11.9c0 1.4 2.9 2.5 6.5 2.5.9 0 1.8-.1 2.6-.2" />
+      <path d="M17.5 12.5v8l2-1.4 2 1.4v-8z" />
+      <path d="M17.5 12.5a6.6 6.6 0 0 0 2.5-2.4" />
+    </>
+  ),
+
+};
+
 };
 
 /**
