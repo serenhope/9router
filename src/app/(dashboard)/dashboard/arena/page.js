@@ -721,7 +721,7 @@ function FinalResult({ ranked, pick, setPick, runId }) {
       </div>
 
       {answered.length > 1 && (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+        <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-2">
           {metrics
             .filter((m) => m.winner)
             .map(({ def, winner, best }) => (

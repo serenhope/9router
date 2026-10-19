@@ -118,7 +118,7 @@ export default function PxpipeClient() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <SummaryCard
           label="Status"
           value={statusLabel}
@@ -151,7 +151,7 @@ export default function PxpipeClient() {
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-center">
           <div>
             <p className="text-xs text-text-muted">Original tokens</p>
             <p className="text-lg font-semibold">{w ? fmtTokens(w.tokensBeforeEst) : "-"}</p>

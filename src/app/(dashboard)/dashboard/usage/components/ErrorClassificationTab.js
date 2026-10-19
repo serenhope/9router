@@ -22,7 +22,7 @@ export default function ErrorClassificationTab({ period }) {
  return (
  <div className="flex flex-col gap-4">
  {/* Summary cards */}
- <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+ <div className="grid grid-cols-1 md:grid-cols-2 sm:grid-cols-3 gap-3">
  <div className="rounded-xl border border-border bg-surface-2 p-4">
  <div className="text-xs text-text-muted uppercase tracking-wider">Total Requests</div>
  <div className="text-2xl font-semibold text-text-main mt-1">{data.total.toLocaleString()}</div>

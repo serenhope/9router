@@ -217,7 +217,7 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
                               <button onClick={() => setAllTools(s.url, false)} className="text-[10px] text-primary hover:underline">None</button>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-1 max-h-40 overflow-y-auto">
                             {toolKeys.map((t) => (
                               <label key={t} className="flex items-center gap-1.5 text-[10px] cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 px-1 rounded">
                                 <input

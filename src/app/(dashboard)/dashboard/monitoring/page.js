@@ -169,7 +169,7 @@ export default function MonitoringContent() {
       </div>
 
       {/* Totals — responsive 2-col on mobile, 4-col on desktop */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid md:grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Requests" value={fmtCount(data.totals.requests)} sub={`last ${data.period}`} />
         <StatCard label="Errors" value={fmtCount(data.totals.errors)} tone={Number(data.totals.errorRate) >= 5 ? "danger" : undefined} sub={`${data.totals.errorRate}% error rate`} />
         <StatCard label="Providers seen" value={data.providers.length} sub={worst.length ? `${worst.length} degraded` : "all healthy"} tone={worst.length ? "warning" : undefined} />
