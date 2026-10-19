@@ -1,3 +1,33 @@
+# v0.5.219 (2026-10-18) · 2 commits
+
+## What Was Fixed  (port of this fork's PR #13, credit its-benjamin)
+
+- **`npm run build && npm start` (and the `bun run build:bun` / `bun run start:bun` path) no longer answers 503 `guard unavailable`**: Next.js output-file tracing only copies modules that reached the webpack page/API graph, so the modules `custom-server.js` loads **by absolute path** — `scripts/auth-guard-hooks.mjs`, `src/dashboardGuard.js`, `src/lib/db/repos/securityLogRepo.js`, `src/lib/auth/dashboardSession.js`, `src/shared/services/telegramBackup.js`, `src/sse/services/backgroundTokenRefresh.js` — were absent from `.next/standalone/`. `getGuardModule()` correctly failed closed with 503 instead of serving. Only `assemble.sh` staged that tree, so anything that did not run it (the `npm`/`bun` scripts) started a server that refused every request. `scripts/copy-standalone-assets.mjs` (the `postbuild` hook) now stages `src/` and `scripts/` into the standalone tree the same way, and a unit test pins it. The guard is not weakened: the modules are present, so the auth and peer checks actually run.
+- **`custom-server.js` resolves the app root instead of assuming `__dirname`**: a new `APP_ROOT`/`appPath()` pair probes `__dirname`, then two levels up, then one level up, and falls back to `__dirname`. Repo checkout and the systemd standalone layout (where `src/` sits beside the wrapper) resolve to the same directory as before; a packaged layout with the wrapper nested one level down now finds its source tree instead of silently failing the guard. `server.js` next to the wrapper is still looked up relative to the wrapper, which is correct for every layout.
+- **Duplicate component imports removed** in `EditCompatibleNodeModal.js` and `AddCompatibleModal.js`: the #4999 quota-check merge kept the previous `@/shared/components` import alongside the new one that added `Toggle`, and webpack failed the whole build with `the name \`Button\` is defined multiple times`. Both files now import the single superset.
+
+# v0.5.218 (2026-10-18) · 3 commits
+
+## What Was Added / Fixed  (ported from upstream decolua/9router: PRs #4988, #4999, #4989)
+
+- **A flagged proxy egress no longer hard-blocks OpenCode free-tier (#4988 / issue #4983)**: the free-tier gate answers `403 FreeTierError` when the request leaves from an IP it has flagged, but the transport itself succeeded — so the existing proxy-failure fallback never fired and every retry kept leaving through the same flagged pool until a human rebound it. `proxyAwareFetch` now buffers a proxied 403, looks for the `FreeTierError` marker and replays **once** on the direct egress. Non-gate 403s pass through with their original headers, `strictProxy` still never leaves the configured path, a body already consumed by the first attempt surfaces the original 403, and this fork's `getDispatcher` + HTTP 407 proxy-auth detection is preserved underneath.
+- **Quota check for OpenAI/Anthropic compatible providers (#4999)**: a `Quota check` toggle plus a quota path field on both compatible-node modals. When enabled, `/api/usage/[connectionId]` merges the node's `baseUrl`/`quotaPath`/`nodeName` and a new `customCredits` handler reads the standard credits endpoint, so the remaining balance appears on the Quota page. Opt-in: existing compatible nodes keep `quotaEnabled: false` and behave exactly as before. This fork's `logo`/`brand` node fields and its duplicate-name/prefix guard are preserved.
+- **Human-readable model display names (#4989)**: routed slugs (`claude-opus-5-5`, `oc/space-bunny-free`, `cmc/z-ai/glm-5.3-flash`) now publish a readable `name` from `/v1/models`, `/v1beta/models` and `/api/models`, and the CLI writers (`9router connect`, cli-tools settings) write that name into client configs. An operator-set name is never rewritten; ids are untouched and `name` is purely additive. This fork's operator `owned_by` label is preserved on both custom-model paths.
+
+# v0.5.217 (2026-10-18) · 3 commits
+
+## What Was Added / Fixed  (ported from upstream decolua/9router: PRs #5009, #5003, #5006)
+
+- **Usage table opens on most recently used** (#5009): the by-model / account / API-key / endpoint tables defaulted to an alphabetical `rawModel` sort, so the rows that just moved were buried mid-list. The default sort is now `lastUsed` descending; clicking any column header still overrides it through the URL params.
+- **`opencode/glm-5.3-flash-free` accepts reasoning again** (#5003): the id had no exact capability entry, so it resolved through the `*glm-5.3*` pattern and emitted z.ai's native `thinking:{type:"enabled"}` — which OpenCode's own inference service (a strict validator, not z.ai) answers with `400 json: unknown field "thinking"`. An exact-id `MODEL_CAPABILITIES` entry now sets `thinkingFormat:"openai"`, so these requests carry `reasoning_effort` and stream. Mirrors the existing `opencode-go` override for the paid twin.
+- **CommandCode cache reads are recorded and the session id is stable** (#5006): the usage mapper dropped `cachedInputTokens`, so CommandCode traffic showed 0 cached on 4.7B prompt tokens while the same combo's OpenCode-Go leg showed 94%; the cache split is now mapped through to `prompt_tokens_details.cached_tokens` for both the client and the dashboard. Session identity now mints one conversation-scoped id shared by the `x-session-id` header and the envelope `threadId` (it used to mint two uncorrelated UUIDs per request).
+
+# v0.5.216 (2026-10-18) · 1 commit
+
+## What Was Added
+
+- **Search box above the combo list** (ported from upstream decolua/9router PR #5008): filters case-insensitively over the combo name and the ids of its member models, shows an `N of M shown` counter while a query is active with an inline clear button, and renders an empty state with a **Clear search** action when nothing matches. The list now renders `filteredCombos` instead of the full set. Bulk operations were untouched (the fork has no header select-all), so a hidden combo can never be bulk-deleted.
+
 # v0.5.215 (2026-10-18) · 1 commit
 
 ## What Was Fixed

@@ -6,6 +6,25 @@ const { pathToFileURL } = require("url");
 
 const origCreate = http.createServer.bind(http);
 
+/**
+ * The directory the server-side source tree lives in. Normally this is simply
+ * the wrapper's own directory (repo checkout, and the standalone tree where
+ * assemble.sh / copy-standalone-assets.mjs stage src/ and scripts/ beside
+ * custom-server.js). Packaged layouts put the wrapper one level down from the
+ * tree, so probe upwards for the guard module instead of assuming __dirname.
+ * Falls back to __dirname so a published CLI build (no src/ on disk) still runs
+ * and the app-side bootstrap covers what the wrapper cannot reach.
+ */
+const APP_ROOT = (() => {
+  const candidates = [__dirname, path.resolve(__dirname, "..", ".."), path.resolve(__dirname, "..")];
+  return candidates.find((dir) => fs.existsSync(path.join(dir, "src", "dashboardGuard.js"))) || __dirname;
+})();
+
+/** Absolute path to a file inside the app root. */
+function appPath(...segments) {
+  return path.join(APP_ROOT, ...segments);
+}
+
 // Per-process secret proving x-9r-real-ip was stamped below rather than sent by the client.
 // A bare `next start` / `next dev` never loads this file, so it cannot produce a matching
 // header even though the env var is inherited by child processes. Named like x-9r-cli-token
@@ -25,7 +44,7 @@ function startAutoBackupFromCustomServer() {
   if (autoBackupStarted) return;
   autoBackupStarted = true;
   const candidates = [
-    path.join(__dirname, "src", "shared", "services", "telegramBackup.js"),
+    appPath("src", "shared", "services", "telegramBackup.js"),
     path.join(__dirname, "..", "src", "shared", "services", "telegramBackup.js"),
   ];
   const modPath = candidates.find((p) => fs.existsSync(p));
@@ -49,7 +68,7 @@ function startBackgroundTokenRefreshFromCustomServer() {
   backgroundRefreshStarted = true;
   // Prefer source path (repo / standalone that still has src). Fail-open if missing
   // - initializeApp also starts the same scheduler when the Next app boots.
-  const modPath = path.join(__dirname, "src", "sse", "services", "backgroundTokenRefresh.js");
+  const modPath = appPath("src", "sse", "services", "backgroundTokenRefresh.js");
   import(pathToFileURL(modPath).href)
     .then((m) => {
       try {
@@ -84,7 +103,7 @@ function applyDotEnvPort() {
   for (const name of [".env.local", ".env"]) {
     let text;
     try {
-      text = fs.readFileSync(path.join(__dirname, name), "utf8");
+      text = fs.readFileSync(appPath(name), "utf8");
     } catch {
       continue; // no such file - fine
     }
@@ -127,8 +146,8 @@ let guardModulePromise = null;
 function getGuardModule() {
   if (!guardModulePromise) {
     guardModulePromise = (async () => {
-      const hooksPath = path.join(__dirname, "scripts", "auth-guard-hooks.mjs");
-      const guardPath = path.join(__dirname, "src", "dashboardGuard.js");
+      const hooksPath = appPath("scripts", "auth-guard-hooks.mjs");
+      const guardPath = appPath("src", "dashboardGuard.js");
       if (!fs.existsSync(hooksPath) || !fs.existsSync(guardPath)) return null;
       require("node:module").register(pathToFileURL(hooksPath).href);
       return await import(pathToFileURL(guardPath).href);
@@ -151,7 +170,7 @@ let securityRepoPromise = null;
 function getSecurityRepo() {
   if (!securityRepoPromise) {
     securityRepoPromise = import(
-      pathToFileURL(path.join(__dirname, "src", "lib", "db", "repos", "securityLogRepo.js")).href
+      pathToFileURL(appPath("src", "lib", "db", "repos", "securityLogRepo.js")).href
     );
   }
   return securityRepoPromise;
@@ -161,7 +180,7 @@ let sessionModulePromise = null;
 function getSessionModule() {
   if (!sessionModulePromise) {
     sessionModulePromise = import(
-      pathToFileURL(path.join(__dirname, "src", "lib", "auth", "dashboardSession.js")).href
+      pathToFileURL(appPath("src", "lib", "auth", "dashboardSession.js")).href
     );
   }
   return sessionModulePromise;
