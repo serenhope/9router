@@ -160,6 +160,8 @@ const CATEGORY_ALIAS = {
   "what's added?": "Features",
   "whats added?": "Features",
   "what was added?": "Features",
+  "what was added": "Features",
+  "what was added / fixed": "Features",
   "what was fixed?": "Fixes",
   "what changed?": "Changed",
   "what's new?": "Features",
@@ -195,8 +197,13 @@ function canonicalCategory(name) {
  const key = String(name || "").trim();
  if (!key) return "";
  if (/^sync with upstream\b/i.test(key)) return "Internal";
- const probe = key.toLowerCase().replace(/[\u2010-\u2015\-]+/g, "-").replace(/\s*&\s*/g, " & ");
- return CATEGORY_ALIAS[probe] || CATEGORY_ALIAS[key.toLowerCase()] || key;
+ const flat = key.toLowerCase().replace(/[\u2010-\u2015\-]+/g, "-").replace(/\s*&\s*/g, " & ");
+ // A trailing "?"/"!" is punctuation, not part of the category name: "What Was
+ // Added" and "What Was Added?" name the same category. Probe the stripped form
+ // first so a heading written without the question mark still resolves to its
+ // colour instead of falling through to the gray unknown-category style.
+ const probe = flat.replace(/[?!.]+$/, "").trim();
+ return CATEGORY_ALIAS[probe] || CATEGORY_ALIAS[flat] || CATEGORY_ALIAS[key.toLowerCase()] || probe || key;
 }
 
 const CATEGORY_STYLE = {

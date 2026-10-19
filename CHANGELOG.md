@@ -1,6 +1,27 @@
+# v0.5.222 (2026-10-19) · 1 commit
+
+## What Was Fixed
+
+- **A dashboard-only API key no longer sees the whole menu while signing in**: `Sidebar` fell back to a full-admin permission object whenever `permissions` was still `null` — that is, for the whole duration of the `/api/auth/status` fetch — and every filter took the `if (!isApiKeyUser) return true` shortcut, so all admin entries rendered. On a phone connection the fetch takes long enough to read as a real grant: a key with only `viewUsage` showed Providers, Combos, Quota, CLI Tools, Plugins, Proxy Pools and Settings, and only narrowed down after the response landed. The session store already tracked `loaded`; nothing read it. The sidebar is now deny-by-default: a module-level `NO_PERMISSIONS` object replaces the all-true fallback, `sessionReady` is derived from `loaded`, and each of the four menu filters, the media accordion, the settings link and the API-key badge are gated on it, so an unresolved session renders an empty menu rather than an admin one. The settings fetch is also held until the role is known, instead of firing for a session that may turn out to be a key. A password session is unaffected — once `loaded` flips, the admin shortcut applies exactly as before. `tests/unit/sidebar-permission-gate.test.js` (7 tests) pins the behavior; it fails against the previous sidebar on all 7.
+
+# v0.5.221 (2026-10-19) · 1 commit
+
+## What Was Fixed
+
+- **Changelog categories no longer fall back to gray**: `canonicalCategory()` looked a heading up verbatim in `CATEGORY_ALIAS`, so a heading written without a trailing question mark never matched its spelled-with-punctuation sibling (`What Was Added` vs `what was added?`) and fell through to the unknown-category style — muted slate text, `help` icon, gray pill. The lookup now strips trailing `?`/`!`/`.` and probes the bare form first, so both spellings resolve to the same category and keep its real color (green for Features, amber for Fixes, and so on). `what was added` and `what was added / fixed` are also registered in the alias map, since those are the spellings this fork's own release notes use. Verified against every heading in `CHANGELOG.md`: zero gray categories remain (was 4), and the changelog self-checks pass.
+
+# v0.5.220 (2026-10-19) · 2 commits
+
+## What Was Added
+
+- **WorkBuddy AI international identity headers and conversation ID family**:
+  - Updated `codebuddy-intl` (`cbai`) registry to target `https://www.workbuddy.ai/v2/chat/completions` and usage endpoints, aligning UA to `WorkBuddy/5.8.4 workbuddy-ai/5.8.4 CLI/2.161.0` and adding strict identity headers (`X-IDE-Type`, `X-IDE-Version`, `X-Private-Data`, `X-Agent-Intent`, `X-Agent-Purpose`, `X-Agent-Type`, `X-Domain`).
+  - Added `buildHeaders()` in `CodeBuddyIntlExecutor` generating the complete conversation ID and trace header family (`X-Conversation-ID` as UUIDv7, `X-Conversation-Request-ID`, `X-Root-Request-ID`, `X-Conversation-Message-ID`, `X-Request-ID`, `X-Trace-ID`, `traceparent`, `b3`, `X-B3-TraceId`, `X-B3-SpanId`, `X-B3-Sampled`) to eliminate `400 / code 11-128` channel verification failures (`conversation id missing`).
+  - Added unit test `tests/unit/codebuddy-intl-identity-4946.test.js` (11 tests, all passing).
+
 # v0.5.219 (2026-10-18) · 2 commits
 
-## What Was Fixed  (port of this fork's PR #13, credit its-benjamin)
+## What Was Fixed
 
 - **`npm run build && npm start` (and the `bun run build:bun` / `bun run start:bun` path) no longer answers 503 `guard unavailable`**: Next.js output-file tracing only copies modules that reached the webpack page/API graph, so the modules `custom-server.js` loads **by absolute path** — `scripts/auth-guard-hooks.mjs`, `src/dashboardGuard.js`, `src/lib/db/repos/securityLogRepo.js`, `src/lib/auth/dashboardSession.js`, `src/shared/services/telegramBackup.js`, `src/sse/services/backgroundTokenRefresh.js` — were absent from `.next/standalone/`. `getGuardModule()` correctly failed closed with 503 instead of serving. Only `assemble.sh` staged that tree, so anything that did not run it (the `npm`/`bun` scripts) started a server that refused every request. `scripts/copy-standalone-assets.mjs` (the `postbuild` hook) now stages `src/` and `scripts/` into the standalone tree the same way, and a unit test pins it. The guard is not weakened: the modules are present, so the auth and peer checks actually run.
 - **`custom-server.js` resolves the app root instead of assuming `__dirname`**: a new `APP_ROOT`/`appPath()` pair probes `__dirname`, then two levels up, then one level up, and falls back to `__dirname`. Repo checkout and the systemd standalone layout (where `src/` sits beside the wrapper) resolve to the same directory as before; a packaged layout with the wrapper nested one level down now finds its source tree instead of silently failing the guard. `server.js` next to the wrapper is still looked up relative to the wrapper, which is correct for every layout.
@@ -8,7 +29,7 @@
 
 # v0.5.218 (2026-10-18) · 3 commits
 
-## What Was Added / Fixed  (ported from upstream decolua/9router: PRs #4988, #4999, #4989)
+## What Was Added
 
 - **A flagged proxy egress no longer hard-blocks OpenCode free-tier (#4988 / issue #4983)**: the free-tier gate answers `403 FreeTierError` when the request leaves from an IP it has flagged, but the transport itself succeeded — so the existing proxy-failure fallback never fired and every retry kept leaving through the same flagged pool until a human rebound it. `proxyAwareFetch` now buffers a proxied 403, looks for the `FreeTierError` marker and replays **once** on the direct egress. Non-gate 403s pass through with their original headers, `strictProxy` still never leaves the configured path, a body already consumed by the first attempt surfaces the original 403, and this fork's `getDispatcher` + HTTP 407 proxy-auth detection is preserved underneath.
 - **Quota check for OpenAI/Anthropic compatible providers (#4999)**: a `Quota check` toggle plus a quota path field on both compatible-node modals. When enabled, `/api/usage/[connectionId]` merges the node's `baseUrl`/`quotaPath`/`nodeName` and a new `customCredits` handler reads the standard credits endpoint, so the remaining balance appears on the Quota page. Opt-in: existing compatible nodes keep `quotaEnabled: false` and behave exactly as before. This fork's `logo`/`brand` node fields and its duplicate-name/prefix guard are preserved.
@@ -16,7 +37,7 @@
 
 # v0.5.217 (2026-10-18) · 3 commits
 
-## What Was Added / Fixed  (ported from upstream decolua/9router: PRs #5009, #5003, #5006)
+## What Was Added
 
 - **Usage table opens on most recently used** (#5009): the by-model / account / API-key / endpoint tables defaulted to an alphabetical `rawModel` sort, so the rows that just moved were buried mid-list. The default sort is now `lastUsed` descending; clicking any column header still overrides it through the URL params.
 - **`opencode/glm-5.3-flash-free` accepts reasoning again** (#5003): the id had no exact capability entry, so it resolved through the `*glm-5.3*` pattern and emitted z.ai's native `thinking:{type:"enabled"}` — which OpenCode's own inference service (a strict validator, not z.ai) answers with `400 json: unknown field "thinking"`. An exact-id `MODEL_CAPABILITIES` entry now sets `thinkingFormat:"openai"`, so these requests carry `reasoning_effort` and stream. Mirrors the existing `opencode-go` override for the paid twin.
@@ -427,12 +448,12 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.178 (2026-10-14) · 1 commit
 
-## What Was Fixed?
+## What Was Fixed
 - **OpenCode Free big-pickle removed & forced Bearer public**: big-pickle was retired from OpenCode free tier and returned 403 FreeTierError during provider tests. Dropped big-pickle from free model filters and ensured upstream Authorization header always uses "Bearer public" without leaking 9router user API keys -Custom
 
 # v0.5.177 (2026-10-14) · 1 commit
 
-## What Was Fixed?
+## What Was Fixed
 - **OpenCode Free 403 FreeTierError bypassed**: upstream v2.0.29 updated its anti-abuse gate, migrating free-tier endpoints to `/inference/v1/...`, enforcing official client UAs (`opencode/latest/2.0.29/cli`), requiring canonical tool fingerprints (`read` and `shell`), and sending `x-opencode-session-id`, `x-session-affinity`, `x-session-id`, and `x-opencode-project: global`. Verified live with cat-jam-free, nemotron-3.5-lightning-free, and longcat-2.5-preview-free returning 200 OK -Custom
 
 # v0.5.176 (2026-10-14) · 1 commit
@@ -442,13 +463,13 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.175 (2026-10-14) · 1 commit
 
-## What Was Fixed?
+## What Was Fixed
 - **Gemini Web answers finally land (stream never closes)**: reads showed Google sends a 186-byte handshake, sits silent 45s, and keeps the HTTP stream open long after the answer is complete - so the old "wait for the whole response" hang forever. The executor now reads incrementally and stops at the first parseable answer, with a 30-second silence guard and a 150-second ceiling matching measured replies (4-108s on this box). Proven live: 3.6-flash 200-OK in 43s, argon 200-OK in 34s, 3.5-lite in 4s -Custom
 - **3.1-pro narrows the device profile**: its real replies prove only one knowledge cutoff has a UI card available offline, same as the 3.6 generation before it -Custom
 
 # v0.5.174 (2026-10-14) · 1 commit
 
-## What Was Fixed?
+## What Was Fixed
 - **"The operation was aborted due to timeout" on Gemini Web model tests**: the probe budget was a flat 15 seconds, but the web endpoint answers a warmed-up probe in 13-50 seconds, so nearly every model reported as broken - including argon, which passes comfortably when given room. Web-cookie providers (Gemini Web, Kimi Web, DeepSeek Web, Xiaomi MiMo) now get a 90-second probe; REST providers keep failing fast at 15s -Custom
 - **Gemini Web session fetch cost**: every request re-downloaded the 800KB /app page for its session token, which alone took 30-60s. The session is now cached for 10 minutes and re-fetched once only when the server rejects the token, cutting warm requests from ~90s to seconds -Custom
 - **Gemini Web model tests fired in parallel**: "Test all models" fan-out all probes at once, but Google queues per account, so the probes timed out behind each other. Web-cookie providers now probe serially -Custom
@@ -464,7 +485,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **OpenAI tool calling for Gemini Web and Kimi Web**: both previously answered 400 "does not support OpenAI function tools". Tools are now encoded into the prompt and recovered from the reply as standard tool_calls, following the proven application-level pattern, so agents get working function calls instead of an error -Custom
 - **Shared web-cookie tool bridge**: new webCookieToolBridge module encoding the OpenAI tools array into the prompt (with tool_choice none/auto/required/forced honored) and parsing model replies back into tool_calls, with tolerant JSON recovery for lenient model output -Custom
 
-## What Was Fixed?
+## What Was Fixed
 - **Gemini Web model mismatch**: requests previously carried no model selector at all, so everything silently landed on 3.5 Flash-Lite regardless of the chosen model
 - **Gemini Web fingerprint**: Chrome 146 desktop user agent and browser headers replace the previous Linux-box string, matching the reference client
 - **Gemini Web session auth**: XSRF token handling and SAPISIDHASH authorization corrected per the captured browser flow, so signed-in cookies stop getting blanket 400s
@@ -491,7 +512,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Antigravity catalog refresh**: Gemini 3.8 Flash, 3.6 Flash, and 3.1 Pro High added to the model list
 - **Self-hosted TTS**: custom model and voice support for self-hosted text-to-speech endpoints
 
-## What Was Fixed?
+## What Was Fixed
 - **Gemini translator**: a tool parameter literally named `properties` is no longer mistaken for a schema node, which was causing 400 errors from Google Vertex and Gemini with MCP tools
 - **Gemini translator**: `functionResponse` payloads rename `$ref` instead of forwarding it, and tool properties travel as `properties` rather than a raw schema
 - **Translator**: duplicate `tool_call_ids` are collapsed so a single tool result is not replayed twice
@@ -522,7 +543,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Changelog Modal**: category pills now read as full uppercase questions instead of a bare section noun - "WHAT'S ADDED?" (green), "WHAT WAS FIXED?" (amber), "WHAT WAS DELETED?" (rose), "WHAT WAS REPLACED?" (violet), "WHAT CHANGED?" (pink), "WHAT GOT FASTER?" (cyan), "WHAT WAS HARDENED?" (red), "WHAT'S DOCUMENTED?" (sky), "WHAT LOOKS DIFFERENT?" (orange), "WHAT'S UNDER THE HOOD?" (slate). The trailing small category name is gone; the left accent bar now carries the colour -Custom
 - **Changelog Modal**: four new canonical categories with their own colours and icons - Changed, Performance, UI, plus Security/Hardened reworded from "Security" to "WHAT WAS HARDENED?"; Changelog.md headings converted (171 of them) so the raw file and the rendered panel speak the same vocabulary -Custom
 
-## What Was Fixed?
+## What Was Fixed
 - **Changelog Modal**: alias map gained bugfixes, refactors, optimisation, styling, accessibility and the question-form headings, so upstream spellings no longer collapse into one grey "label" pill -Custom
 
 # v0.5.169 (2026-10-14) · 3 commits
@@ -531,7 +552,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **OpenCode Free & Zen**: integrate exact bash formula `((~(timestamp_ms * 4096 + counter)) & 281474976710655)` into `generateSessionId()` for canonical 12-hex descending inverted timestamp session header (`x-opencode-session`) generation (PR #4782) -Custom
 - **OpenCode Free & Zen**: implement PR #4782 session translation cache & inverted timestamp generator (`translateSessionId`) across both `opencode.js` and `opencode-zen.js` to ensure generated sessions carry valid descending timestamp headers and prevent 403 FreeTierError -Custom
 
-## What Was Fixed?
+## What Was Fixed
 - **OpenCode**: ensure robust fallback header generation for missing session credentials in executor `buildHeaders` -Custom
 - **Endpoint Keys UI**: remove the "Key switched off" text badge from the inactive API key card in `EndpointPageClient.js` - the toggle switch already communicates the off state, the extra label was visual noise -Custom
 
@@ -540,7 +561,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 ## What's Added?
 - **Custom Models**: an anti-probe switch sits above the model list. It turns the BazaarLink-oriented check on or off and says what it does; the anti-mask panel appears in the form only while the switch is on. The state lives in settings, so every administrator gets the same editor instead of each browser deciding alone.
 
-## What Was Fixed?
+## What Was Fixed
 - **Usage**: the overview sparkline under each metric card is gone - the numbers stay in one centred row. `/api/usage/sparks` still feeds the activity heatmap.
 
 # v0.5.165 (2026-10-11) · 18 commits
@@ -549,7 +570,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Proxy Pools**: Delete All button, plus Select all now spans the whole filtered list instead of the 20 visible rows
 - **Proxy Pools**: bulk delete runs as one transaction on `/api/proxy-pools/bulk` instead of one request per pool
 
-## What Was Fixed?
+## What Was Fixed
 - **Theme**: glass and dark draw every surface from the theme tokens; leftover solid slabs (white OpenAI button, opaque black log viewport, zinc-bordered usage cards, gray tooltip, gray badge dot, chat bubble hex, console-log line numbers, unknown-tool badge, native checkbox borders, manual-update dialog, footer icons) now follow the active theme, verified by screenshot in both themes
 - **Models**: hide orphan compatible groups from the model picker, so a deleted OpenAI/Anthropic Compatible node no longer opens a raw `OpenAI Compatible (xxxxxxxx)` heading full of dead rows
 - **Models**: import progress card stays inside its own section instead of dimming the whole dashboard
@@ -573,7 +594,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Dashboard**: cost mode in the provider chart, hardened tool bridge, cleaner welcome banner
 - **Welcome**: show the running version and a fuller orientation line
 
-## What Was Fixed?
+## What Was Fixed
 - **Marks**: stop old ligatures on model rows; one-surface welcome dialog
 - **Plugins**: neutral tiles with saturated glyph marks
 - **Plugins**: one mark per card, redrawn as a single family
@@ -590,7 +611,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Plugins**: add OpenAI Tool Bridge - recovers tool calls from a text-only provider's answer instead of failing the request
 - **Plugins**: restyle every custom plugin mark - two-layer tile with a docked badge and an enabled ring
 
-## What Was Fixed?
+## What Was Fixed
 - **Changelog**: stop the merge of two same-day releases from printing one bullet twice, and fold repeated scope prefixes into a single heading
 - **Changelog**: group entries by scope
 - **Loading**: move Cancel and Run in background inside the banner frame as one compact control cluster
@@ -610,7 +631,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Notifications**: bell opens the changelog; drop the inbox error and security log surfaces
 - **Notifications**: surface failed requests and security events in the bell
 
-## What Was Fixed?
+## What Was Fixed
 - **Security log**: stop probe signatures from swallowing sign-in events
 - **UI**: scroll the update banner with the page and use English copy in the error inbox
 
@@ -621,7 +642,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.159 (2026-10-05) · 1 commit
 
-## What Was Fixed?
+## What Was Fixed
 - **Auth**: refuse shutdown and live-update for API key sessions; hide the controls too
 
 # v0.5.158 (2026-10-04) · 25 commits
@@ -636,7 +657,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Security**: persistent security log with red breach flags, admin-only site theme
 - **Studio,banner**: hide the upstream model, custom owned_by, cancellable background banners
 
-## What Was Fixed?
+## What Was Fixed
 - **Auth**: fail closed when the dashboard guard cannot run
 - **Dashboard**: accept combo names in PRD Builder
 - **Docker**: ship the auth guard sources into the runtime image
@@ -670,7 +691,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Security**: persistent security log with red breach flags, admin-only site theme
 - **Studio,banner**: hide the upstream model, custom owned_by, cancellable background banners
 
-## What Was Fixed?
+## What Was Fixed
 - **Auth**: fail closed when the dashboard guard cannot run
 - **Dashboard**: accept combo names in PRD Builder
 - **Docker**: ship the auth guard sources into the runtime image
@@ -702,7 +723,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Security**: persistent security log with red breach flags, admin-only site theme
 - **Studio,banner**: hide the upstream model, custom owned_by, cancellable background banners
 
-## What Was Fixed?
+## What Was Fixed
 - **Auth**: fail closed when the dashboard guard cannot run
 - **Dashboard**: accept combo names in PRD Builder
 - **Docker**: ship the auth guard sources into the runtime image
@@ -732,7 +753,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Security**: persistent security log with red breach flags, admin-only site theme
 - **Studio,banner**: hide the upstream model, custom owned_by, cancellable background banners
 
-## What Was Fixed?
+## What Was Fixed
 - **Auth**: fail closed when the dashboard guard cannot run
 - **Dashboard**: accept combo names in PRD Builder
 - **Docker**: ship the auth guard sources into the runtime image
@@ -761,7 +782,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Usage**: remove the live request inspector tab
 - **Usage**: token saver analytics tab with real-savings estimates
 
-## What Was Fixed?
+## What Was Fixed
 - **Models**: honor .env PORT on start and persist free model catalogues
 - **Combo**: combo pills report the real window instead of the 200k default
 - **Providers**: drop the duplicate MiMo free registry entries
@@ -786,7 +807,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **UI**: show live free-model catalogue in the model picker
 - **UI**: single animated update banner on dashboard; drop sidebar copy
 
-## What Was Fixed?
+## What Was Fixed
 - **Auth**: enforce the dashboard guard in custom-server because Next 14 middleware is Edge-only
 - **Dev**: isolate dev build to .next-dev on localhost:20128 so dev runs stop corrupting the production .next
 - **Hook**: converge via a single settled post-commit amend loop
@@ -822,7 +843,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **UI**: unify every long-operation loading into one centered progress card
 - **Web**: add TinyFish search and fetch provider
 
-## What Was Fixed?
+## What Was Fixed
 - **Backup**: stop invalid-password error during import by polling with a token
 - **Keys**: show created keys to their creator session everywhere, label creators by name
 - **Tests,endpoint**: throwaway DATA_DIR for vitest; auto-create key named 'Default Keys' with duplicate-provision guard
@@ -834,7 +855,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.151 (2026-09-30)
 
-## What Was Fixed?
+## What Was Fixed
 - **Import**: show bulk import progress overlay and block closing the modal while a bulk add/import loop is running, split large codex/grok payloads into batches of 20
 - **Logging**: dedupe repeated auth-failure log lines per source/ip/key prefix so a misconfigured polling client no longer floods the log, 401 responses still sent
 - **Backup**: forward the backup password as `x-9r-password` header when polling the import job so password-protected imports track progress
@@ -842,7 +863,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.150 (2026-09-30)
 
-## What Was Fixed?
+## What Was Fixed
 - **API Keys**: show created-by label under each API key name on the endpoint page
 - **API Keys**: include `createdBy` in `POST /api/keys` 201 response
 - **Inspector**: open live-requests inspector stream without login gate, scope rows by key `allowedModels`, refresh every 5s
@@ -853,27 +874,27 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.149 (2026-09-30)
 
-## What Was Fixed?
+## What Was Fixed
 - **Settings**: move tracing config into experimental and exclude user profile paths
 
 # v0.5.148 (2026-09-30)
 
-## What Was Fixed?
+## What Was Fixed
 - **Build**: mark db adapters external the Next 14 way so bun sqlite skips the webpack bundle
 
 # v0.5.147 (2026-09-30)
 
-## What Was Fixed?
+## What Was Fixed
 - **Build**: restore build dependencies dropped during the Next 14 downgrade
 
 # v0.5.146 (2026-09-29)
 
-## What Was Fixed?
+## What Was Fixed
 - **Build**: drop unknown webpack flag from the build script for next 14.2.35
 
 # v0.5.145 (2026-09-29)
 
-## What Was Fixed?
+## What Was Fixed
 - **Build**: pin `@types/react-dom` to existing 18.x to fix Railway install
 
 # v0.5.144 (2026-09-29)
@@ -899,13 +920,13 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Backup**: include permissions and `createdBy` columns in apiKeys backup export/import
 - **Backup**: add backup self-check for round-trip export→import preserving apiKey metadata
 
-## What Was Fixed?
+## What Was Fixed
 - **API Keys**: add `createdBy` `"dashboard"` value for dashboard users in `POST /api/keys`
 - **Backup**: fix round-trip `exportDb`/`importDb` to preserve permissions and `createdBy` fields
 
 # v0.5.140 (2026-09-28)
 
-## What Was Fixed?
+## What Was Fixed
 - **Models**: stop the model picker heading a group with a generated node id
 - **Models**: disambiguate compatible provider headings with a short uuid suffix so two custom providers never share one label
 
@@ -914,19 +935,19 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.139 (2026-09-28)
 
-## What Was Fixed?
+## What Was Fixed
 - **Streaming**: correct a streamed tool-call name without holding the stream back
 - **Models**: stop the model picker heading a group with a generated node id
 - **Tool calls**: rescue tool calls the client would reject with an invalid-args error
 
 # v0.5.138 (2026-09-28)
 
-## What Was Fixed?
+## What Was Fixed
 - **Chat**: restore seren chat core
 
 # v0.5.139-Custom (2026-09-28)
 
-## What Was Fixed?
+## What Was Fixed
 - **A streamed tool call is no longer rejected over the case of its name.** The name and the arguments are corrected differently on purpose. A name arrives whole in the first delta of a call, so raising it back to the case the request declared costs nothing and holds nothing back. Arguments arrive in fragments and only form a parseable object at the end, so they are not touched here: buffering them would delay every tool call in the stream until its last fragment landed. A streamed call whose arguments cannot be recovered is repaired on the following turn instead, by the history rule shipped in `v0.5.137-Custom`, which is too late to save that turn but stops it repeating.
 - **The fix is applied on every path that emits a chunk.** Passthrough, the Responses same-format passthrough, the translate loop, the flush tail and the final flush all correct a name before the frame is written.
 
@@ -941,7 +962,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.138-Custom (2026-09-28)
 
-## What Was Fixed?
+## What Was Fixed
 - **The model picker no longer heads a group with a generated node id.** A compatible provider node is stored under an id like `openai-compatible-chat-b5bca155-fc33-4899-a868-2ff3d7891e3c`, and a custom model records that id as its provider. When no group owned the alias, the picker opened one and titled it with the id, so a database key was rendered as a provider name with a model count beside it. The heading now resolves in order: the node's own name, the connection's name, the static registry, and finally the family the id belongs to, so an unresolvable node reads as OpenAI Compatible rather than as a uuid. A registry entry that merely echoes the id back is not trusted as a name.
 - **A custom model no longer opens a second group for a node that already has one.** A compatible group is keyed by the node id but stores the node prefix as its display alias, and a custom model stores the id, so the alias-only lookup never matched. The id is tried as well, which is what makes the group and the model meet.
 
@@ -955,7 +976,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.137-Custom (2026-09-28)
 
-## What Was Fixed?
+## What Was Fixed
 - **A tool call the client could not satisfy ended the turn.** `Invalid args for tool "Bash": must have required property 'command'` is the client validating the call against the schema the request itself declared, and it throws rather than continuing. The argument object was reaching the client as `{}` because the only repair in the pipeline, `toolCallFallback.repair`, reads the request history and never looks at the call the model is producing right now. Three rules now run over each response: a name spelled in a different case than the request declared is raised back to the declared one, a missing required property is filled from a value the model did supply under another name, and a call whose arguments cannot be recovered is dropped so the model tries again on the next turn instead of the turn dying.
 - **A model that wrote the command as the whole argument string is understood.** `arguments: "ls -la"` is lifted into `{"command":"ls -la"}`, but only when the tool declares exactly one required string property. With more than one, the value is ambiguous and the call is dropped rather than guessed.
 - **A rejected call no longer poisons every turn after it.** The call the client rejected stays in the history it sends back, so the same broken call was re-validated and rejected on each retry. The history is now rescued on the way out, which is what makes a turn recoverable after the first failure.
@@ -970,7 +991,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.136-Custom (2026-09-28)
 
-## What Was Fixed?
+## What Was Fixed
 - **Creating an API key failed everywhere.** `createApiKey` in the repository module read `ctx.session?.apiKey` to work out who was creating the key, but that module has no session and never had one. Every call threw a ReferenceError, the route caught it, and the dashboard got a bare 500 with no clue what went wrong. The caller already resolved the creator and passes it in, so the inference is gone. The key name check in the form was unrelated and is unchanged.
 - **The Live Request tab was not reachable.** The tab strip scrolled sideways, so its last option sat off the edge of a narrow viewport, and the label was long enough to make that likely. The tab is now called Inspector, and the strip wraps instead of scrolling, so no option can end up hidden behind a scrollbar.
 
@@ -983,7 +1004,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.135-Custom (2026-09-28)
 
-## What Was Fixed?
+## What Was Fixed
 - **The wrong panel was hidden for API-key sessions.** The provider map is the diagram with 9Router at its centre and every configured provider arranged around it, joined by animated edges. That is infrastructure rather than one key's usage, and it is what now gets replaced with a short muted note. The usage charts, which were hidden instead in `v0.5.129-Custom`, are back for every session. Both chart endpoints were already scoped to the session's allowed models, so what an API-key holder sees is that key's own usage.
 - **The note no longer leaves most of a row empty.** Recent Requests is pinned to a fixed height and the map used to fill the wide column beside it, so the note and the request list now drop the two-column grid for an API-key session instead of sitting in a 480px cell.
 - **A session that is still being identified no longer flashes the map.** The lookup of `/api/auth/status` and the statistics load run together, and the map area now shows the same spinner the charts used to, so an API-key holder never sees the map appear and then disappear.
@@ -1017,7 +1038,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Adaptive Pruning by Context Window** in Token Saver sizes the cut to the model rather than to a message count, so a short session is never touched and only a request that would actually overflow loses turns. Room is held back for the reply, and the existing message limit becomes the floor rather than the target.
 - **A tool call and the result answering it are now treated as one unit when cutting history.** The new pruning groups turns by the call ids actually present in the conversation, so a call is never dropped while its result survives. That split is a hard 400 upstream, and inside a combo it burns every member before one can reply.
 
-## What Was Fixed?
+## What Was Fixed
 - **A tool call that could not be repaired was never actually dropped.** The repair tested whether anything had changed before testing whether the call was recoverable, and a call missing only an unfillable required property had nothing left to change, so it passed straight through and the client failed on it again.
 - **The Context Doctor recap was inserted ahead of the system prompt.** It was spliced at index 0 rather than after the pinned prefix, which Claude and Gemini both reject.
 - **A truncated JSON object whose last key had no colon stayed unparseable.** The shared closing helper only handled the form with a trailing comma, so `{"city":"Lisbon","popu` reached the caller untouched instead of as `{"city":"Lisbon"}`.
@@ -1036,7 +1057,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.132-Custom (2026-09-28)
 
-## What Was Fixed?
+## What Was Fixed
 - **Model picker merged unrelated models into one provider**: custom models that could not be placed in a provider group were pushed into the first provider with `passthroughModels`, which both stacked them under that provider's heading and rewrote their value to that provider's prefix. Picking one silently retargeted the request at a provider the model never belonged to, and a provider such as OpenCode Free could show hundreds of borrowed models. They are now grouped under the alias each model actually belongs to, which is the prefix the value needs anyway.
 - **A permission comment described the opposite of what the code does**: an empty `permissions: []` page rule was documented as "open to any session", but `canOpenPage` asks whether any listed permission is held, and an empty list has none, so the page is closed. The comment is corrected, and the two pages relying on it (Basic Chat, Profile) keep their existing behaviour.
 
@@ -1050,7 +1071,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.131-Custom (2026-09-28)
 
-## What Was Fixed?
+## What Was Fixed
 - **Quota Tracker crashed on open**: the Quota row card rendered a `resetWord` that was never declared, which throws a ReferenceError the moment the list draws. `/dashboard/quota` has no error boundary, so the whole page went blank. The label now comes from the `recurring` flag the row already carries, so a one-shot pack still reads "Expires" and a refilling quota still reads "Reset", matching the wording the progress bar already used.
 
 ## What's Under the Hood?
@@ -1064,7 +1085,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.129-Custom (2026-09-27)
 
-## What Was Fixed?
+## What Was Fixed
 - **API key usage showed providers the key cannot use**: signing in to the dashboard with an API key showed every provider that had ever run on the instance. The Usage page reads two sources, and the SSE stream at `/api/usage/stream` called `getUsageStats` without the allowed-models argument, so it fell back to "every model" and overwrote the correctly scoped first response. That stream is the one that populated the By Provider chart, which is why unrelated providers such as MiMo Code Free and OpenCode appeared next to the key's own custom model.
 - **Leaderboard and Errors tabs ignored allowed models**: both filtered by API key but not by the key's model allowlist, so a scoped session saw models it would be refused at request time. The Errors tab now also excludes those models from its total and error counts, so the numbers agree with the rows.
 - **Live request list was never scoped**: `getActiveRequests()` returned the global view to every caller, including API-key sessions, exposing other keys' in-flight and recent requests. It now takes the session scope, and a scoped caller gets an empty in-flight list because pending traffic carries no key attribution.
@@ -1080,7 +1101,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.127-Custom (2026-09-27)
 
-## What Was Fixed?
+## What Was Fixed
 - **MiMo Code Free hidden properly**: the provider was flagged `hidden` in the registry but still surfaced in the model selector and in `/v1/models`, because the no-auth provider lists were built from every `noAuth` free provider without checking that flag. Both lists now skip hidden entries, so the dead Xiaomi free channel no longer shows up with a large auto-fetched model list. The entry keeps its `noAuth` flag so an old `mmf/mimo-auto` request still resolves on the request path.
 - **MiMo free model catalog no longer auto-fetched**: the registry entry pulled a model list from models.dev through `modelsFetcher` and accepted any id through `passthroughModels`. Both are gone, so the provider exposes only its single curated model and no longer grows a catalog from an external source.
 
@@ -1095,7 +1116,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Quota Tracker redesign**: quota rows are now card-style with rounded borders, a larger progress bar, and the remaining percentage moved to the top-right of each row. Spacing, typography and hover states are aligned with the rest of the dashboard.
 - **API Key Usage menu removed**: the sidebar entry is gone. Users who sign in with an API key already see their own scoped usage on the Usage page, so the separate menu was redundant. The page route and `/api/usage/api-keys` endpoint are unchanged.
 
-## What Was Fixed?
+## What Was Fixed
 - **Live Request Inspector auth**: the SSE endpoint called `getSessionContext()` but discarded the result, so the auth check was a no-op. It now returns 401 when there is no session.
 
 # v0.5.125-Custom (2026-09-27)
@@ -1115,7 +1136,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.124-Custom (2026-09-27)
 
-## What Was Fixed?
+## What Was Fixed
 - **Combo body mutation in fallback loop**: the fallback loop passed the same `body` reference to each member in turn, and `translateRequest` plus `fixMissingToolResponses` mutated `messages` in place. A second member inherited the corrupted history, which silently broke tool calling. Each member now gets its own cloned messages array, so a failed first member no longer poisons the next attempt.
 
 ## Custom Features & Enhancements
@@ -1220,12 +1241,12 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.109-Custom (2026-09-20)
 
-## What Was Fixed?
+## What Was Fixed
 - **Plugin badges on Custom Models and Combos**: the Custom Plugins badges (Image Vision, Think Deeper, Speed Mode, Uncensored Output) only ever resolved against plain provider models, so a plugin applied to a Custom Model, a custom-provider import, or a combo showed its badge nowhere. The models endpoint now emits capability entries for Custom Models (inherited from their target plus the plugin badges matched against the studio name or the model it calls) and for combos (boolean capabilities OR-ed across members, context/output floors taken from the smallest member). The model picker and capability hook resolve those entries by callable name, and the picker now renders the same badges on Custom Model and combo chips that it already showed on regular models.
 
 # v0.5.108-Custom (2026-09-20)
 
-## What Was Fixed?
+## What Was Fixed
 - **Automatic Backup actually fires**: the scheduler previously only armed through the deferred app bootstrap, so on a restarted server the timer could stay dead until the settings page was opened; the HTTP server wrapper now arms it at boot and the config endpoint wakes it on demand as a second safety net, so a pending schedule can never silently disappear.
 - **Import Backup no longer resets the schedule**: restoring a backup without an autoBackup section (old or partial exports) kept wiping the stored config and status, which disabled backups on its own. The autoBackup scope is now only touched when the imported file actually carries it, and the import handler re-arms the scheduler against the freshly stored config afterwards.
 - **Honest next-run countdown**: with the scheduler idle the endpoint clamped the due time to "now", which rendered a stuck 00:00 countdown. It now reports the real scheduled time even when the run is overdue, and the woken scheduler takes over the countdown from there.
@@ -1242,7 +1263,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.105-Custom (2026-09-19)
 
-## What Was Fixed?
+## What Was Fixed
 - **GitHub link label visible on mobile**: the header "Visit On GitHub" text was hidden behind a responsive `hidden sm:inline` class and showed only the logo on small screens; the label now always renders next to the icon.
 
 # v0.5.104-Custom (2026-09-19)
@@ -1252,7 +1273,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.103-Custom (2026-09-19)
 
-## What Was Fixed?
+## What Was Fixed
 - **OpenCode free tier: stop 403 FreeTierError on tool-carrying agent requests**: the free tier fingerprints the official agentic client inside the request body. The `/zen/v1/responses` gate now requires the `bash` + `read` tool decoys plus `tool_choice: "auto"` on every request (previously they were only injected when the payload had no tools at all, so any real agent call carrying 1..N tools went out naked and received 403), and the `/zen/v1/chat/completions` gate requires the full `bash`, `glob`, `grep`, `read` quartet, which is now appended whenever any of the four is missing. External client tools are preserved verbatim and only missing fingerprint names are added as no-op declarations. `muse-spark-1.2-contributor-free` is added to the force-auto tool choice quirk alongside 1.3 since both free models reject non-auto choices with 400.
 
 # v0.5.102-Custom (2026-09-19)
@@ -1260,7 +1281,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 ## Custom Features & Enhancements
 - **DeepSeek Web tool calling support**: the cookie-based DeepSeek Web provider now supports OpenAI tool calling. Because the web backend is a text-only RAG endpoint, the executor encodes the requested tools as a protocol inside the prompt, converts previous assistant tool_calls and tool result messages into readable transcript turns, and parses the model's reply back into standard OpenAI `tool_calls` deltas with `finish_reason: "tool_calls"` for both streaming and non-streaming requests. Requests without tools follow the original flow unchanged.
 
-## What Was Fixed?
+## What Was Fixed
 - **Usage visible after backup import**: the Usage Overview Today and 24h views now merge the daily aggregates that shipped inside the backup (for days before today) with live request history, so restored usage is no longer hidden behind an empty default period. Verified with a real export-import roundtrip: restored rows show up in today, 24h and 7d views, while live-only data is never double counted.
 
 # v0.5.101-Custom (2026-09-19)
@@ -1270,7 +1291,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.100-Custom (2026-09-19)
 
-## What Was Fixed?
+## What Was Fixed
 - **Modal header polish**: the "Welcome to 9Router!" title no longer hugs the left edge of the dialog and now sits vertically centered on the same line as the close button. Applied to all dialogs, including the Download Backup header.
 - **Smaller "Heavy" badge**: the Heavy tag in the Download Backup section list now renders in the compact badge size instead of falling back to the large default.
 
@@ -1283,12 +1304,12 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.98-Custom (2026-09-17)
 
-## What Was Fixed?
+## What Was Fixed
 - **Keep original base models visible alongside custom models**: creating a custom studio model no longer hides or overwrites the underlying base model. Both the original target model and the newly created custom model stay fully visible in model pickers, provider details, and `/v1/models`.
 
 # v0.5.97-Custom (2026-09-17)
 
-## What Was Fixed?
+## What Was Fixed
 - **Fix OpenCode Free Tier 403 FreeTierError**: resolved `"OpenCode's free tier can only be used from within OpenCode"` by tailoring request headers with `User-Agent: opencode/1.18.30`, `anthropic-version: 2023-06-01`, and conforming 30-character OpenCode session and request identifiers (`ses_*`, `msg_*`).
 - **Add Union Alpha & Union Alpha Free support**: added `union-alpha` and `union-alpha-free` to OpenCode's registry with targetFormat `claude` (routed directly to `/zen/v1/messages`), configured vision and reasoning capabilities, and added it to suggested models.
 
@@ -1322,7 +1343,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.92-Custom (2026-09-16)
 
-## What Was Fixed?
+## What Was Fixed
 - **Fix LAN/Docker default login password**: trusted-peer auth now falls back correctly for local and container deployments.
 - **Fix usage errors page always showing 0**: error tracking counts are now persisted and read back properly.
 
@@ -1336,7 +1357,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 ## Custom Features & Enhancements
 - **A custom (studio) model now hides the model behind it**: the moment a base model gets a studio name, that base model disappears from every place a client or a picker reads - `GET /v1/models` and its per-kind variants answer with the studio name only, the model pickers (API key allowed models, combos, CLI tool mappings, arena) offer the studio name only, and the provider page Models tab lists the studio name only. So with `qwen-3.8` pointed at `neko/qwen3.8-flash`, nothing shows `neko/qwen3.8-flash` anymore. The raw model is still routable and the Model Studio editor still sees it, because that is exactly where you pick the model a new name should call. The rule is shared in one helper (`buildStudioTargetIndex`) keyed by provider id plus model id, case-insensitive, so the same model name under another provider stays visible.
 
-## What Was Fixed?
+## What Was Fixed
 - **The x on an allowed-model chip now removes that model**: in the API key forms the chips called a handler that branched on which picker modal was last opened, so with a freshly opened form (or before ever pressing Select Models) clicking x did nothing. Removing and adding models now state plainly which field they edit, and the chip lists in both the create-key and edit-key forms work on their own.
 
 # v0.5.90-Custom (2026-09-16)
@@ -1347,7 +1368,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.89-Custom (2026-09-16)
 
-## What Was Fixed?
+## What Was Fixed
 - **Automatic backups now really go out**: the scheduler tick used to hold the same in-flight lock that the send function checks, so every scheduled run rejected itself with "A backup is already being sent" and only retried 30 minutes later, forever. The tick now just decides when a run is due and hands the send over; a regression case drives a due tick against a stubbed Telegram API and asserts one upload actually leaves the process (it fails on the old code, passes on the new one).
 
 ## Custom Features & Enhancements
@@ -1377,13 +1398,13 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 ## Custom Features & Enhancements
 - **A key's allowed models now also decide what it can see**: `GET /v1/models` (and `/v1/models/{kind}`, `/v1/models/{provider}/{model}`) answers through the same patterns the request gate uses, so a key limited to `claude-fable-5.1` lists exactly that one model instead of advertising names it would refuse with `403`.
 
-## What Was Fixed?
+## What Was Fixed
 - **Two custom models on the same base model stop trading places**: older builds stored a display alias for every Model Studio name, and with two names aimed at one target the alias lookup answered whichever matched first - so calling `gpt-5.6-sol` could show up as `claude-haiku-5`, or as the bare base model. Studio names are now cleaned of any leftover alias, whatever value it held, and an alias that carries a studio name can no longer add a second entry for the same model to the listing.
 - **A model name that is not a string is refused instead of crashing**: an array or object in `model` reached SQL as a bound value and died with `Unknown named parameter '0'` inside a 500; it now returns a plain `400 Missing model`.
 
 # v0.5.84-Custom (2026-09-13)
 
-## What Was Fixed?
+## What Was Fixed
 - **A custom model typed with its provider prefix now resolves**: a Model Studio target saved as `kr/gpt-oss-120b` was read with a bare parse, which handed the prefix back as the provider, matched no credentials, and left the usage row named after the base model - the target is now resolved the same way any other call is, so the studio name is what answers and what Usage bills, while `resolvedModel` still records the base model beside it.
 - **A per-model override may name another provider**: an override whose target carries a prefix is resolved first instead of pasting `prefix/model` onto the current provider, which produced a doubled path upstream.
 
@@ -1393,7 +1414,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **The two Workshop tools are named after what they do**: **Compare Models** runs one prompt across models side by side, and **Custom Models & Editor** is where those extra model names live.
 - **The changelog is one card per day**: releases that landed on the same date now share a single bordered block, with each version kept as its own sub-heading inside it.
 
-## What Was Fixed?
+## What Was Fixed
 - **The live request panel follows the name you called**: in-flight and streaming requests were tracked under the model the gateway resolved to, so Usage could list `claude-sonnet-5` and `qwen-3.8` at the same moment for one key.
 - **Embeddings stopped splitting a custom model into two rows**: its usage record and its failure text named the resolved target, while every other endpoint reported the studio name, which is what made both names pile up in the same leaderboard.
 
@@ -1405,7 +1426,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Every API key has an on/off switch**: the toggle sits on the left of each key row, is stored through the existing key update endpoint, and a switched-off key is refused with `403 API key is disabled` on chat, embeddings, images, video, speech, transcription, search and web fetch - including while the gateway runs without required keys.
 - **FEATURE+ is the section title again** for the tools this fork adds, with Model Battle Arena and Custom Model Editor inside it.
 
-## What Was Fixed?
+## What Was Fixed
 - **Per-key limits now apply to every endpoint**: chat compared the validator's reason strings one by one while the other endpoints only checked them for truthiness, so an over-quota, expired or model-restricted key could still generate images, embeddings, speech and searches.
 - **A switched-off key can no longer be traded for remote access**: the edge guard accepted any non-false validation result, so the document writer's and battle arena's reason strings unlocked `/v1/*`.
 
@@ -1423,7 +1444,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.79-Custom (2026-09-12)
 
-## What Was Fixed?
+## What Was Fixed
 - **A provider that answers JSON when we asked for a stream no longer hangs**: the gateway now reads the response content-type and either replays the completion as live SSE for a streaming client or serves the normal JSON path, so the answer arrives and tokens are billed.
 - **Unreadable upstream bodies fail loudly**: a body that is neither a stream nor valid JSON now returns a clean gateway error instead of a 200 response with nothing in it.
 - **Event-stream bodies are parsed whatever they contain**: a plain JSON document wearing an SSE label, NDJSON rows, Claude Messages events and Responses-API events all decode into a real answer instead of `Invalid SSE response for non-streaming request`.
@@ -1433,7 +1454,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.78-Custom (2026-09-12)
 
-## What Was Fixed?
+## What Was Fixed
 - **Showdown streams live**: every contender now paints its answer token by token with a ticking elapsed timer, so a slow model reads as "still working" instead of a frozen spinner with no feedback.
 - **One streaming client for both tools**: Showdown and the PRD Writer now talk to the gateway through the same `streamChatCompletion` helper, so reasoning deltas, usage capture and readable error parsing behave identically on both pages.
 
@@ -1443,7 +1464,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.77-Custom (2026-09-12)
 
-## What Was Fixed?
+## What Was Fixed
 - **A rejected request no longer grounds an account**: 400, 406 and 422 from a provider are now classified as caller mistakes, so they surface immediately instead of cooling the credential for 30 seconds and dragging every other account through the same failure.
 
 ## Custom Features & Enhancements
@@ -1455,7 +1476,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.76-Custom (2026-09-12)
 
-## What Was Fixed?
+## What Was Fixed
 - **Showdown shows real outcomes**: a model that answers with HTTP 200 but no text is now labelled `empty` with the reason why, instead of dumping raw JSON into the result card.
 - **Showdown errors are readable**: provider failures show one short line plus HTTP status, cooldown and route chips, with the untouched payload behind "Show the raw error".
 - **Silent models can no longer win**: awards and the top ranking ignore answers that produced nothing, so an empty response can't be declared the fastest.
@@ -1473,7 +1494,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.74-Custom (2026-09-11)
 
-## What Was Fixed?
+## What Was Fixed
 - **Model Studio no longer renames the original model**: a studio name is now resolved through its own record instead of writing a display alias, so `claude-fable-5` appears as an added entry while `custom1/claude-sonnet-5` keeps its own name in every picker.
 - **Legacy studio aliases cleaned up**: display aliases left behind by older builds for studio names are deleted the first time the studio list loads, so previously renamed models reappear under their real name.
 - **Usage shows the called studio name everywhere**: the name you call (e.g. `claude-fable-5`) is now recorded as the request's model across Overview, Leaderboard, Logs and Details, with the real backend model kept only as muted `→ provider/model` text and cost still priced from it.
@@ -1483,7 +1504,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.73-Custom (2026-09-11)
 
-## What Was Fixed?
+## What Was Fixed
 - **Model Studio page crash**: the per-card copy button now uses the shared copy hook, so a saved model no longer throws the client-side `ReferenceError` that showed "This page couldn't load".
 - **Model Battle data load**: the missing API-key and Model Studio fetch is restored, so a key is pre-selected and virtual (studio) names are priced by their real target model.
 - **Sub-cent battle costs**: costs now show enough digits (e.g. `$0.0034`) instead of every row reading `$0.00`, so the cheapest badge means something.
@@ -1517,7 +1538,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **UI Cleanup**: Refined dashboard layout, tidied console log view, and removed the Live Feed page and related controls for a cleaner sidebar.
 - **Backup Fix**: Fixed API key settings and usage statistics being reset on backup import (column/placeholder mismatch).
 
-## What Was Fixed?
+## What Was Fixed
 - **API Key Creation Bug**: Fixed `createApiKey` INSERT placeholder mismatch (16 columns vs 15 `?`) that made creating any API key silently fail.
 - **API Key Expiry**: Expiry date set during creation is now persisted (was silently dropped).
 - **Unique Key Names**: API key names are enforced unique - server rejects duplicates and the client shows a clear message; no overwriting.
@@ -1546,7 +1567,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Cline**: expose the `cline-free/*` tier and price it at zero
 - **Combos**: display vision adapter models in an ordered table view
 
-## What Was Fixed?
+## What Was Fixed
 - **Claude**: decloak tool names when `toolNameMap` misses (#4342); update spoofed cli version to 2.1.280 to support Opus 5.5
 - **Providers API**: make POST `/api/providers` O(1) and refuse silent key overwrite (#4350)
 - **Capabilities**: stop caching the catalog source per module copy (#4351)
@@ -1570,7 +1591,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Claude**: add Claude Opus 5.5 support
 - **i18n**: translate React text rewrites via characterData mutation observer
 
-## What Was Fixed?
+## What Was Fixed
 - **Proxy Pools**: keep request headers intact through Vercel/Cloudflare/Deno relays (spreading a `Headers` instance yielded `{}`, dropping auth and content-type)
 - **Xiaomi MiMo login**: keep the session in the httpOnly cookie only, require dashboard auth on the proxy branch, and stop forwarding authorization headers upstream
 
@@ -1585,7 +1606,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **OpenCode Zen & MiMo**: add OpenCode Zen (`opencode-zen`) provider with free-tier fingerprint; switch default vision fallback to MiMo V2.6 Flash Free
 - **Qoder CN**: add `qoder-cn` provider for qoder.com.cn with OAuth flow, COSY protocol, and CN gateway routing
 
-## What Was Fixed?
+## What Was Fixed
 - **Translator**: map Claude `refusal` stop_reason to `content_filter` and surface explanation; strip replayed reasoning fields for Groq, Mistral, and Cerebras (#4220)
 - **Antigravity**: drop requestType `agent` to avoid false 429 `RESOURCE_EXHAUSTED`; separate weekly and short-window (5-hour) quotas and deduplicate dashboard rows
 - **Responses API**: report usage on `response.completed` so clients can auto-compact (#3432)
@@ -1602,7 +1623,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Models**: add DeepSeek-V4.1-Flash to DeepSeek provider, CodeBuddy-Intl, and Ollama (`deepseek-v4.1-flash:cloud`); enable `low`..`max` reasoning effort levels and vision capability for DeepSeek-V4.*
 - **i18n**: integrate Persian (fa) translation
 
-## What Was Fixed?
+## What Was Fixed
 - **Cursor**: stop AgentService empty turns (`OUT 0`) and silent hangs - fold system prompts instead of `custom_system_prompt`, send `ModelDetails`, read Composer/Grok `thinking_delta`, ack request-context without echoing MCP tools, and reject IDE execs so the model can continue
 - **RTK**: for Cursor, compress source-format `tool_result` / `role:tool` **before** translation - its translator rewrites those shapes, so post-translate compression missed them. Other providers keep the post-translate pass unchanged
 - **OpenCode / OpenCode Go**: resolve 403 `FreeTierError` and 429 rate limits with canonical session format, valid User-Agent, and stable upstream session reuse; force stream and declare `forceStream` for free-tier SSE aggregation; cloak decoy tools, normalize Muse Free tool choice, and strip prior reasoning items on Responses models; route Union Alpha via Messages API
@@ -1627,7 +1648,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **CLI tools**: group the model selector by provider with full-text search and manual custom model ID entry
 - **CodeBuddy-CN**: replace `deepseek-v4-flash` with `deepseek-v4.1-flash`
 
-## What Was Fixed?
+## What Was Fixed
 - **Tools**: scope Claude tool type defaulting to gateways declaring `requireClaudeToolType` - the global default broke Anthropic-compatible endpoints that only accept the legacy typeless tool shape (#3905)
 - **Claude**: cap re-anchored `cache_control` at the 4-marker budget so a spent budget no longer 400s and triggers a full combo failover; wrap bare single-object content turns before the mid-conversation-system fold
 - **Cline / Airforce**: unwrap the `{"success":true,"data":…}` envelope on non-stream chat completions (#3644); add the live Cline/ClinePass model catalog and refresh Airforce free models
@@ -1653,7 +1674,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **CLI tools**: replace Copilot MITM with VS Code extension setup guide
 - **Gemini**: persist and replay `thoughtSignature` scoped by session namespace
 
-## What Was Fixed?
+## What Was Fixed
 - **Claude**: normalize adaptive auto effort (`output_config.effort`) (#3792)
 - **Antigravity**: prevent Google anti-abuse rate limits during multi-account refresh (#3813)
 - **Anthropic-compatible**: forward Claude beta flags to nodes fronting Anthropic (#3797)
@@ -1677,7 +1698,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Quota**: add usage and rate-limit tracking for Groq via `x-ratelimit-*` headers
 - **i18n**: complete Indonesian translation (1391 keys)
 
-## What Was Fixed?
+## What Was Fixed
 - **Security**: close SSRF guard bypasses in `ssrfGuard.js` (alternate IPv6 encodings, hostname trailing dots, wildcard DNS resolution check, safe redirect handling) (#3714)
 - **Model markers**: strip the `[1m]` context marker Claude Code appends to model names (`claude-opus-5[1m]`) preventing model resolution failures (#3690)
 - **Claude**: drop `server_tool_use` blocks carrying foreign IDs to avoid Anthropic 400 rejections; never anchor cache breakpoints on `defer_loading` tools (#3567)
@@ -1732,7 +1753,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
   compressed bodies, hurting prompt caching
 - **i18n**: pt-BR expanded to 1132 terms
 
-## What Was Fixed?
+## What Was Fixed
 - **Claude Code**: add Claude Fable 5.1 and advertise Claude Code 2.1.258 in
   both the request header and billing identity; use its permanent adaptive-thinking
   mode with `output_config.effort`
@@ -1831,7 +1852,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
   in-flight promise dedup, last-good read on soft failure) to stop multiple
   tabs tripping 429; manual refresh (↻) sends `force=1` to bypass the cache
 
-## What Was Fixed?
+## What Was Fixed
 - **Docker**: ship `sql.js` in the image so the pure-JS DB fallback can start -
   file tracing carried the package's JS without `dist/sql-wasm.wasm`, so a
   container with no native driver aborted with ENOENT and never got a database
@@ -1916,7 +1937,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Ollama**: Cloud quota tracker (session + weekly) + proactive background OAuth
   token refresh scheduler for all providers
 
-## What Was Fixed?
+## What Was Fixed
 - **Providers**: remove Qwen (OAuth flow stopped working reliably)
 - **Passthrough**: detect codex-tui/Codex Desktop as native Codex client - they
   were falling through to the translator and losing fields like `reasoning.summary`
@@ -1987,7 +2008,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Usage**: Kimi and DeepSeek usage handlers
 - **Usage**: SuperGrok weekly pool via gRPC-web
 
-## What Was Fixed?
+## What Was Fixed
 - **Refresh**: rotate `refresh_token` between retry attempts
 - **Kiro**: canonicalize tool history and route API keys correctly
 - **Kiro**: normalize dashboard thinking intensity models
@@ -2013,7 +2034,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Kimi**: merge OAuth into dual-auth provider, add K3 / K2.7 models
 - **Dashboard**: ProviderTopology flow animation
 
-## What Was Fixed?
+## What Was Fixed
 - **DB**: resolve better-sqlite3 parameter binding crash
 - **Translator**: pass `service_tier` through OpenAI → Responses conversion
 - **Kiro**: map GPT-5.6 reasoning effort fields
@@ -2036,7 +2057,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Translator**: drop temperature for all Claude models
 - **i18n**: Thai (th) + Persian (fa) translations / README
 
-## What Was Fixed?
+## What Was Fixed
 - **Providers**: bulk-add API keys no longer overwrite existing keys (gap-fill `Key N`)
 - **Anthropic**: lowercase `anthropic-version` header to prevent duplication on `/v1/messages`
 - **Alicode-intl**: use DashScope compatible-mode endpoint so standard keys work
@@ -2067,7 +2088,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **PXPipe**: PXPIPE token saver - multimodal prompt compression (#2465)
 - **Proxy-Pools**: auto-rotate strategy for no-auth providers (#2409)
 
-## What Was Fixed?
+## What Was Fixed
 - **Cloudflare-AI**: support accountId in bulk key import (#2449)
 - **DB**: backup on schema change, MCP child cleanup, codex models, usage providers OOM
 - **Codex**: avoid bare-email OAuth dedup (#2477)
@@ -2096,7 +2117,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Caveman**: add targeted upstream-aligned style rules (#2424)
 - **i18n**: add Farsi (fa) language support (#2385)
 
-## What Was Fixed?
+## What Was Fixed
 - **Thinking**: strip `(level)` suffix from upstream `body.model` so providers no longer reject requests
 - **Translator**: preserve developer instructions in openai-responses conversion (#2434)
 - **count_tokens**: count structured Anthropic blocks (#2419)
@@ -2115,7 +2136,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **NVIDIA**: add new models and capabilities - decolua
 - **ClinePass**: add provider support - sternelee
 
-## What Was Fixed?
+## What Was Fixed
 - **Usage**: dedupe streaming request-details log entries - Qin Li
 - **Claude**: drop foreign thinking signatures in passthrough - decolua
 - Prevent non-SSE stream pipe crash and cross-IdP account overwrites (#2244) - KunN-21
@@ -2136,7 +2157,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - Refine Qwen vision/video + thinking model patterns - decolua
 - Opt-in Codex auto-ping quota keep-alive - Emirhan
 
-## What Was Fixed?
+## What Was Fixed
 - **Responses**: handle response.done terminal events (#2142) - rifuki
 - **Headroom**: skip unsafe responses tool history (#2132) - Sutarto Jordan Chrisfivo
 - **Translator**: map mid-conversation system message to user (claude→openai) - decolua
@@ -2160,7 +2181,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - Add Kiro external_idp import for Microsoft SSO (CLIProxyAPI) - Stevanus Pangau
 - Overhaul Blackbox provider catalog + WebUI test support - suryacagur
 
-## What Was Fixed?
+## What Was Fixed
 - Provider thinking compatibility (DeepSeek/Gemini) - Mink Nguyen
 - Stop double-counting streaming usage at source - decolua
 - Usage logging dedupe to reduce stats churn - Mink Nguyen
@@ -2193,7 +2214,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **CodeBuddy CN**: API key auth + credit quota tracker
 - **CodeBuddy CN**: short model prefix alias "cbcn"
 
-## What Was Fixed?
+## What Was Fixed
 - **MiniMax-M3**: enable vision capability
 - **Headroom**: support Docker sidecar proxy
 - **Antigravity**: image executor fixes
@@ -2212,7 +2233,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **CodeBuddy CN**: new OAuth provider (copilot.tencent.com) - 15-model catalog, /v2 inference, forced streaming, OpenAI-style reasoning
 - **OpenCode-Go**: align models with official endpoints; route Qwen 3.7 MiniMax via /v1/messages, GLM/Kimi/DeepSeek/MiMo via /chat/completions
 
-## What Was Fixed?
+## What Was Fixed
 - **Anthropic-compatible validation**: use POST /v1/messages (GET /models not spec, false "invalid" for valid keys)
 - **CLI tools**: tolerate JSONC configs in all 8 settings routes (opencode, openclaw, kilo, droid, cowork, copilot, claude, cline)
 - **Gemini/Antigravity**: preserve 'pattern' in tool schema translation (glob/grep)
@@ -2222,7 +2243,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.5.4 (2026-06-18)
 
-## What Was Fixed?
+## What Was Fixed
 - **Kiro**: honor thinking effort budgets
 - **AG/Kiro/Xiaomi**: provider fixes
 - **Combo/Fusion**: flatten tool history in panel calls to prevent 503
@@ -2238,7 +2259,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - **Kiro headless API-key auth** (`ksk_`) + direct `claude↔kiro` route that avoids the lossy OpenAI two-hop pivot
 - **Claude auto-ping** - warms the 5h quota window right after reset so a fresh window starts immediately (per-connection toggle)
 
-## What Was Fixed?
+## What Was Fixed
 - **Claude 429**: stop hammering the OAuth usage endpoint - cache resetAt, throttle quota refresh to 3 min, cool down after a 429 (chat unaffected)
 - **Usage logs always empty**: missing `await` on `getAdapter()` in `getRecentLogs` made `/api/usage/logs` & `/api/usage/request-logs` return nothing
 - **Executors**: strip params unsupported by the provider/model (drops deprecated `temperature` for claude-opus-4 → Anthropic 400)
@@ -2262,7 +2283,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - Codex: bulk add accounts via JSON (#1719)
 - Kiro: enable multi-endpoint failover for GenerateAssistantResponse (#1722)
 
-## What Was Fixed?
+## What Was Fixed
 - Security: re-auth on DB export/import + SSRF guard on web fetch
 - Auth: real client IP rate-limiting + remote default-password guard
 - Cerebras/Mistral: strip unsupported `client_metadata` from downstream requests (#1742)
@@ -2293,7 +2314,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - Qoder: fetch latest model + dashboard import-model button (#1642)
 - MiniMax: add MiniMax-M3 + update Quota Tracker coding/CN (#1631)
 
-## What Was Fixed?
+## What Was Fixed
 - Codex: harden streaming timeouts (stall/connect raised to 60s, configurable per-provider), accept `response.done` event, and always emit a terminal `response.failed` + `[DONE]` for Responses passthrough when a stream closes, stalls, or aborts before a terminal event - prevents codex clients from hanging (#1648, #1680, #1688, #1618)
 - Codex: durable OAuth refresh lifecycle (#1664)
 - Tunnel: skip virtual interfaces to prevent false netchange watchdog
@@ -2316,7 +2337,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - Add Qoder provider: device-flow OAuth, COSY signing, WAF-bypass body encoding, live model catalog, dashboard quota tracker, 11 models (#1372)
 - Add new models: Claude Opus 4.8 (Claude Code), GPT 5.4 Mini (Codex)
 
-## What Was Fixed?
+## What Was Fixed
 - DeepSeek thinking mode: echo `reasoning_content` back on follow-up/tool-call turns so OpenCode-free and custom providers no longer 400 with "reasoning_content must be passed back" (#1543)
 - Reasoning injector: match deepseek/kimi model ids case-insensitively (covers custom providers using capitalized model names)
 - OpenCode suggested-models: include free models without the `-free` suffix, e.g. `big-pickle` (#1535)
@@ -2328,7 +2349,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.4.63 (2026-05-26)
 
-## What Was Fixed?
+## What Was Fixed
 - GitHub Copilot: never route Gemini/Claude models to the `/responses` endpoint; prevents misleading "does not support Responses API" 400s (#1062)
 - proxyFetch: restore missing `Readable` import causing runtime `ReferenceError` in DNS-bypass fetch path
 
@@ -2337,7 +2358,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.4.62 (2026-05-26)
 
-## What Was Fixed?
+## What Was Fixed
 - Codex: auto-retry when upstream drops mid-stream (no more hangs)
 - Codex: fix random 400/404 errors, tool-calling failures, and unstable prompt cache
 - MITM: support Antigravity 2.x 
@@ -2358,7 +2379,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.4.59 (2026-05-21)
 
-## What Was Fixed?
+## What Was Fixed
 - OAuth: fix login flow on Windows
 
 # v0.4.58 (2026-05-21)
@@ -2367,7 +2388,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - xAI Grok provider (OAuth, API key, image)
 - Provider limits: paginated accounts with page size controls
 
-## What Was Fixed?
+## What Was Fixed
 - Tailscale: fix connection status on Windows (#1300)
 - Tunnel: fix false "checking" when tunnel URL is reachable
 - Stream: fix pipe errors on client disconnect/abort
@@ -2379,7 +2400,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - Antigravity: risk confirmation dialog before first connection
 - Gemini CLI: surface upstream retry delay on 429 errors
 
-## What Was Fixed?
+## What Was Fixed
 - MITM: cannot kill process on macOS under sudo (lsof not found in PATH)
 - Stream: false-positive stall timeout on Claude reasoning / Kiro responses
 - Tunnel: cannot re-enable after disable (stuck state)
@@ -2397,7 +2418,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - Add Vercel AI Gateway provider support (#1183)
 - rtk: Kiro format tool result compression - handle conversationState.history & currentMessage, preserve error results, ~13.6% savings (#1194)
 
-## What Was Fixed?
+## What Was Fixed
 - openclaw: normalize agent.model object form `{primary, fallbacks}` before .startsWith → fix TypeError & 'not configured' status (#1216)
 - Usage Details pagination: stay inside mobile viewport <640px (#1218)
 - Fix test model error
@@ -2406,7 +2427,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 
 # v0.4.50 (2026-05-16)
 
-## What Was Fixed?
+## What Was Fixed
 - Fix duplicate tray icon on macOS when hiding to tray
 - Fix tray not showing in background mode on macOS
 - Fix hide to tray broken on Windows/Linux
@@ -2427,7 +2448,7 @@ The following upstream commits in the v0.5.104 range were deliberately not porte
 - Hide deprecated providers (qwen, iflow, antigravity)
 - Update i18n across 32 languages
 
-## What Was Fixed?
+## What Was Fixed
 - Fix model check (test-models) blocked by dashboardGuard: pass machineId-based CLI token in internal self-calls
 
 # v0.4.46 (2026-05-15)
