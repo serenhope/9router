@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { fetch as undiciFetch } from "undici";
+// Use undici only for real network calls; when global fetch is stubbed/mocked (tests), prefer it so mocks apply.
+const isMockedFetch = () => globalThis.fetch && !String(globalThis.fetch).includes("[native code]") && globalThis.fetch !== undiciFetch;
+const boundedFetch = (url, opts) => (isMockedFetch() ? globalThis.fetch(url, opts) : undiciFetch(url, { ...opts, signal: opts?.signal ?? AbortSignal.timeout(20000) }));
 import { getProviderConnectionById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { GEMINI_CONFIG, ZED_HOSTED_CONFIG } from "@/lib/oauth/constants/oauth";
@@ -539,7 +542,7 @@ const PROVIDER_MODELS_CONFIG = {
   "ollama-local": {
     customResolver: async (connection) => {
       const url = `${resolveOllamaLocalHost(connection)}/api/tags`;
-      const response = await undiciFetch(url, { method: "GET", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(20000) });
+      const response = await boundedFetch(url, { method: "GET", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(20000) });
       if (!response.ok) {
         const errorText = await response.text();
         console.log("Error fetching models from ollama-local:", errorText);
@@ -569,7 +572,7 @@ export async function GET(request, { params }) {
         return NextResponse.json({ error: "No base URL configured for OpenAI compatible provider" }, { status: 400 });
       }
       const url = `${baseUrl.replace(/\/$/, "")}/models`;
-      const response = await undiciFetch(
+      const response = await boundedFetch(
         url,
         withModelTimeout({
           method: "GET",
@@ -611,7 +614,7 @@ export async function GET(request, { params }) {
       }
 
       const url = `${baseUrl}/models`;
-      const response = await undiciFetch(
+      const response = await boundedFetch(
         url,
         withModelTimeout({
           method: "GET",
@@ -708,7 +711,7 @@ export async function GET(request, { params }) {
       fetchOptions.body = JSON.stringify(config.body);
     }
 
-    const response = await undiciFetch(url, withModelTimeout(fetchOptions));
+    const response = await boundedFetch(url, withModelTimeout(fetchOptions));
 
     if (!response.ok) {
       const errorText = await response.text();
