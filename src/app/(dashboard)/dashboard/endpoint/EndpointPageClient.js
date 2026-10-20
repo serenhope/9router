@@ -53,9 +53,8 @@ function spentTodayOf(key) {
 const LIMIT_KIND_OPTIONS = [
   {
     value: "tokens",
-    label: "Tokens",
+    label: "Token volume",
     blurb: "Adds up prompt and completion tokens, so a long conversation costs more than a short one.",
-    example: "100,000 tokens",
     icon: "data_usage",
     tone: "text-sky-400",
     tint: "bg-sky-500/10",
@@ -65,9 +64,8 @@ const LIMIT_KIND_OPTIONS = [
   },
   {
     value: "cost",
-    label: "Cost",
+    label: "USD spend",
     blurb: "Charges every call at the model's price in USD and starts over at midnight UTC.",
-    example: "$2.50 per day",
     icon: "payments",
     tone: "text-emerald-400",
     tint: "bg-emerald-500/10",
@@ -77,9 +75,8 @@ const LIMIT_KIND_OPTIONS = [
   },
   {
     value: "requests",
-    label: "Requests",
+    label: "Request count",
     blurb: "Counts calls instead of size, so a huge prompt and a tiny one cost the same.",
-    example: "1,000 calls",
     icon: "bolt",
     tone: "text-violet-400",
     tint: "bg-violet-500/10",
@@ -127,20 +124,8 @@ function LimitKindPicker({ value, onChange }) {
                 <span className="material-symbols-outlined text-[19px] leading-none">{opt.icon}</span>
               </span>
               <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className={cn("text-sm font-semibold", selected ? opt.tone : "text-text-main")}>
-                    {opt.label}
-                  </span>
-                  <span
-                    className={cn(
-                      "inline-flex items-center rounded-md px-1.5 py-0.5 font-mono text-[11px]",
-                      opt.chip,
-                      opt.tone,
-                      selected ? "opacity-100" : "opacity-75"
-                    )}
-                  >
-                    {opt.example}
-                  </span>
+                <span className={cn("block text-sm font-semibold", selected ? opt.tone : "text-text-main")}>
+                  {opt.label}
                 </span>
                 <span className="mt-1 block text-xs leading-snug text-text-muted">{opt.blurb}</span>
               </span>

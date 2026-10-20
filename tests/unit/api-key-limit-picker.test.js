@@ -18,8 +18,17 @@ const options = new Function(
 describe("key editor: limit type is a card picker, not a dropdown", () => {
   it("offers all three budgets with their own accent", () => {
     expect(options.map((o) => o.value)).toEqual(["tokens", "cost", "requests"]);
-    for (const key of ["tone", "tint", "chip", "border", "glow", "icon", "blurb", "example"]) {
+    for (const key of ["tone", "tint", "chip", "border", "glow", "icon", "blurb"]) {
       expect(new Set(options.map((o) => o[key])).size).toBe(3);
+    }
+  });
+
+  it("names each row by what it measures instead of a bare unit", () => {
+    // "Tokens" / "Cost" / "Requests" alone said nothing the icon did not; each name now
+    // pairs the unit with the measure it stands for.
+    expect(options.map((o) => o.label)).toEqual(["Token volume", "USD spend", "Request count"]);
+    for (const opt of options) {
+      expect(opt.label.trim()).toContain(" ");
     }
   });
 
@@ -27,13 +36,21 @@ describe("key editor: limit type is a card picker, not a dropdown", () => {
     expect(options.map((o) => o.icon)).toEqual(["data_usage", "payments", "bolt"]);
   });
 
-  it("carries a sentence and a concrete example per card, not just a name", () => {
+  it("carries a sentence per card, not just a name", () => {
     for (const opt of options) {
       expect(opt.blurb.length).toBeGreaterThan(40);
-      expect(opt.example.length).toBeGreaterThan(3);
     }
-    expect(options.find((o) => o.value === "cost").example).toMatch(/\$/);
-    expect(options.find((o) => o.value === "requests").example).toMatch(/calls/);
+    const openers = options.map((o) => o.blurb.split(" ").slice(0, 4).join(" "));
+    expect(new Set(openers).size).toBe(3);
+  });
+
+  it("shows no sample value beside the name, only its own field does", () => {
+    // The cards name the unit; the number belongs to the field the card reveals.
+    for (const opt of options) {
+      expect(opt).not.toHaveProperty("example");
+    }
+    expect(page).not.toMatch(/opt\.example/);
+    expect(page).not.toMatch(/100,000 tokens|\$2\.50 per day|1,000 calls/);
   });
 
   it("stacks the options as full-width rows the 512px editor can hold", () => {
@@ -56,18 +73,6 @@ describe("key editor: limit type is a card picker, not a dropdown", () => {
   it("marks the empty radios too, so unselected cards still read as options", () => {
     expect(page).toMatch(/: "border-text-muted\/50 text-transparent"/);
     expect(page).not.toMatch(/border-border text-transparent/);
-  });
-
-  it("gives the value chip the same treatment in every state", () => {
-    expect(page).toMatch(/opt\.chip,\s*opt\.tone,\s*selected \? "opacity-100" : "opacity-75"/);
-  });
-
-  it("writes all three examples with the same number convention", () => {
-    expect(options.map((o) => o.example)).toEqual([
-      "100,000 tokens",
-      "$2.50 per day",
-      "1,000 calls",
-    ]);
   });
 
   it("keeps each card's icon chip coloured while it is unselected", () => {
