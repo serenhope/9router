@@ -59,11 +59,6 @@ tests/unit/codex-image-usage-persistence.test.js :: Codex image usage persistenc
 tests/unit/codex-refresh-token.test.js :: Codex Refresh Token getRefreshLeadMs (early refresh config) should return provider-specific lead time for OAuth providers
 tests/unit/combo-autoswitch.test.js :: detectRequiredCapabilities web_search tool -> search
 tests/unit/combo-autoswitch.test.js :: reorderByCapabilities keeps order when no model matches
-tests/unit/combo-capabilities.test.js :: aggregateComboCapabilities - context/output limits an explicit context window on the combo wins over the auto value
-tests/unit/combo-capabilities.test.js :: aggregateComboCapabilities - context/output limits contextWindow is the largest window across all models
-tests/unit/combo-capabilities.test.js :: aggregateComboCapabilities - nested combo resolution via comboLookup a custom window reaches nested combos too
-tests/unit/combo-capabilities.test.js :: aggregateComboCapabilities - nested combo resolution via comboLookup contextWindow is the largest window across all resolved leaves
-tests/unit/combo-caps-resolver.test.js :: aggregateComboCapabilities: resolveCaps override falls back to the pattern default without a resolver
 tests/unit/commandcode-to-openai.test.js :: commandcode-to-openai - error event stringifies object errors so client sees readable message
 tests/unit/context-install.test.js :: (suite)
 tests/unit/cursor-models.test.js :: Cursor live model catalog fetches the account-specific catalog and caches it

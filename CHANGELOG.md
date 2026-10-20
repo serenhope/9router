@@ -1,3 +1,48 @@
+# v0.5.248 (2026-10-20) · 1 commit
+
+## What Was Fixed
+
+- **Wording**: the USD notice read `$2.30 of $2.50 spent used.` — dollars are spent, not used. Each kind now owns its sentence (`… tokens used.`, `… calls used.`, `… spent.`) instead of one template with a noun swapped in, and a test rejects `spen[dt] used` so the phrasing cannot come back.
+
+---
+
+# v0.5.247 (2026-10-20) · 1 commit
+
+## What Was Fixed
+
+- **The long progress bar inside dialogs is gone; the bell owns it**: opening *Download Backup* and starting an export dropped a full-width card ("Preparing backup / Exporting database") over the form, with a scrim, covering the fields it was supposed to sit beside — and the same run was already in the bell through the task store, so the dialog showed a second, worse copy of one job. The card is removed from `DownloadBackupModal`, `BulkImportGrokCliModal`, `BulkImportCodexModal` and `AddApiKeyModal`; progress now lives only in the bell, while each dialog keeps its own busy state on the action button (`Download Backup`, `Importing…`, `Saving…`).
+- 3 tests in `tests/unit/bell-only-progress.test.js` keep it that way: no modal renders `ProgressCard`, every one of them still reports to the task store, and no empty conditional wrapper is left behind.
+
+---
+
+# v0.5.246 (2026-10-20) · 1 commit
+
+## What Was Fixed
+
+- **A returning condition lights the bell again**: clearing a notice is how a resolved condition gets retired, and it also marks the row read — so when the same condition came back (a key slid under its cap and then over it again, a task failed twice) the row reappeared in the feed already greyed out and the badge stayed at zero, which reads as "nothing to see" while the key is in fact refusing traffic. `notify()` now re-arms `readAt` when it revives a cleared row, and leaves a row the operator actually read alone.
+- 2 tests in `tests/unit/notification-revival.test.js` drive the real SQLite adapter: revival counts as unread and stays a single row, while a read row that merely changes its figure stays read.
+
+---
+
+# v0.5.245 (2026-10-20) · 1 commit
+
+## What Was Added
+
+- **Quota notices follow the budget a key actually enforces**: the notification scan only ever read `tokenLimit`/`usedTokens`, so a key switched to a USD or request budget exhausted itself in silence — it answered 429 while the bell stayed empty, and the first sign was a client failing. `src/lib/notifications/quotaPressure.js` now reads the selected `limitKind`, warns at 90% and goes critical at the cap, and each kind gets its own wording: `$2.40 of $2.50 spend used. Resets at 00:00 UTC.`, `450 of 500 calls used. No automatic reset.`, `95,000 of 100,000 tokens used. Resets in 5d.` Yesterday's dollars count as zero, so a stale `costDay` never nags about a counter that already rolled over, and inactive keys stay quiet.
+- **Switching kinds or raising a budget clears the old notice**: the dedupe key now carries the kind (`quota:<id>:<kind>:<level>`), and every pass clears the notices it did not recreate — previously a key moved from cost to tokens kept an unread "out of tokens" row in the feed.
+- 7 unit tests in `tests/unit/quota-notifications.test.js` cover the thresholds per kind, the stale-day rollover, the unselected-kind silence, and the reset timestamps.
+
+---
+
+# v0.5.244 (2026-10-20) · 1 commit
+
+## What Was Fixed
+
+- **`Error fetching models: e is not a function` — the models list died for anyone with a combo**: `aggregateComboCapabilities` gained a `resolveCaps` callback in its third position, but the two server routes still called it with their old arguments, so the recursion depth `0` landed in the callback slot and `0?.(id)` threw a `TypeError`. Both `/api/models` and `/api/v1/models` answered 500 before they could list anything. The routes now pass `null` for the resolver and the combo's own window in the last slot, and the aggregator ignores a resolver that is not a function, so a stale caller can never take the list down again.
+- **A combo reports its widest member's window again, and its own window wins**: the same merge had reverted the aggregator to `Math.min` and dropped the per-combo `contextWindow` override, so a combo built on a 1M model published 256k and clients compacted far too early. Both behaviours are restored and covered by `tests/unit/combo-capabilities.test.js`, whose four previously catalogued failures now pass (the entries were pruned from the baseline). `tests/unit/combo-caps-resolver.test.js` came in from upstream asserting the opposite window rule (minimum member), so its three window assertions were rewritten to the fork's widest-member rule with a note saying where the two disagree — the resolver cases it was really about are untouched.
+
+---
+
 # v0.5.243 (2026-10-20) · 1 commit
 
 ## What Was Changed
