@@ -3,7 +3,7 @@ import { CapacityBadges } from "@/shared/components";
 import PluginMark from "@/shared/components/PluginMark";
 import { useModelPluginMarks } from "./useModelPluginMarks";
 
-export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable, caps, thinkingSuffix }) {
+export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, isDisabled, onDeleteAlias, onTest, isTesting, onDisable, onRestore, caps, thinkingSuffix }) {
   const displayModel = thinkingSuffix ? `${fullModel}(${thinkingSuffix})` : fullModel;
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
@@ -20,18 +20,21 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
     : undefined;
 
   return (
-    <div className={`group w-full sm:w-auto min-w-0 max-w-full rounded-lg border px-3 py-2 ${borderColor} hover:bg-sidebar/50`}>
+    <div className={`group w-full sm:w-auto min-w-0 max-w-full rounded-lg border px-3 py-2 ${borderColor} ${isDisabled ? "opacity-60" : ""} hover:bg-sidebar/50`}>
       <div className="flex min-w-0 items-start gap-2 sm:items-center">
         <span
           className="material-symbols-outlined shrink-0 text-base mt-0.5 sm:mt-0"
           style={iconColor ? { color: iconColor } : undefined}
         >
-          {testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
+          {isDisabled ? "visibility_off" : testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <code className="w-fit max-w-full break-all rounded bg-sidebar px-1.5 py-0.5 font-mono text-xs text-text-muted sm:max-w-[360px] sm:truncate">{displayModel}</code>
           <span className="flex min-w-0 items-center text-[9px] gap-1 pl-1">
             {model.name && <span className="break-all sm:truncate text-[9px] italic text-text-muted/70">{model.name}</span>}
+            {isFree && (
+              <span className="shrink-0 text-[9px] font-bold text-green-600 dark:text-green-400 bg-green-500/10 px-1 py-0.5 rounded">FREE</span>
+            )}
             {pluginMarks?.map((key) => (
               <PluginMark
                 key={key}
@@ -74,7 +77,15 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
               {copied === `model-${model.id}` ? "Copied!" : "Copy"}
             </span>
           </div>
-          {isCustom ? (
+          {onRestore ? (
+            <button
+              onClick={onRestore}
+              className="rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-green-500/10 hover:text-green-500 sm:opacity-0 sm:group-hover:opacity-100"
+              title="Restore model"
+            >
+              <span className="material-symbols-outlined text-sm">add_circle</span>
+            </button>
+          ) : isCustom ? (
             <button
               onClick={onDeleteAlias}
               className="rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-red-500/10 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
@@ -108,10 +119,12 @@ ModelRow.propTypes = {
   testStatus: PropTypes.oneOf(["ok", "error"]),
   isCustom: PropTypes.bool,
   isFree: PropTypes.bool,
+  isDisabled: PropTypes.bool,
   onDeleteAlias: PropTypes.func,
   onTest: PropTypes.func,
   isTesting: PropTypes.bool,
   onDisable: PropTypes.func,
+  onRestore: PropTypes.func,
   caps: PropTypes.object,
   thinkingSuffix: PropTypes.string,
 };

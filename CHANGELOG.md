@@ -1,3 +1,44 @@
+# v0.5.255 (2026-10-21) · 2 commits
+
+## What Was Fixed
+
+- **The OpenCode Free panel shows every id the provider publishes, paid ones included.** The first pass of the unified list hid the ~76 paid ids of the live catalogue behind an "only advertise what a keyless caller can use" rule, and the panel then read as a short list with models missing - the opposite of what was being fixed. The catalogue now reaches the row grid unfiltered, the FREE badge comes from each row's own tier flag (`isFree` travels through `buildUnifiedModelRows` instead of being stamped on every catalogue row), and the five registry-pinned free ids (muse spark x2, union-alpha, deepseek flash, jev) carry `isFree: true` in `open-sse/providers/registry/opencode.js` so their badge no longer depends on the id suffix. Verified live: the upstream endpoint lists 86 ids, all 10 free ones plus the 3 registry-only free models render, and `tests/unit/free-model-rows.test.js` (10 cases) pins the unfiltered catalogue, the flag-driven badge and the registry flags.
+
+---
+
+---
+
+# v0.5.254 (2026-10-21) · 2 commits
+
+## What Was Fixed
+
+- **Opening the model picker no longer blanks the page.** The `· N disabled` hint was computed by a helper defined *inside* the `groupedModels` memo but printed in the group header at render time, so any picker that opened threw `ReferenceError: disabledCountFor is not defined` and Next's error boundary replaced the dashboard with "Application error: a client-side exception has occurred". The helper now lives at component scope, next to the state it reads, and `tests/unit/free-model-rows.test.js` asserts its declaration sits above the memo so the same scope mistake fails the suite instead of the browser.
+
+---
+
+---
+
+# v0.5.253 (2026-10-21) · 2 commits
+
+## What Was Fixed
+
+- **The unified free list only advertised models that can actually answer.** The first cut of the unified list passed the whole live catalogue to the row builder, and the OpenCode Free catalogue marks paid ids with `isFree: false` - so ~85 paid models (Claude, Gemini, GPT families) appeared as free-badged rows on a provider that answers 401 for every one of them without a key. The catalogue handed to `buildUnifiedModelRows` is now filtered to `isFree === true`, the same rule the suggestion picker already used, and the browser check on the provider page counts 10 free rows plus the disabled trio instead of 85+.
+
+---
+
+---
+
+# v0.5.252 (2026-10-21) · 2 commits
+
+## What Was Changed
+
+- **A free provider's catalogue is now one model list, not three.** On the OpenCode Free page the same tier was split across the model rows, a "Suggested free models (6)" chip row that asked you to add models that already answered, and a "Disabled models (3)" chip row at the bottom - so the catalogue was never visible in one place and ids you had disabled looked gone. `src/shared/utils/freeModelRows.js` folds registry models, user-added rows and the live catalogue into a single de-duplicated list (custom beats registry beats catalogue), and the page renders it as ordinary rows: each model once, free rows carrying a `FREE` badge, disabled rows dimmed with a restore action. The two chip rows stay only for providers that gate their catalogue behind adding a model.
+- **The picker stopped hiding models without saying so.** `ModelSelectModal` filters disabled ids out of every group, which is correct - a disabled model is not offered by `/v1/models` either - but a group that silently showed 10 of 13 models read as a half-missing free tier. The group header now appends `· N disabled` with a hint that they are restored on the provider page, so the gap is explained where it is seen.
+
+---
+
+---
+
 # v0.5.251 (2026-10-21) · 2 commits
 
 ## What Was Changed
