@@ -1,3 +1,33 @@
+# v0.5.251 (2026-10-21) · 2 commits
+
+## What Was Changed
+
+- **The dead long-task banner is deleted, not just left unused.** `src/shared/components/LongTaskBanner.js` (431 lines) had zero callers since long runs moved to the notification bell, and `Loading.js` still exported its wrappers (`ProgressCard`, `CenterLoading`, `BusyOverlay`) as a trap for the next feature. The component file and the three exports are gone, `src/shared/components/index.js` stops re-exporting them, and `Loading.js` keeps only what still renders: `Spinner`, `PageLoading`, `Skeleton`, `CardSkeleton`.
+- **The tests follow the component out.** `tests/unit/loading-banner.test.js` existed only to assert on the deleted files (and was already a catalogued load failure), so it is removed together with its entry in `tests/__baseline__/known-fails.txt`. `tests/unit/studio-banner-update.test.js` keeps the store, bell, layout and pool assertions and drops the two that read the deleted sources. `tests/unit/bell-only-progress.test.js` gains a guard: the component file must not exist and neither the wrappers nor their barrel exports may reappear — a zero-call-site component gets re-imported the moment someone reaches for it.
+
+---
+
+---
+
+# v0.5.250 (2026-10-20) · 1 commit
+
+## What Was Changed
+
+- **Parity is now asserted byte for byte, not by headings.** The previous test sampled a few lines from the middle of the core, which a careful paraphrase could still slip past. `tests/unit/antislop-prompt-parity.test.js` now asserts that `full` contains the entire core document (everything from `## What This Is` onward) character for character, and that `ultra` contains each of the five concern skills verbatim after its title — so a reformat, a dropped paragraph or a "tidied" sentence fails the suite.
+
+---
+
+# v0.5.249 (2026-10-20) · 1 commit
+
+## What Was Changed
+
+- **Anti Slop is now the skill, not a summary of it**: the plugin used to inject a hand-condensed prompt of ~3.7k characters — about 6% of upstream's text, 15 of the 38 mandatory rules, no liveliness dials, no Design Read, none of the five concern skills — so calling it "the antislop skill" oversold it. `open-sse/rtk/antislopPrompt.js` is now generated from verbatim upstream sources kept in `open-sse/rtk/antislop-src/` (`core.md` plus `ui`, `copywriting`, `human`, `layoutmobile`, `code`). `full` is the core text verbatim (42,557 chars, ~10.6k tokens) and `ultra` is the core plus all five concern skills (130,512 chars, ~33k tokens). `lite` stays the 913-char condensation for cheap always-on filtering.
+- **Only the repo-editing half is dropped**: the install wizard, the self-update section and the mode-resolution section tell an agent to write pointer blocks into `AGENTS.md` and to ask which mode to use — wrong for a prompt injected on every request. A one-line runtime note replaces them (the plugin's level is the mode), and the tests fail if any of that text leaks back in.
+- **The level picker states the cost** instead of describing intensity in the abstract: each option now reads its token count straight from `ANTISLOP_LEVEL_CHARS`, so re-syncing the sources moves the number with it.
+- `scripts/generateAntislopPrompt.mjs` regenerates the module and `--check` fails when it drifts; `tests/unit/antislop-prompt-parity.test.js` (9 cases) asserts every core section is present verbatim, that all 38 rules survive, that ULTRA carries the five concern skills, that the dropped sections stay out, and that an unknown level still falls back to `full`.
+
+---
+
 # v0.5.248 (2026-10-20) · 1 commit
 
 ## What Was Fixed

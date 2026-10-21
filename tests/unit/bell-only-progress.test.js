@@ -43,6 +43,17 @@ describe("long runs live in the bell, not in the dialog", () => {
     expect(read("src/app/(dashboard)/dashboard/profile/page.js")).toMatch(/onDownload=\{[^}]*handleExportDatabase/);
   });
 
+  it("the floating banner and its wrappers are gone, not merely unused", () => {
+    // A zero-call-site component is a trap: the next feature imports it and the floating box
+    // comes back. The files and the exports must not exist either.
+    expect(fs.existsSync(path.join(ROOT, "src/shared/components/LongTaskBanner.js"))).toBe(false);
+    const loading = read("src/shared/components/Loading.js");
+    expect(loading).not.toMatch(/LongTaskBanner/);
+    expect(loading).not.toMatch(/export (function|const) (ProgressCard|CenterLoading|BusyOverlay)/);
+    const index = read("src/shared/components/index.js");
+    expect(index).not.toMatch(/LongTaskBanner|ProgressCard|CenterLoading|BusyOverlay/);
+  });
+
   it("no empty conditional wrappers were left behind by the removal", () => {
     for (const rel of MODALS) {
       const src = read(rel);

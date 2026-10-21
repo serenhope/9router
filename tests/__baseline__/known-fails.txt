@@ -101,7 +101,6 @@ tests/unit/kimchi-strip-reasoning.test.js :: (suite)
 tests/unit/kimchi.test.js :: (suite)
 tests/unit/kiro-terminal-integrity.test.js :: Kiro terminal integrity recovery bounds the retry HTTP error body
 tests/unit/kiro-terminal-integrity.test.js :: Kiro terminal integrity recovery surfaces retry HTTP failures as SSE after heartbeat commits headers
-tests/unit/loading-banner.test.js :: (suite)
 tests/unit/local-request-peer-trust-3294.test.js :: peer header trust accepts the legacy Host fallback only in development
 tests/unit/local-request-peer-trust-3294.test.js :: peer header trust blocks spoofed local-only routes that would otherwise spawn processes
 tests/unit/local-request-peer-trust-3294.test.js :: peer header trust keeps serving a genuinely local request stamped by the wrapper
