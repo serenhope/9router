@@ -17,7 +17,6 @@ import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
-import { buildUnifiedModelRows } from "@/shared/utils/freeModelRows";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
@@ -1304,23 +1303,6 @@ export default function ProviderDetailPage() {
       builtInModels: models,
       type: "llm",
     }).filter((row) => !studioTargetIndex.isStudioTarget(providerStorageAlias, row.id));
-    // A free no-auth provider routes every id in its public catalogue, so the
-    // catalogue belongs in this list rather than in a chip row that asks the
-    // operator to add models that already answer. Disabled ids stay in the same
-    // list, dimmed with a restore action, so nothing disappears from view.
-    const unifiedFreeRows = isFreeNoAuth
-      ? buildUnifiedModelRows({
-          builtinModels: allModels,
-          customRows: customModelRows,
-          // The whole catalogue, paid ids included: the grid is the only place
-          // that shows what the provider publishes, and the FREE badge on each
-          // row is what tells the tiers apart. Hiding the paid half made the
-          // list look short and left operators swearing models were missing.
-          catalogue: suggestedModels.filter((m) => m?.id),
-          disabledIds: disabledModelIds,
-        })
-      : null;
-
     return (
       <div className="flex flex-wrap gap-3">
         {/* Custom models first */}
@@ -1377,48 +1359,6 @@ export default function ProviderDetailPage() {
           );
         })}
 
-        {/* Free catalogue as rows, not chips: every id the provider publishes is
-            routable, so the list carries the state only. Disabled ids follow as
-            dimmed rows with a restore action - the whole catalogue stays visible. */}
-        {unifiedFreeRows && suggestedModelsError && (
-          <p className="w-full text-[11px] text-amber-600 dark:text-amber-400">{suggestedModelsError}</p>
-        )}
-        {unifiedFreeRows?.active.filter((row) => row.source === "catalogue").map((row) => (
-          <ModelRow
-            key={`catalogue-${row.id}`}
-            model={{ id: row.id, name: row.name }}
-            fullModel={`${providerDisplayAlias}/${row.id}`}
-            alias={Object.entries(modelAliases).find(([, m]) => m === `${providerDisplayAlias}/${row.id}`)?.[0]}
-            copied={copied}
-            onCopy={copy}
-            testStatus={modelTestResults[row.id]}
-            onTest={() => handleTestModel(row.id)}
-            isTesting={testingModelIds.has(row.id)}
-            isFree={row.isFree === true}
-            onDisable={() => handleDisableModel(row.id)}
-            caps={getCaps(`${providerId}/${row.id}`)}
-            thinkingSuffix={resolveThinkingSuffix(row.id)}
-          />
-        ))}
-        {unifiedFreeRows?.disabled.map((row) => (
-          <ModelRow
-            key={`disabled-${row.id}`}
-            model={{ id: row.id, name: row.name }}
-            fullModel={`${providerDisplayAlias}/${row.id}`}
-            alias={Object.entries(modelAliases).find(([, m]) => m === `${providerDisplayAlias}/${row.id}`)?.[0]}
-            copied={copied}
-            onCopy={copy}
-            testStatus={modelTestResults[row.id]}
-            onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(row.id) : undefined}
-            isTesting={testingModelIds.has(row.id)}
-            isFree={row.isFree === true}
-            isDisabled
-            onRestore={() => handleEnableModel(row.id)}
-            caps={getCaps(`${providerId}/${row.id}`)}
-            thinkingSuffix={resolveThinkingSuffix(row.id)}
-          />
-        ))}
-
         {/* Add model button - inline, same style as model chips */}
         <button
           onClick={() => setShowAddCustomModel(true)}
@@ -1459,7 +1399,7 @@ export default function ProviderDetailPage() {
         {/* Suggested models from provider API - show only models not yet added.
             Rendered on data OR error so a failed refresh explains itself
             instead of vanishing. */}
-        {!isFreeNoAuth && (suggestedModels.length > 0 || suggestedModelsError) && (() => {
+        {(suggestedModels.length > 0 || suggestedModelsError) && (() => {
           const addedFullModels = new Set([
             ...Object.values(modelAliases),
             ...customModelRows.map((model) => model.fullModel),
@@ -1538,7 +1478,7 @@ export default function ProviderDetailPage() {
         })()}
 
         {/* Disabled models - restorable */}
-        {!isFreeNoAuth && disabledDisplayModels.length > 0 && (
+        {disabledDisplayModels.length > 0 && (
           <div className="w-full mt-2">
             <p className="text-xs text-text-muted mb-2">Disabled models ({disabledDisplayModels.length}):</p>
             <div className="flex flex-wrap gap-2">

@@ -1,3 +1,13 @@
+# v0.5.256 (2026-10-21) · 2 commits
+
+## What Was Changed
+
+- **Back to picking your own models: the catalogue is suggested again, not imported.** Rendering the whole live catalogue as model rows silently turned every published id into an entry in the list, which took away the step where an operator chooses what to add. The provider page renders the suggested chip rows again for free no-auth providers - `Suggested free models (n):` with `+` chips, `Other models (n):` for the paid half, and `Disabled models (n):` to restore - and each chip still calls `handleAddCustomModel`, so nothing joins the list unasked. The free/paid split, the FREE badge from `isFree` and the picker's `· N disabled` hint stay. `src/shared/utils/freeModelRows.js` and the `isDisabled`/`onRestore` props it needed are gone (no call sites left), and `tests/unit/provider-model-catalogue.test.js` (5 cases) pins the chip flow, the removed helper, the trimmed `ModelRow` props and the registry's `isFree` flags.
+
+---
+
+---
+
 # v0.5.255 (2026-10-21) · 2 commits
 
 ## What Was Fixed
