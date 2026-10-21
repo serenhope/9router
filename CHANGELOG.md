@@ -1,3 +1,13 @@
+# v0.5.257 (2026-10-21) · 2 commits
+
+## What Was Fixed
+
+- **The upstream smoke-test id no longer shows up as a chip.** OpenCode's live catalogue carries a placeholder id literally named `test`, and since the panel started listing "Other models" straight from the catalogue it appeared next to real models as junk. The opencode filter now drops placeholder ids alongside the known-dead one before anything reaches the panel.
+
+---
+
+---
+
 # v0.5.256 (2026-10-21) · 2 commits
 
 ## What Was Changed
