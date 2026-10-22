@@ -16,6 +16,10 @@ const variants = {
   ghost: "text-text-muted hover:bg-surface-2 hover:text-text-main",
   danger:
     "bg-red-500 hover:bg-red-600 text-white shadow-sm disabled:bg-surface-3 disabled:text-text-muted",
+  // Outline form of danger — destructive actions that must not read as the
+  // primary action (Prompt Injection "clear"/"delete"). Consistent tokens.
+  dangerOutline:
+    "border border-red-500/40 text-red-600 dark:text-red-400 hover:bg-red-500/10 hover:border-red-500/60 disabled:opacity-50",
   success:
     "bg-green-600 hover:bg-green-700 text-white shadow-sm disabled:bg-surface-3 disabled:text-text-muted",
 };

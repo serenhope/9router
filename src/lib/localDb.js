@@ -12,6 +12,8 @@ export {
   createProxyPool, updateProxyPool, deleteProxyPool,
   deleteProxyPools,
   getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey,
+  getInjectGlobal, setInjectGlobal, getInjectModelPrompts, setInjectModelPrompt, deleteInjectModelPrompt,
+  getInjectUserPrompts, setInjectUserPrompt, deleteInjectUserPrompt, resolvePromptInjections, selectPromptInjections,
   getCombos, getComboById, getComboByName,
   createCombo, updateCombo, deleteCombo,
   getModelAliases, setModelAlias, deleteModelAlias,

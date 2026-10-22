@@ -62,6 +62,15 @@ export {
   getDisabledModels, getDisabledByProvider, disableModels, enableModels,
 } from "./repos/disabledModelsRepo.js";
 
+// Prompt Injection (9Router Pro)
+export {
+  getInjectGlobal, setInjectGlobal,
+  getInjectModelPrompts, setInjectModelPrompt, deleteInjectModelPrompt,
+  getInjectUserPrompts, setInjectUserPrompt, deleteInjectUserPrompt,
+  selectPromptInjections, resolvePromptInjections,
+} from "./repos/promptInjectRepo.js";
+
+
 // Usage
 export {
   statsEmitter, trackPendingRequest, getActiveRequests,

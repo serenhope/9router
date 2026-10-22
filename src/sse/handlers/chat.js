@@ -9,7 +9,7 @@ import {
   shouldLogAuthFailure,
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
-import { getSettings } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey, resolvePromptInjections } from "@/lib/localDb";
 import { getClientIp } from "@/lib/auth/loginLimiter";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
@@ -379,6 +379,15 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Use shared chatCore
     const chatSettings = await getSettings();
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
+    // Prompt Injection (9Router Pro): global → user (API key) → model.
+    // resolvePromptInjections already swallows storage errors (fail-open).
+    const injectKeyRecord = apiKey ? await getApiKeyByKey(apiKey).catch(() => null) : null;
+    const promptInjects = await resolvePromptInjections({
+      apiKeyId: injectKeyRecord?.id || null,
+      requestedModel: requestedModel || modelStr,
+      resolvedModel: `${provider}/${effectiveModel}`,
+      bareModel: effectiveModel,
+    });
     const result = await handleChatCore({
       body: { ...body, model: `${provider}/${effectiveModel}` },
       modelInfo: { provider, model: effectiveModel },
@@ -405,6 +414,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       cavemanLevel: chatSettings.cavemanLevel || "full",
       ponytailEnabled: !!chatSettings.ponytailEnabled,
       ponytailLevel: chatSettings.ponytailLevel || "full",
+      promptInjects,
       pxpipeEnabled: !!chatSettings.pxpipeEnabled,
       pxpipeMinChars: chatSettings.pxpipeMinChars,
       pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
