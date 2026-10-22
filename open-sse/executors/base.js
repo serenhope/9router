@@ -126,6 +126,12 @@ export class BaseExecutor {
 
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
       const url = this.buildUrl(model, stream, urlIndex, credentials);
+      // Strip 9router-internal markers so they never leak to the upstream API
+      // (e.g. _appliedPromptInjections bookkeeping written by the gateway).
+      if (body && typeof body === "object" && !Array.isArray(body) && "_appliedPromptInjections" in body) {
+        const { _appliedPromptInjections, ...strippedBody } = body;
+        body = strippedBody;
+      }
       const transformedBody = this.transformRequest(model, body, stream, credentials);
       const headers = this.buildHeaders(credentials, stream, url, model, transformedBody);
       // User per-provider override wins over registry headers (blocked names filtered at the API)

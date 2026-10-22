@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import PropTypes from "prop-types";
 import Card from "@/shared/components/Card";
 
@@ -65,10 +65,40 @@ function labelFor(entry, ambiguous) {
   return provider ? `${provider}/${bare}` : bare;
 }
 
+// Probe result for one row, shown in place of the static status pill while a
+// test runs and after it lands. Same dot vocabulary as StatusPill so the list
+// keeps one visual language: green ok, amber slow, red failed, gray pending.
+function ProbePill({ state }) {
+  if (!state) return null;
+  const map = {
+    pending: { dot: "bg-text-muted", label: "Testing" },
+    ok: { dot: "bg-success", label: state.ms != null ? `OK ${state.ms}ms` : "OK" },
+    slow: { dot: "bg-amber-500", label: `Slow ${state.ms}ms` },
+    fail: { dot: "bg-error", label: "Failed" },
+  };
+  const s = map[state.state] || map.fail;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
+      <span className={`block h-1.5 w-1.5 rounded-full ${s.dot}`} />
+      {s.label}
+    </span>
+  );
+}
+
+ProbePill.propTypes = {
+  state: PropTypes.shape({
+    state: PropTypes.oneOf(["pending", "ok", "slow", "fail"]).isRequired,
+    ms: PropTypes.number,
+  }),
+};
+
 export default function AvailableModelsCard({ visible }) {
   const [models, setModels] = useState(null);
   const [meta, setMeta] = useState(null);
   const [failed, setFailed] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [probeState, setProbeState] = useState({});
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
 
   useEffect(() => {
     if (!visible) return undefined;
@@ -87,6 +117,36 @@ export default function AvailableModelsCard({ visible }) {
       .catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
   }, [visible]);
+
+  // Test every listed model once, sequentially so the server probes never
+  // pile up behind one slow provider. Results land per row as they arrive.
+  const testAll = useCallback(async () => {
+    if (!Array.isArray(models) || !models.length || testing) return;
+    setTesting(true);
+    setProbeState({});
+    setProgress({ done: 0, total: models.length });
+    for (let idx = 0; idx < models.length; idx += 1) {
+      const m = models[idx];
+      const key = `${m.origin || "model"}:${m.fullModel || m.model}`;
+      setProbeState((s) => ({ ...s, [key]: { state: "pending" } }));
+      try {
+        const res = await fetch("/api/models/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: m.routedModel || m.fullModel || m.model, kind: m.kind || "llm" }),
+        });
+        const data = await res.json().catch(() => null);
+        const ms = data && data.latencyMs != null ? Math.round(data.latencyMs) : null;
+        let state = "fail";
+        if (res.ok && data && data.ok) state = ms != null && ms > 8000 ? "slow" : "ok";
+        setProbeState((s) => ({ ...s, [key]: { state, ms } }));
+      } catch {
+        setProbeState((s) => ({ ...s, [key]: { state: "fail", ms: null } }));
+      }
+      setProgress((p) => ({ ...p, done: idx + 1 }));
+    }
+    setTesting(false);
+  }, [models, testing]);
 
   if (!visible || failed) return null;
 
@@ -115,7 +175,22 @@ export default function AvailableModelsCard({ visible }) {
             Available Models
           </span>
         </div>
-        <span className="text-xs text-text-muted">{subtitle}</span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-xs text-text-muted">{subtitle}</span>
+          {Array.isArray(models) && models.length > 0 ? (
+            <button
+              type="button"
+              onClick={testAll}
+              disabled={testing}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-surface px-2.5 py-1 text-xs font-medium text-text-main transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span className={`material-symbols-outlined text-[14px] ${testing ? "animate-spin" : ""}`}>
+                {testing ? "progress_activity" : "play_arrow"}
+              </span>
+              {testing ? `${progress.done}/${progress.total}` : "Test All"}
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {!models ? (
@@ -126,24 +201,28 @@ export default function AvailableModelsCard({ visible }) {
         <div className="text-sm text-text-muted">No models are available to this key yet.</div>
       ) : (
         <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto">
-          {models.map((m) => (
-            <li
-              key={`${m.origin || "model"}:${m.fullModel || m.model}`}
-              className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface/40 px-3 py-2"
-            >
-              <div className="flex min-w-0 flex-col">
-                <span className="truncate font-mono text-xs text-text-main" title={m.routedModel || m.fullModel || m.model}>
-                  {(() => { const amb = (bareCounts[String(m.model || m.name || "")] || 0) > 1; const label = labelFor(m, amb); return (m.alias && m.alias !== label) ? `${m.alias} (${label})` : label; })()}
-                </span>
-                {contextLabel(m) ? (
-                  <span className="truncate text-[11px] text-text-muted">{contextLabel(m)}</span>
-                ) : null}
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <StatusPill status={m.status} />
-              </div>
-            </li>
-          ))}
+          {models.map((m) => {
+            const key = `${m.origin || "model"}:${m.fullModel || m.model}`;
+            const probe = probeState[key];
+            return (
+              <li
+                key={key}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface/40 px-3 py-2"
+              >
+                <div className="flex min-w-0 flex-col">
+                  <span className="truncate font-mono text-xs text-text-main" title={m.routedModel || m.fullModel || m.model}>
+                    {(() => { const amb = (bareCounts[String(m.model || m.name || "")] || 0) > 1; const label = labelFor(m, amb); return (m.alias && m.alias !== label) ? `${m.alias} (${label})` : label; })()}
+                  </span>
+                  {contextLabel(m) ? (
+                    <span className="truncate text-[11px] text-text-muted">{contextLabel(m)}</span>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {probe ? <ProbePill state={probe} /> : <StatusPill status={m.status} />}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </Card>

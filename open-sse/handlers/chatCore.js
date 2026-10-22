@@ -32,6 +32,7 @@ import { dedupeTools } from "../utils/toolDeduper.js";
 import { takeRenamedToolNames } from "../utils/opencodeFingerprint.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
+import { injectSystemPrompt, injectChatTurns } from "../rtk/systemInject.js";
 import { pruneContextMessages, resolvePruningLimit } from "../rtk/contextPruning.js";
 import { checkSemanticCache, saveToSemanticCache, setSemanticCacheTtlMs, setSemanticCacheMaxEntries } from "../rtk/semanticCache.js";
 import { getAdapter } from "@/lib/db/driver.js";
@@ -75,7 +76,7 @@ export function stripContinuityFields(body) {
   return body;
 }
 
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, contextPruningEnabled, maxMessagesLimit, semanticCacheEnabled, semanticCacheTtlHours, semanticCacheMaxEntries, contextPruningLevel, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, requestedModel, toolCallFallbackEnabled = true, providerOverrides }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, contextPruningEnabled, maxMessagesLimit, semanticCacheEnabled, semanticCacheTtlHours, semanticCacheMaxEntries, contextPruningLevel, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, promptInjects, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, requestedModel, toolCallFallbackEnabled = true, providerOverrides }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
   // Stable per-session color so all lines of one CLI conversation share a tag
@@ -398,6 +399,26 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (tokenSaverEnabled && ponytailEnabled && ponytailLevel) {
     injectPonytail(translatedBody, finalFormat, ponytailLevel);
     xf.push(`PONYTAIL:${ponytailLevel}`);
+  }
+
+  // Prompt Injection (9Router Pro): injections resolved by the caller —
+  // global → user (API key) → model. "single" entries are grouped into one
+  // injector pass per position; "chat" entries are flattened in stack order
+  // and inserted as fake history right after the system message(s).
+  if (Array.isArray(promptInjects) && promptInjects.length) {
+    try {
+      const injectSingles = promptInjects.filter(p => p && p.mode !== "chat");
+      const injectChats = promptInjects.filter(p => p && p.mode === "chat" && Array.isArray(p.turns) && p.turns.length);
+      const prepends = injectSingles.filter(p => p.position === "prepend" && p.text);
+      const appends = injectSingles.filter(p => p.position !== "prepend" && p.text);
+      if (prepends.length) injectSystemPrompt(translatedBody, finalFormat, prepends.map(p => p.text).join("\n\n"), "prepend");
+      if (appends.length) injectSystemPrompt(translatedBody, finalFormat, appends.map(p => p.text).join("\n\n"), "append");
+      if (prepends.length || appends.length) xf.push(`INJECT:${injectSingles.map(p => p.name || "?").join("+")}`);
+      if (injectChats.length) {
+        injectChatTurns(translatedBody, finalFormat, injectChats.flatMap(p => p.turns));
+        xf.push(`INJECT-CHAT:${injectChats.map(p => p.name || "?").join("+")}`);
+      }
+    } catch { /* fail-open: injection must never break chat */ }
   }
 
   // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch

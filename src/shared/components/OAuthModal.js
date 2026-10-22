@@ -455,8 +455,10 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         if (!popupRef.current) {
           setStep("input");
         }
-      } else if (!isLocalhost && (provider === "antigravity" || provider === "gemini-cli")) {
-        // Remote host with Google OAuth (Antigravity/Gemini): show manual copy-paste instructions
+      } else if (typeof window !== "undefined" && !window.location.hostname.includes("localhost") && !window.location.hostname.includes("127.0.0.1") && (provider === "antigravity" || provider === "gemini-cli")) {
+        // Remote host with the public Google CLI client: Google redirects to
+        // http://localhost:{appPort}/callback which only exists on the user's
+        // machine, so show manual copy-paste instructions instead of a popup.
         setStep("input");
         window.open(data.authUrl, "_blank");
       } else {

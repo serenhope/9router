@@ -26,6 +26,7 @@ import { matchesModel } from "@/shared/utils/pluginModelMatch";
 import { FORMATS } from "open-sse/translator/formats.js";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { squeezeContext } from "open-sse/translator/concerns/contextSqueezer.js";
+import { applyAgentRolePrompt, applyTemperatureGuard, applyMaxOutputCap, applyStopSequences } from "open-sse/translator/concerns/agentRoles.js";
 import { applyAntiSlop } from "open-sse/rtk/antislop.js";
 import { injectSystemPrompt } from "open-sse/rtk/systemInject.js";
 
@@ -399,6 +400,26 @@ export async function applyCustomPlugins(body, provider, model, sourceFormat, re
   if (config.antiSlop?.enabled && checkMatch(config.antiSlop.models)) {
     result.isAntiSlopActive = true;
     applyAntiSlop(body, sourceFormat, config.antiSlop.level);
+  }
+
+  // Agent roles inject their system prompt; the generic shapers apply caps.
+  if (config.agentFse?.enabled && checkMatch(config.agentFse.models)) applyAgentRolePrompt(body, "agentFse");
+  if (config.agentQa?.enabled && checkMatch(config.agentQa.models)) applyAgentRolePrompt(body, "agentQa");
+  if (config.agentSecurity?.enabled && checkMatch(config.agentSecurity.models)) applyAgentRolePrompt(body, "agentSecurity");
+  if (config.agentRea?.enabled && checkMatch(config.agentRea.models)) applyAgentRolePrompt(body, "agentRea");
+  if (config.agentSqli?.enabled && checkMatch(config.agentSqli.models)) applyAgentRolePrompt(body, "agentSqli");
+  if (config.agentRag?.enabled && checkMatch(config.agentRag.models)) applyAgentRolePrompt(body, "agentRag");
+  if (config.tempGuard?.enabled && checkMatch(config.tempGuard.models)) applyTemperatureGuard(body);
+  if (config.outputCap?.enabled && checkMatch(config.outputCap.models)) applyMaxOutputCap(body);
+  if (config.stopGuard?.enabled && checkMatch(config.stopGuard.models)) applyStopSequences(body);
+  if (config.promptBase?.enabled && checkMatch(config.promptBase.models)) {
+    // Prompt Base keeps a minimal honest system baseline: no invented persona,
+    // just factual grounding instructions.
+    if (!body.messages?.some((m) => m.role === "system" && typeof m.content === "string" && m.content.includes("[promptBase]"))) {
+      const base = { role: "system", content: "[promptBase] Answer only from the provided context and your training data. If you are not certain, say so plainly instead of guessing. Cite which part of the context supports each factual claim when one exists." };
+      body.messages = body.messages || [];
+      body.messages.unshift(base);
+    }
   }
 
   return result;

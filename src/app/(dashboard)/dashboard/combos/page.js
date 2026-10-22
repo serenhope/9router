@@ -703,7 +703,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-1 sm:flex">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-1 sm:flex">
             <button
               onClick={(e) => { e.stopPropagation(); onCopy(combo.name, `combo-${combo.id}`); }}
               className="flex flex-col items-center rounded px-2 py-1 text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
@@ -860,7 +860,7 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
         </div>
       ) : (
         <div className="mt-3 overflow-hidden rounded-lg border border-border/50">
-          <table className="w-full text-left text-xs">
+          <div className="overflow-x-auto -mx-4 px-4"><table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-border/40 bg-black/[0.02] text-text-muted dark:bg-white/[0.02]">
                 <th className="w-12 px-3 py-1.5 font-medium text-center">#</th>
@@ -934,7 +934,7 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 

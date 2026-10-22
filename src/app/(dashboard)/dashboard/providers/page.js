@@ -284,7 +284,7 @@ export default function ProvidersPage() {
   };
 
   const compatibleProviders = providerNodes
-    .filter((node) => node.type === "openai-compatible")
+    .filter((node) => node.type === "openai-compatible" || node.type.startsWith("openai-compatible-chat-"))
     .map((node) => ({
       id: node.id,
       name: node.name || "OpenAI Compatible",

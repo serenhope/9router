@@ -47,17 +47,17 @@ html:not(.fonts-loading) .material-symbols-outlined { opacity: 1; transition: op
    Brand orange (dark) / soft coral (light), neutral warm bases
    ============================================================ */
 :root {
-  /* Brand scale (light) - centered on #E56A4A */
-  --color-brand-50: #fdf1ed;
-  --color-brand-100: #fadccf;
-  --color-brand-200: #f4b59c;
-  --color-brand-300: #ee8d6a;
-  --color-brand-400: #ea7855;
-  --color-brand-500: #E56A4A;
-  --color-brand-600: #cc5236;
-  --color-brand-700: #a64027;
-  --color-brand-800: #7a2f1d;
-  --color-brand-900: #4d1e12;
+  /* Brand scale (light) - ember orange, matching dark accent */
+  --color-brand-50: #fff7ed;
+  --color-brand-100: #ffedd5;
+  --color-brand-200: #fed7aa;
+  --color-brand-300: #fdba74;
+  --color-brand-400: #fb923c;
+  --color-brand-500: #f97316;
+  --color-brand-600: #ea580c;
+  --color-brand-700: #c2410c;
+  --color-brand-800: #9a3412;
+  --color-brand-900: #7c2d12;
 
   /* Primary (legacy alias for backward compat with existing components) */
   --color-primary: var(--color-brand-500);
@@ -69,7 +69,7 @@ html:not(.fonts-loading) .material-symbols-outlined { opacity: 1; transition: op
   --color-surface: #ffffff;
   --color-surface-2: #f4f4f5;
   --color-surface-3: #e7e7e9;
-  --color-sidebar: rgba(244, 241, 236, 0.85);
+  --color-sidebar: #F4F1EC;
 
   /* Borders */
   --color-border: #e5e7eb;
@@ -92,20 +92,20 @@ html:not(.fonts-loading) .material-symbols-outlined { opacity: 1; transition: op
   --radius-brand-lg: 14px;
 
   /* Shadows */
-  --shadow-soft: 0 1px 2px 0 rgba(0,0,0,0.04);
-  --shadow-warm: 0 2px 12px -2px rgba(229, 106, 74, 0.18);
-  --shadow-elevated: 0 12px 28px -4px rgba(60, 50, 45, 0.06);
+  --shadow-soft: 0 1px 2px 0 rgb(15,15,25);
+  --shadow-warm: 0 2px 12px -2px rgb(58,34,25);
+  --shadow-elevated: 0 12px 28px -4px rgb(19,18,27);
   --shadow-elev:
-    inset 0 1px 0 0 rgba(255,255,255,0.8),
-    0 1px 2px rgba(15,23,42,0.04),
-    0 12px 36px -8px rgba(15,23,42,0.10);
-  --shadow-focus: 0 0 0 3px rgba(229,106,74,0.18);
+    inset 0 1px 0 0 rgb(207,207,209),
+    0 1px 2px rgb(16,16,27),
+    0 12px 36px -8px rgb(16,17,28);
+  --shadow-focus: 0 0 0 3px rgb(58,34,25);
 
   /* Full-screen dim behind modals and long-task banners. A real variable,
      not a Tailwind bg-black/x utility, so both themes can tune it: the dark
      base is opaque and wants a uniform cut, while glass renders the aurora
      behind the panel and wants a lighter veil that lets the colour through. */
-  --color-scrim: rgba(30, 24, 21, 0.34);
+  --color-scrim: rgb(21,19,24);
 
   /* ---- Derived surfaces: aliases onto the scale above.
      They exist because many components already reference these names
@@ -131,53 +131,53 @@ html:not(.fonts-loading) .material-symbols-outlined { opacity: 1; transition: op
 }
 
 .dark {
-  /* Brand scale (dark) - centered on #E56A4A, same as light for consistency */
-  --color-brand-50: #fdf1ed;
-  --color-brand-100: #fadccf;
-  --color-brand-200: #f4b59c;
-  --color-brand-300: #ee8d6a;
-  --color-brand-400: #ea7855;
-  --color-brand-500: #E56A4A;
-  --color-brand-600: #cc5236;
-  --color-brand-700: #a64027;
-  --color-brand-800: #7a2f1d;
-  --color-brand-900: #4d1e12;
+  /* Brand scale (dark) - ember orange accent, mono-black base (ref tema user) */
+  --color-brand-50: #fff7ed;
+  --color-brand-100: #ffedd5;
+  --color-brand-200: #fed7aa;
+  --color-brand-300: #fdba74;
+  --color-brand-400: #fb923c;
+  --color-brand-500: #f97316;
+  --color-brand-600: #ea580c;
+  --color-brand-700: #c2410c;
+  --color-brand-800: #9a3412;
+  --color-brand-900: #7c2d12;
 
-  --color-primary: #E56A4A;
-  --color-primary-hover: #cc5236;
+  --color-primary: #f97316;
+  --color-primary-hover: #fb923c;
 
-  /* Surfaces (dark - Claude-like neutral warm) */
-  --color-bg: #1a1a1a;
-  --color-bg-alt: #1F1F1E;
-  --color-surface: #262626;
-  --color-surface-2: #303030;
-  --color-surface-3: #3a3a3a;
-  --color-sidebar: rgba(30, 30, 30, 0.85);
+  /* Surfaces (dark - near-black mono, panels blend into bg) */
+  --color-bg: #111111;
+  --color-bg-alt: #0d0d0d;
+  --color-surface: #161616;
+  --color-surface-2: #1c1c1c;
+  --color-surface-3: #242424;
+  --color-sidebar: #0d0d0d;
 
-  --color-border: #333333;
-  --color-border-subtle: #2a2a2a;
+  --color-border: #262626;
+  --color-border-subtle: #1e1e1e;
 
-  --color-text: #ededed;
-  --color-text-main: #ededed;
-  --color-text-muted: #9ca3af;
-  --color-text-subtle: #6b7280;
+  --color-text: #d4d4d4;
+  --color-text-main: #d4d4d4;
+  --color-text-muted: #8a8a8a;
+  --color-text-subtle: #5c5c5c;
 
   --color-danger: #ef4444;
   --color-success: #22c55e;
   --color-warning: #fbbf24;
   --color-info: #60a5fa;
 
-  --shadow-soft: 0 1px 2px 0 rgba(0,0,0,0.3);
-  --shadow-warm: 0 2px 12px -2px rgba(229, 106, 74, 0.25);
-  --shadow-elevated: 0 12px 28px -4px rgba(0, 0, 0, 0.45);
+  --shadow-soft: 0 1px 2px 0 rgb(10,10,16);
+  --shadow-warm: 0 2px 12px -2px rgb(67,38,25);
+  --shadow-elevated: 0 12px 28px -4px rgb(7,7,12);
   --shadow-elev:
-    inset 0 1px 0 0 rgba(255,255,255,0.06),
-    0 1px 2px rgba(0,0,0,0.4),
-    0 16px 48px -8px rgba(0,0,0,0.55);
-  --shadow-focus: 0 0 0 3px rgba(229, 106, 74, 0.18);
+    inset 0 1px 0 0 rgb(26,26,35),
+    0 1px 2px rgb(8,8,13),
+    0 16px 48px -8px rgb(6,6,10);
+  --shadow-focus: 0 0 0 3px rgb(63,36,25);
 
   /* Dark scrim: a heavier uniform veil over the opaque base. */
-  --color-scrim: rgba(0, 0, 0, 0.55);
+  --color-scrim: rgb(6,6,9);
 
   color-scheme: dark;
 }
@@ -255,13 +255,13 @@ select {
 
   /* Static fallbacks (explicit per-mode usage if needed) */
   --color-bg-light: #FCFBF9;
-  --color-bg-dark: #1a1a1a;
+  --color-bg-dark: #111111;
   --color-surface-light: #ffffff;
-  --color-surface-dark: #262626;
+  --color-surface-dark: #161616;
   --color-sidebar-light: #F4F1EC;
-  --color-sidebar-dark: #1F1F1E;
+  --color-sidebar-dark: #0d0d0d;
   --color-border-light: #e5e7eb;
-  --color-border-dark: #333333;
+  --color-border-dark: #262626;
   --color-text-main-light: #0a0a0a;
   --color-text-main-dark: #ededed;
   --color-text-muted-light: #6B7280;
@@ -293,11 +293,11 @@ body {
 
 /* Selection - brand-tinted */
 ::selection {
-  background-color: rgba(229, 106, 74, 0.25);
+  background-color: rgb(74,41,25);
   color: var(--color-primary);
 }
 .dark ::selection {
-  background-color: rgba(229, 106, 74, 0.3);
+  background-color: rgb(86,46,25);
   color: var(--color-brand-300);
 }
 
@@ -314,7 +314,7 @@ input, textarea {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.3);
+  background-color: rgb(58,60,71);
   border-radius: 20px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
@@ -324,28 +324,28 @@ input, textarea {
 /* Thin horizontal scrollbar - brand colored */
 .scroll-thin-x {
   scrollbar-width: thin;
-  scrollbar-color: rgba(229, 106, 74, 0.55) transparent;
+  scrollbar-color: rgb(144,70,24) transparent;
 }
 .dark .scroll-thin-x {
-  scrollbar-color: rgba(229, 106, 74, 0.55) transparent;
+  scrollbar-color: rgb(144,70,24) transparent;
 }
 .scroll-thin-x::-webkit-scrollbar { height: 3px; }
 .scroll-thin-x::-webkit-scrollbar-track { background: transparent; }
 .scroll-thin-x::-webkit-scrollbar-thumb {
-  background: rgba(229, 106, 74, 0.55);
+  background: rgb(144,70,24);
   border-radius: 3px;
 }
 .dark .scroll-thin-x::-webkit-scrollbar-thumb {
-  background: rgba(229, 106, 74, 0.55);
+  background: rgb(144,70,24);
 }
 
 /* Global thin mac-like scrollbars (overrides clunky Windows/Linux default) */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(120, 120, 120, 0.35) transparent;
+  scrollbar-color: rgb(52,52,59) transparent;
 }
 .dark * {
-  scrollbar-color: rgba(180, 180, 180, 0.3) transparent;
+  scrollbar-color: rgb(65,65,72) transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
@@ -355,19 +355,19 @@ input, textarea {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background-color: rgba(120, 120, 120, 0.35);
+  background-color: rgb(52,52,59);
   border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(120, 120, 120, 0.55);
+  background-color: rgb(73,73,78);
 }
 .dark *::-webkit-scrollbar-thumb {
-  background-color: rgba(180, 180, 180, 0.3);
+  background-color: rgb(65,65,72);
 }
 .dark *::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(180, 180, 180, 0.5);
+  background-color: rgb(98,98,103);
 }
 
 /* Reusable elevated card */
@@ -387,14 +387,12 @@ input, textarea {
   background: linear-gradient(180deg, var(--color-bg-alt) 0%, var(--color-bg) 100%);
 }
 
-/* macOS Vibrancy */
+/* Opaque surface (no transparency) */
 .bg-vibrancy {
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--color-sidebar);
 }
 .dark .bg-vibrancy {
-  background: rgba(38, 38, 38, 0.72);
+  background: var(--color-sidebar);
 }
 
 /* macOS Traffic Lights */
@@ -482,12 +480,12 @@ button:disabled,
 
 @keyframes border-glow {
   0%, 100% {
-    box-shadow: 0 0 5px rgba(229, 106, 74, 0.3), 0 0 10px rgba(229, 106, 74, 0.2);
-    border-color: rgba(229, 106, 74, 0.5);
+    box-shadow: 0 0 5px rgb(86,46,25), 0 0 10px rgb(63,36,25);
+    border-color: rgb(132,66,24);
   }
   50% {
-    box-shadow: 0 0 10px rgba(229, 106, 74, 0.5), 0 0 20px rgba(229, 106, 74, 0.3);
-    border-color: rgba(229, 106, 74, 0.8);
+    box-shadow: 0 0 10px rgb(132,66,24), 0 0 20px rgb(86,46,25);
+    border-color: rgb(202,95,23);
   }
 }
 .animate-border-glow { animation: border-glow 2s ease-in-out infinite; }
@@ -539,8 +537,8 @@ button:disabled,
   100% { transform: translateX(220%) skewX(-20deg); }
 }
 @keyframes ctaGlowPulse {
-  0%, 100% { box-shadow: 0 8px 24px -8px rgba(229, 106, 74, 0.45), 0 0 0 0 rgba(229, 106, 74, 0.5); }
-  50% { box-shadow: 0 12px 32px -8px rgba(229, 106, 74, 0.6), 0 0 0 8px rgba(229, 106, 74, 0); }
+  0%, 100% { box-shadow: 0 8px 24px -8px rgb(121,61,24), 0 0 0 0 rgb(132,66,24); }
+  50% { box-shadow: 0 12px 32px -8px rgb(156,75,24), 0 0 0 8px rgb(16,16,26); }
 }
 .btn-cta {
   position: relative;
@@ -555,7 +553,7 @@ button:disabled,
   left: 0;
   width: 50%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+  background: linear-gradient(90deg, transparent, rgb(100,100,106), transparent);
   animation: ctaShimmer 2.8s ease-in-out infinite;
   pointer-events: none;
   z-index: 1;
@@ -566,13 +564,13 @@ button:disabled,
 .dot-grid-bg {
   background-color: var(--color-bg);
   background-image:
-    radial-gradient(circle at 15% 20%, rgba(229, 106, 74, 0.10) 0%, transparent 40%),
-    radial-gradient(circle at 85% 80%, rgba(229, 106, 74, 0.06) 0%, transparent 40%);
+    radial-gradient(circle at 15% 20%, rgb(39,26,26) 0%, transparent 40%),
+    radial-gradient(circle at 85% 80%, rgb(30,22,26) 0%, transparent 40%);
 }
 .dark .dot-grid-bg {
   background-image:
-    radial-gradient(circle at 15% 20%, rgba(229, 106, 74, 0.18) 0%, transparent 40%),
-    radial-gradient(circle at 85% 80%, rgba(229, 106, 74, 0.10) 0%, transparent 40%);
+    radial-gradient(circle at 15% 20%, rgb(58,34,25) 0%, transparent 40%),
+    radial-gradient(circle at 85% 80%, rgb(39,26,26) 0%, transparent 40%);
 }
 
 /* Landing-style faint grid overlay (use absolute pos inside relative parent) */
@@ -596,16 +594,16 @@ button:disabled,
     box-shadow:
       0 0 8px #fde047,
       0 0 20px color-mix(in srgb, var(--color-primary) 65%, transparent),
-      0 0 32px rgba(34, 211, 238, 0.4),
-      inset 0 0 10px rgba(253, 224, 71, 0.3);
+      0 0 32px rgb(23,94,111),
+      inset 0 0 10px rgb(87,78,40);
   }
   50% {
     transform: scale(1.06);
     box-shadow:
       0 0 14px #fef08a,
       0 0 28px #facc15,
-      0 0 44px rgba(34, 211, 238, 0.6),
-      inset 0 0 14px rgba(255, 255, 255, 0.25);
+      0 0 44px rgb(27,133,153),
+      inset 0 0 14px rgb(76,76,83);
   }
 }
 @keyframes topology-router-icon-shake {
@@ -637,7 +635,7 @@ button:disabled,
   animation: topology-router-label-flicker 0.7s ease-in-out infinite;
 }
 .topology-router-badge {
-  box-shadow: 0 0 10px #fde047, 0 0 16px rgba(34, 211, 238, 0.6);
+  box-shadow: 0 0 10px #fde047, 0 0 16px rgb(27,133,153);
 }
 .topology-edge-kame {
   stroke-dasharray: 8 6;
@@ -731,87 +729,68 @@ button:disabled,
    and use `!important` where a utility would otherwise win, which is the only
    reliable lever here.
    ============================================================ */
-/* GLASS-REWORK */
+/* GLASS-REWORK: opaque edition — no transparency anywhere.
+   Surfaces use solid colors; only a subtle orange aurora remains on the body. */
 .dark.glass,
 .dark.glass body {
-  background-color: #0b0e14;
+  background-color: #111111;
 }
 .dark.glass body {
   background-image:
-    radial-gradient(42rem 30rem at 8% 6%, rgba(229, 106, 74, 0.55), transparent 60%),
-    radial-gradient(40rem 28rem at 94% 8%, rgba(129, 140, 248, 0.5), transparent 58%),
-    radial-gradient(46rem 32rem at 78% 96%, rgba(56, 189, 248, 0.42), transparent 60%),
-    radial-gradient(34rem 26rem at 22% 78%, rgba(16, 185, 129, 0.28), transparent 62%);
+    radial-gradient(42rem 30rem at 8% 6%, rgb(39,26,26), transparent 60%),
+    radial-gradient(40rem 28rem at 94% 8%, rgb(30,22,26), transparent 58%);
   background-attachment: fixed;
 }
 
 .dark.glass aside {
-  background-color: rgba(255, 255, 255, 0.06) !important;
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  border-color: rgba(255, 255, 255, 0.12) !important;
+  background-color: #141414 !important;
+  border-color: #262626 !important;
 }
 
 .dark.glass .bg-surface {
-  background-color: rgba(255, 255, 255, 0.07) !important;
+  background-color: #161616 !important;
 }
 .dark.glass .bg-surface-2 {
-  background-color: rgba(255, 255, 255, 0.11) !important;
+  background-color: #1c1c1c !important;
 }
 .dark.glass .bg-surface-3 {
-  background-color: rgba(255, 255, 255, 0.15) !important;
+  background-color: #242424 !important;
 }
 .dark.glass .bg-bg-alt {
-  background-color: rgba(255, 255, 255, 0.04) !important;
+  background-color: #0d0d0d !important;
 }
 
-/* The shell's opaque bg-bg would bury the aurora; let it show through. */
 .dark.glass .bg-bg {
-  background-color: transparent !important;
+  background-color: #111111 !important;
 }
 
-/* Modal and long-task scrim. The glass body paints a colourful aurora, so the
-   dark theme's 55% black veil turned every overlay muddy brown-black. A
-   lighter veil keeps the frost readable and lets the theme's colour survive
-   underneath instead of being buried. */
 .dark.glass {
-  --color-scrim: rgba(8, 11, 16, 0.34);
+  --color-scrim: rgb(12,13,20);
 }
 
-/* Derived surfaces follow the same frost ladder the explicit utilities above
-   use (bg -> transparent, bg-alt -> 4%, surface-2 -> 11%, surface-3 -> 15%),
-   so `bg-bg-subtle`/`bg-bg-secondary`/`bg-bg-tertiary` frosted panels match
-   their `bg-bg-alt`/`bg-surface-2`/`bg-surface-3` neighbours instead of
-   landing on an opaque dark block over the aurora. Because the utilities carry
-   a var() reference (see @theme inline), retuning the var here also reaches
-   the opacity variants (`bg-bg-subtle/30`). */
+/* Derived surfaces follow the frost ladder the explicit utilities above
+   use. Because the utilities carry a var() reference (see @theme inline),
+   retuning the var here also reaches the opacity variants (`bg-bg-subtle/30`). */
 .dark.glass {
-  --color-bg-base: rgba(255, 255, 255, 0.07);
-  --color-bg-subtle: rgba(255, 255, 255, 0.04);
-  --color-bg-secondary: rgba(255, 255, 255, 0.11);
-  --color-bg-tertiary: rgba(255, 255, 255, 0.15);
-  --color-surface-secondary: rgba(255, 255, 255, 0.11);
-}
-
-/* Nested menus, modals and popovers inherit the same frost. */
-.dark.glass [class*="bg-surface"] {
-  backdrop-filter: blur(16px) saturate(150%);
-  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  --color-bg-base: #111111;
+  --color-bg-subtle: #0d0d0d;
+  --color-bg-secondary: #1c1c1c;
+  --color-bg-tertiary: #242424;
+  --color-surface-secondary: #1c1c1c;
 }
 
 /* Inputs keep a solid base; a translucent field loses the caret against blur. */
 .dark.glass input,
 .dark.glass select,
 .dark.glass textarea {
-  background-color: rgba(13, 17, 23, 0.72) !important;
-  border-color: rgba(255, 255, 255, 0.12) !important;
+  background-color: #1c1c1c !important;
+  border-color: #333333 !important;
 }
 
-/* Scrollbars have to stay visible against a translucent track. */
 .dark.glass ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.16);
+  background: #3a3a3a;
 }
 .dark.glass ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.26);
+  background: #4a4a4a;
 }
 

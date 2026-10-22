@@ -17,6 +17,77 @@ import { ANTISLOP_LEVEL_CHARS } from "open-sse/rtk/antislopPrompt.js";
 
 const PLUGINS = [
   {
+    key: "agentFse",
+    title: "Full Stack Software Engineer",
+    iconColor: "text-emerald-400",
+    description:
+      "End-to-end feature delivery agent: frontend, backend, schema, APIs and deployment. Routes to deep-reasoning and coding models (abliterated-large, DeepSeek, Claude, GPT) with an architecture-first system prompt.",
+  },
+  {
+    key: "agentQa",
+    title: "QA Engineer",
+    iconColor: "text-cyan-400",
+    description:
+      "Test strategy and bug triage agent: generates test cases, edge cases and regression suites. Routes to long-context analysis models (OpenCode, Mimo, DeepSeek, GPT).",
+  },
+  {
+    key: "agentSecurity",
+    title: "Security Engineer",
+    iconColor: "text-rose-400",
+    description:
+      "Threat modeling and secure code review agent: OWASP Top 10, STRIDE, hardening and secrets hygiene. Routes to uncensored reasoning models (abliterated large v2, Claude, o4-mini).",
+  },
+  {
+    key: "agentRea",
+    title: "REA (Rapid Engineering Assistant)",
+    iconColor: "text-amber-400",
+    description:
+      "Fast prototyping and scaffolding agent: boilerplate, quick answers, minimal viable output. Routes to speed-optimized models (Gemini Flash, Mimo).",
+  },
+  {
+    key: "agentSqli",
+    title: "SQL Injection Specialist",
+    iconColor: "text-red-400",
+    description:
+      "SQL injection detection and DB hardening agent for authorized testing: payload analysis, query audits, prepared statements. Routes to uncensored deep-reasoning models (abliterated, o4-mini, DeepSeek).",
+  },
+  {
+    key: "agentRag",
+    title: "RAG Engineer",
+    iconColor: "text-violet-400",
+    description:
+      "Retrieval-augmented generation agent: chunking, embeddings, vector stores, reranking and evaluation. Routes to long-context models (OpenCode, abliterated-large, Gemini, Claude).",
+  },
+  {
+    key: "tempGuard",
+    title: "Temperature Guard",
+    iconColor: "text-orange-400",
+    description:
+      "Locks sampling temperature to 0.2 for the selected models, producing near-deterministic output for coding, review and analysis workloads. Never raises a temperature the caller already set lower.",
+  },
+  {
+    key: "outputCap",
+    title: "Output Cap",
+    iconColor: "text-teal-400",
+    description:
+      "Applies a hard 4,096-token ceiling on completions for the selected models, preventing runaway generations and runaway token spend. An existing smaller limit from the caller is respected.",
+  },
+  {
+    key: "stopGuard",
+    title: "Stop Sequence Guard",
+    iconColor: "text-lime-400",
+    description:
+      "Injects safe stop sequences (tool-call and function-result closers, blank-line runs) so structured outputs terminate cleanly instead of rambling into filler. Caller-provided stops are preserved.",
+  },
+  {
+    key: "promptBase",
+    title: "Prompt Base",
+    iconColor: "text-indigo-400",
+    description:
+      "Adds an honest grounding baseline to every request: answer from provided context, state uncertainty plainly instead of guessing, and cite the supporting part of the context when one exists. Anti-hallucination without inventing a persona.",
+  },
+
+  {
     key: "imageVision",
     title: "Image Vision",
     description:
