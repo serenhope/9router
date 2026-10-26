@@ -7,6 +7,11 @@ import {
   restoreToolNames,
   takeRenamedToolNames,
   OPENCODE_FINGERPRINT_TOOLS,
+  hasCompleteEnvBlock,
+  upgradeEnvBlock,
+  withEnvMarker,
+  applyFingerprintSystemPrompt,
+  OPENCODE_ENV_MARKER,
 } from "open-sse/utils/opencodeFingerprint.js";
 
 const CC_TOOLS = ["Task", "Bash", "Glob", "Grep", "Read", "Edit", "Write", "WebFetch"];
@@ -194,5 +199,73 @@ describe("fingerprintToolKey", () => {
     expect(fingerprintToolKey("bash")).toBe("");
     expect(fingerprintToolKey("terminal")).toBe("");
     expect(fingerprintToolKey(null)).toBe("");
+  });
+});
+
+describe("opencodeFingerprint — env block fingerprinting", () => {
+  it("detects complete and incomplete env blocks", () => {
+    expect(hasCompleteEnvBlock(OPENCODE_ENV_MARKER)).toBe(true);
+    expect(hasCompleteEnvBlock("<env>\n  Working directory: /workspace\n</env>")).toBe(false);
+    expect(hasCompleteEnvBlock("<env>\n  Workspace root folder: /workspace\n</env>")).toBe(false);
+    expect(hasCompleteEnvBlock("no env block")).toBe(false);
+  });
+
+  it("idempotently upgrades partial env block with both directory lines", () => {
+    const partial = "<env>\n  Working directory: /workspace\n</env>";
+    const upgraded = upgradeEnvBlock(partial);
+    expect(hasCompleteEnvBlock(upgraded)).toBe(true);
+    expect(upgraded).toContain("Working directory: /workspace");
+    expect(upgraded).toContain("Workspace root folder: /workspace");
+    // Idempotent: upgrading again produces identical string
+    expect(upgradeEnvBlock(upgraded)).toBe(upgraded);
+  });
+
+  it("upgrades Anthropic system string idempotently", () => {
+    const body = { system: "You are a helpful assistant.\n<env>\n  Working directory: /workspace\n</env>" };
+    applyFingerprintSystemPrompt(body);
+    expect(hasCompleteEnvBlock(body.system)).toBe(true);
+    expect(body.system).toContain("You are a helpful assistant.");
+    const firstRun = body.system;
+    applyFingerprintSystemPrompt(body);
+    expect(body.system).toBe(firstRun);
+  });
+
+  it("upgrades Anthropic system block array idempotently", () => {
+    const body = {
+      system: [
+        { type: "text", text: "You are an assistant." },
+        { type: "text", text: "<env>\n  Working directory: /workspace\n</env>" },
+      ],
+    };
+    applyFingerprintSystemPrompt(body);
+    expect(hasCompleteEnvBlock(body.system[1].text)).toBe(true);
+    const count = body.system.length;
+    applyFingerprintSystemPrompt(body);
+    expect(body.system.length).toBe(count);
+  });
+
+  it("upgrades OpenAI messages system prompt idempotently", () => {
+    const body = {
+      messages: [
+        { role: "system", content: "System instructions.\n<env>\n  Working directory: /workspace\n</env>" },
+        { role: "user", content: "Hello" },
+      ],
+    };
+    applyFingerprintSystemPrompt(body);
+    expect(hasCompleteEnvBlock(body.messages[0].content)).toBe(true);
+    const firstContent = body.messages[0].content;
+    applyFingerprintSystemPrompt(body);
+    expect(body.messages[0].content).toBe(firstContent);
+  });
+
+  it("upgrades Responses API instructions idempotently", () => {
+    const body = {
+      instructions: "Instructions.\n<env>\n  Working directory: /workspace\n</env>",
+    };
+    applyFingerprintSystemPrompt(body);
+    expect(hasCompleteEnvBlock(body.instructions)).toBe(true);
+    const firstInst = body.instructions;
+    applyFingerprintSystemPrompt(body);
+    expect(body.instructions).toBe(firstInst);
   });
 });

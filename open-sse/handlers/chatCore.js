@@ -444,6 +444,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     // honored on the Cursor AgentService h2 path and in proxyFetch (#4333).
     proxyPoolId: credentials?.providerSpecificData?.connectionProxyPoolId || null,
     strictProxy: credentials?.providerSpecificData?.strictProxy === true,
+    connectionProxyAlternates: credentials?.providerSpecificData?.connectionProxyAlternates || [],
   };
 
   if (proxyOptions.vercelRelayUrl) {
@@ -604,7 +605,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         const fallbackBody = degradeToolPayload(translatedBody, level);
         if (!fallbackBody) break;
         try {
-          const attempt = await executor.execute({
+          const attempt = await executor["execute"]({
             model,
             body: fallbackBody,
             stream,

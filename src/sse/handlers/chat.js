@@ -520,7 +520,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // The session branch carries the same deadline as the generic one below:
     // past the caller's budget every further proxy answers the same
     // spent-quota 429 into a void, so hand back the last error now.
-    if ((provider === "opencode" || provider === "opencode-v2") && result.status === 429
+    if ((provider === "opencode" && result.status === 429 || provider === "opencode-v2" && result.status === 429)
         && /free\s*usage\s*limit/i.test(result.error || "")) {
       try {
         if (provider === "opencode-v2") {
