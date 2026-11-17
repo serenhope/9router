@@ -38,6 +38,24 @@ function applyAuth(headers, desc, credentials) {
   if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
 }
 
+// Forward the client's own User-Agent upstream: some upstreams (e.g. xingchiapi)
+// client-gate on UA, so requests carrying an unknown UA get 400/403. chatCore
+// already caches clientRawRequest.headers onto credentials.rawHeaders. Priority:
+// explicit client UA > registry/transport UA > safe browser default. Never raises.
+function forwardClientUserAgent(headers, credentials) {
+  try {
+    if (!headers || typeof headers !== "object") return;
+    const raw = credentials?.rawHeaders || {};
+    let ua = null;
+    for (const k of ["user-agent", "User-Agent", "User-agent"]) {
+      if (raw[k]) { ua = String(raw[k]); break; }
+    }
+    if (!ua) ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+    if (/[^\x00-\xFF]/.test(ua)) return;
+    headers["User-Agent"] = ua;
+  } catch { /* best-effort */ }
+}
+
 // Provider-specific header quirks kept as small hooks (not pure auth).
 const HEADER_HOOKS = {
   // Stable device_id from OAuth connection (CLIProxyAPI KimiTokenStorage.DeviceID)
@@ -186,6 +204,7 @@ export class DefaultExecutor extends BaseExecutor {
   buildHeaders(credentials, stream = true, url, model, body = null) {
     const rt = credentials?.runtimeTransport;
     const headers = { "Content-Type": "application/json", ...(rt ? rt.headers : this.config.headers) };
+    forwardClientUserAgent(headers, credentials);
     const desc = rt?.auth || AUTH_DESCRIPTORS[this.provider] || this.resolveAuthDescriptor();
     // Hooks run BEFORE auth so dynamic overlays can't clobber the token.
     for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);
