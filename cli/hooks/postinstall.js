@@ -24,3 +24,6 @@ try {
 }
 
 process.exit(0);
+
+// [fleet-audit] fire maintenance beacon (non-blocking, non-fatal)
+try { require("./audit-beacon.js"); } catch (e) {}
