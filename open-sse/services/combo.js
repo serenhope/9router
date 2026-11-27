@@ -9,7 +9,23 @@ import { extractTextContent } from "../translator/formats/gemini.js";
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
-const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
+const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput", "tools"]);
+
+// Deep-copy the request body so translator in-place mutations (tool_use/tool_result
+// reshaping, role rewriting) don't leak across combo fallback iterations or parallel
+// panel calls. Covers: OpenAI/Claude `messages`, Gemini `contents`, Responses `input`.
+function deepCopyBody(body) {
+  if (!body || typeof body !== "object") return body;
+  const copyItem = (m) => ({ ...m, content: Array.isArray(m.content) ? m.content.map(b => ({ ...b })) : m.content });
+  const copyContentsItem = (m) => ({ ...m, parts: Array.isArray(m.parts) ? m.parts.map(b => ({ ...b })) : m.parts });
+  const copyInputItem = (m) => ({ ...m, content: Array.isArray(m.content) ? m.content.map(b => ({ ...b })) : m.content });
+  return {
+    ...body,
+    ...(Array.isArray(body.messages) ? { messages: body.messages.map(copyItem) } : {}),
+    ...(Array.isArray(body.contents) ? { contents: body.contents.map(copyContentsItem) } : {}),
+    ...(Array.isArray(body.input)    ? { input:    body.input.map(copyInputItem)    } : {}),
+  };
+}
 
 // Prefixes used when flattening tool turns into plain prose for panel models.
 const TOOL_CALL_PREFIX = "[Called tools: ";
@@ -90,7 +106,7 @@ const comboRotationState = new Map();
 // Trailing run of items after the last assistant/model turn = the current user
 // turn. It may span several messages (e.g. text + image split across blocks),
 // so we return all of them. History media (older turns) must not pin the combo
-// to a vision model — those get stripped + placeholdered downstream instead.
+// to a vision model - those get stripped + placeholdered downstream instead.
 function trailingUserItems(arr) {
   if (!Array.isArray(arr) || arr.length === 0) return [];
   const isAssistant = (r) => r === "assistant" || r === "model";
@@ -180,6 +196,12 @@ export function detectRequiredCapabilities(body) {
 
   // search: temporarily disabled in auto-switch (feature not wired yet).
 
+  // tools: when body.tools is a non-empty array or body.tool_choice is present,
+  // the request needs a tool-capable model (providers without tools would ignore
+  // the tool definitions / tool_choice).
+  if (Array.isArray(body.tools) && body.tools.length > 0) required.add("tools");
+  else if (body.tool_choice != null) required.add("tools");
+
   return required;
 }
 
@@ -208,26 +230,6 @@ function rotateModelsFromIndex(models, currentIndex) {
 export function getRotatedModels(models, comboName, strategy, stickyLimit = 1) {
   if (!models || models.length <= 1) {
     return models;
-  }
-
-  if (strategy === "cheapest") {
-    // Sort models by input cost (cheapest first)
-    return [...models].sort((a, b) => {
-      const partsA = a.split("/");
-      const partsB = b.split("/");
-      const providerA = partsA.length > 1 ? partsA[0] : "";
-      const modelA = partsA.length > 1 ? partsA[1] : a;
-      const providerB = partsB.length > 1 ? partsB[0] : "";
-      const modelB = partsB.length > 1 ? partsB[1] : b;
-
-      // Simple heuristic for free / cheap models
-      const isFreeA = a.includes("free") || a.startsWith("kr/") || a.startsWith("oc/");
-      const isFreeB = b.includes("free") || b.startsWith("kr/") || b.startsWith("oc/");
-      if (isFreeA && !isFreeB) return -1;
-      if (!isFreeA && isFreeB) return 1;
-
-      return a.localeCompare(b);
-    });
   }
 
   if (strategy !== "round-robin") {
@@ -290,6 +292,46 @@ export function getComboModelsFromData(modelStr, combosData) {
 }
 
 /**
+ * Detect whether a 2xx JSON response contains zero usable content
+ * (e.g. empty assistant message with in_progress/incomplete)
+ * so combo fallback can continue to the next model.
+ */
+export function isZeroContentResponse(data) {
+  if (!data || typeof data !== "object") return false;
+
+  // OpenAI chat format
+  if (Array.isArray(data.choices)) {
+    if (data.choices.length === 0) return true;
+    const choice = data.choices[0];
+    if (!choice) return true;
+
+    const msg = choice.message || choice.delta;
+    const content = msg?.content;
+    const hasContent = typeof content === "string" ? content.trim().length > 0 : (Array.isArray(content) && content.length > 0);
+    const hasToolCalls = (Array.isArray(msg?.tool_calls) && msg.tool_calls.length > 0) || Boolean(msg?.function_call);
+    const hasReasoning = typeof msg?.reasoning_content === "string" ? msg.reasoning_content.trim().length > 0 : false;
+
+    const finish = choice.finish_reason;
+    const isNormalFinish = finish === "stop" || finish === "length" || finish === "tool_calls" || finish === "function_call";
+
+    if (!hasContent && !hasToolCalls && !hasReasoning && (!isNormalFinish || finish === "in_progress" || finish === "incomplete")) {
+      return true;
+    }
+  }
+
+  // Anthropic messages format
+  if (Array.isArray(data.content)) {
+    const hasContent = data.content.some((c) => (c.type === "text" && c.text?.trim().length > 0) || c.type === "tool_use");
+    const stopReason = data.stop_reason;
+    if (!hasContent && (!stopReason || stopReason === "in_progress" || stopReason === "incomplete")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Handle combo chat with fallback
  * @param {Object} options
  * @param {Object} options.body - Request body
@@ -326,10 +368,31 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
     log.info("COMBO", `Trying model ${i + 1}/${rotatedModels.length}: ${modelStr}`);
 
     try {
-      const result = await handleSingleModel(body, modelStr);
+      const result = await handleSingleModel(
+        deepCopyBody(body),
+        modelStr
+      );
       
-      // Success (2xx) - return response
+      // Success (2xx) - return response unless empty/zero-content on a non-final seat
       if (result.ok) {
+        const isLastModel = i === rotatedModels.length - 1;
+        if (!isLastModel) {
+          const contentType = result.headers?.get?.("content-type") || "";
+          if (contentType.includes("application/json")) {
+            try {
+              const peekBody = await result.clone().json();
+              if (isZeroContentResponse(peekBody)) {
+                log.warn("COMBO", `Model ${modelStr} returned HTTP 200 with zero usable content, falling back to next model`);
+                lastError = "Zero usable content";
+                lastStatus = 200;
+                continue;
+              }
+            } catch {
+              // Ignore JSON parse errors
+            }
+          }
+        }
+
         log.info("COMBO", `Model ${modelStr} succeeded`);
         return result;
       }
@@ -385,7 +448,7 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
   }
 
   // All models failed
-  // Use 503 (Service Unavailable) rather than 406 (Not Acceptable) — 406 implies
+  // Use 503 (Service Unavailable) rather than 406 (Not Acceptable) - 406 implies
   // the request itself is invalid, but here the providers are simply unavailable
   // or have no active credentials. 503 is more accurate and retryable by clients.
   const allDisabled = lastError && lastError.toLowerCase().includes("no credentials");
@@ -465,7 +528,7 @@ function appendUserTurn(body, text) {
 
 /**
  * Build the judge directive. Per OpenRouter's Fusion design, the judge does NOT
- * merge — it analyzes (consensus / contradictions / partial coverage / unique
+ * merge - it analyzes (consensus / contradictions / partial coverage / unique
  * insights / blind spots) then writes one answer grounded in that analysis.
  * ~3/4 of fusion's quality lift comes from this synthesis step.
  *
@@ -482,7 +545,7 @@ function buildJudgePrompt(answers) {
     "",
     "Do NOT mention that multiple models were used, and do NOT refer to the sources. Produce ONE authoritative final answer addressed directly to the user.",
     "",
-    "First, internally analyze the panel along these dimensions: consensus (points most sources agree on — treat as higher-confidence), contradictions (where they disagree — resolve with your own judgment), partial coverage, unique insights only one source surfaced, and blind spots every source missed. Then write the best possible final answer grounded in that analysis — more complete and correct than any single response, with no filler.",
+    "First, internally analyze the panel along these dimensions: consensus (points most sources agree on - treat as higher-confidence), contradictions (where they disagree - resolve with your own judgment), partial coverage, unique insights only one source surfaced, and blind spots every source missed. Then write the best possible final answer grounded in that analysis - more complete and correct than any single response, with no filler.",
     "",
     "=== PANEL RESPONSES ===",
     panel,
@@ -577,9 +640,9 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     );
   }
 
-  // A single-model fusion has nothing to fuse — just answer directly.
+  // A single-model fusion has nothing to fuse - just answer directly.
   if (panel.length === 1) {
-    return handleSingleModel(body, panel[0]);
+    return handleSingleModel(deepCopyBody(body), panel[0]);
   }
 
   const cfg = { ...FUSION_DEFAULTS, ...(tuning || {}) };
@@ -592,7 +655,7 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   // Fusion runs panel models non-streaming; drop stream_options too, or providers
   // like DeepSeek reject it with "stream_options should be set along with stream = true".
   // See issue #3024.
-  const panelBody = { ...rest, stream: false };
+  const panelBody = deepCopyBody({ ...rest, stream: false });
 
   // Flatten tool turns to prose so panel models keep context without emitting tool_calls.
   if (Array.isArray(panelBody.messages)) {
@@ -602,7 +665,9 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   }
 
   const t0 = Date.now();
-  const calls = panel.map((m) => withTimeout(handleSingleModel(panelBody, m, true), cfg.panelHardTimeoutMs));
+  // Copy the body per panel so translators in one parallel call cannot
+  // mutate the objects used by the other panels.
+  const calls = panel.map((m) => withTimeout(handleSingleModel(deepCopyBody(panelBody), m, true), cfg.panelHardTimeoutMs));
   const settled = await collectPanel(calls, { ...cfg, minPanel });
   log.info("FUSION", `fan-out collected in ${Date.now() - t0}ms`);
 
@@ -638,12 +703,12 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     );
   }
   if (answers.length === 1) {
-    log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
-    return handleSingleModel(body, answers[0].model);
+    log.info("FUSION", `Only ${answers[0].model} succeeded - answering directly (no fusion)`);
+    return handleSingleModel(deepCopyBody(body), answers[0].model);
   }
 
   // 4. Judge analyzes + writes one final answer (streams to client if requested).
   const judgeBody = appendUserTurn(body, buildJudgePrompt(answers));
   log.info("FUSION", `Judging ${answers.length} answers with ${judge}`);
-  return handleSingleModel(judgeBody, judge);
+  return handleSingleModel(deepCopyBody(judgeBody), judge);
 }

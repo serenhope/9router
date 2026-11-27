@@ -1,4 +1,3 @@
-"use server";
 
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
@@ -6,6 +5,9 @@ import path from "path";
 import os from "os";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { resolveModelDisplayName } from "@/shared/utils/modelDisplayName";
+
+export const dynamic = "force-dynamic";
 
 const execAsync = promisify(exec);
 
@@ -112,7 +114,7 @@ export async function POST(request) {
       models: [
         {
           id: modelId,
-          name: modelId,
+          name: resolveModelDisplayName(modelId),
           context_window: 128000,
         },
       ],

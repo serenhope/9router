@@ -15,7 +15,7 @@ export default {
     textIcon: "XT",
     website: "https://mimo.xiaomi.com",
     notice: {
-      text: "Xiaomi MiMo Token Plan subscription (API key starts with tp-). Token Plan keys are cluster-specific — select the region matching your subscription.",
+      text: "Xiaomi MiMo Token Plan subscription (API key starts with tp-). Token Plan keys are cluster-specific - select the region matching your subscription.",
       apiKeyUrl: "https://mimo.xiaomi.com",
     },
   },
@@ -37,7 +37,7 @@ export default {
     defaultRegion: "sgp",
   },
   // Multi-endpoint: pick the transport matching client sourceFormat to skip translation.
-  // baseUrl omitted — region-dynamic, resolved in the executor's buildUrl.
+  // baseUrl omitted - region-dynamic, resolved in the executor's buildUrl.
   transports: [
     {
       format: "openai",
@@ -50,9 +50,8 @@ export default {
     },
   ],
   models: [
-    { id: "mimo-v2.5-pro", name: "MiMo V2.5 Pro" },
-    { id: "mimo-v2.5-pro-claude", name: "MiMo V2.5 Pro (Claude Native)", targetFormat: "claude", upstreamModelId: "mimo-v2.5-pro" },
-    { id: "mimo-v2.5", name: "MiMo V2.5" },
+    { id: "mimo-v2.6-pro", name: "MiMo V2.6 Pro" },
+    { id: "mimo-v2.6-flash", name: "MiMo V2.6 Flash" },
     { id: "mimo-v2-pro", name: "MiMo V2 Pro" },
     { id: "mimo-v2-omni", name: "MiMo V2 Omni" },
     { id: "mimo-v2-tts", name: "MiMo V2 TTS" },

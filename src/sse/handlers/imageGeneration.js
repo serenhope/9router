@@ -9,20 +9,41 @@ import {
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleImageGenerationCore } from "open-sse/handlers/imageGenerationCore.js";
-import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { errorResponse, unavailableResponse, maskHiddenError } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
+import { saveRequestUsage } from "@/lib/usageDb.js";
 
 // Providers that don't require credentials (noAuth)
 const NO_AUTH_PROVIDERS = new Set(["sdwebui", "comfyui"]);
+
+function recordImageRequestUsage({ provider, model, connectionId, apiKey, endpoint, usage }) {
+  if (!usage || typeof usage !== "object") return;
+  const promptTokens = usage.prompt_tokens;
+  const completionTokens = usage.completion_tokens;
+  if (!Number.isSafeInteger(promptTokens) || promptTokens < 0 ||
+      !Number.isSafeInteger(completionTokens) || completionTokens < 0) {
+    return;
+  }
+
+  saveRequestUsage({
+    provider,
+    model,
+    connectionId: connectionId || undefined,
+    apiKey: apiKey || undefined,
+    endpoint: endpoint || null,
+    tokens: usage,
+    status: "success",
+  }).catch(() => {});
+}
 
 /**
  * Handle image generation request
  * @param {Request} request
  */
-export async function handleImageGeneration(request) {
+async function _handleImageGeneration(request) {
   let body;
   try {
     body = await request.json();
@@ -61,7 +82,7 @@ export async function handleImageGeneration(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelImage(b, m, { wantsStream, binaryOutput, preferredConnectionId }),
+      handleSingleModel: (b, m) => handleSingleModelImage(b, m, { wantsStream, binaryOutput, preferredConnectionId, apiKey, endpoint: url.pathname }),
       log,
       comboName: modelStr,
       comboStrategy,
@@ -69,16 +90,16 @@ export async function handleImageGeneration(request) {
     });
   }
 
-  return handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId });
+  return handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId, apiKey, endpoint: url.pathname });
 }
 
-async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId } = {}) {
+async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId, apiKey, endpoint } = {}) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
 
-  // noAuth providers — no credential needed
+  // noAuth providers - no credential needed
   if (NO_AUTH_PROVIDERS.has(provider)) {
     const result = await handleImageGenerationCore({
       body,
@@ -87,10 +108,10 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
       binaryOutput,
     });
     if (result.success) return result.response;
-    return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Image generation failed");
+    return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Image generation failed", null, settings.hideError);
   }
 
-  // Credentialed providers — fallback loop
+  // Credentialed providers - fallback loop
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
@@ -102,12 +123,12 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
       if (credentials?.allRateLimited) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
         const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
-        return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
+        return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman, null, settings.hideError);
       }
       if (excludeConnectionIds.size === 0) {
-        return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
+        return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`, null, settings.hideError);
       }
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable", null, settings.hideError);
     }
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
@@ -124,6 +145,16 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
           refreshToken: newCreds.refreshToken,
           providerSpecificData: newCreds.providerSpecificData,
           testStatus: "active"
+        });
+      },
+      onUsage: (usage) => {
+        recordImageRequestUsage({
+          provider,
+          model,
+          connectionId: credentials.connectionId,
+          apiKey,
+          endpoint,
+          usage,
         });
       },
       onRequestSuccess: async () => {
@@ -144,4 +175,15 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
 
     return result.response;
   }
+}
+
+/**
+ * Public entry: every error body leaving this handler passes through the
+ * Hide Raw Errors mask, so no branch can leak an upstream message.
+ */
+export async function handleImageGeneration(request) {
+  const response = await _handleImageGeneration(request);
+  if (!response || response.status < 400) return response;
+  const settings = await getSettings();
+  return maskHiddenError(response, Boolean(settings?.hideError));
 }

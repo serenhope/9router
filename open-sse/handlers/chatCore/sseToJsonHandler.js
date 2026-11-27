@@ -3,12 +3,14 @@ import { restoreToolNames } from "../../utils/opencodeFingerprint.js";
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { FORMATS } from "../../translator/formats.js";
+import { openAICompletionToClaudeMessage } from "../../translator/concerns/claudeMessage.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { translateResponse, initState } from "../../translator/index.js";
 import { toOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { collectJsonFrames } from "../../transformer/jsonToStreamConverter.js";
 import { applyModelAlias, calledModelName } from "../../utils/modelAlias.js";
+import { applyUsageMultipliers, estimateInputTokens, estimateResponseOutputTokens, hasValidUsage } from "../../utils/usageTracking.js";
 import { ROLE, RESPONSES_ITEM, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_EVENT, RESPONSES_EVENT, OPENAI_FINISH, MODEL_FALLBACK } from "../../translator/schema/index.js";
 
 // Frames whose `type` is a provider event name, mapped to the translator format
@@ -135,9 +137,9 @@ function chatCompletionToResponses(responseBody, customToolNames = null) {
  * Parse an SSE-shaped body into a single chat completion. Used when the provider
  * streamed but the client wanted JSON, and whenever an upstream labels a body as
  * `text/event-stream` for a non-streaming request. Real gateways deviate from the
- * spec constantly — no space after `data:`, `event:` field lines, NDJSON rows
+ * spec constantly - no space after `data:`, `event:` field lines, NDJSON rows
  * wearing an SSE content-type, Claude/Responses event frames on an OpenAI route,
- * or a whole JSON document mislabelled as a stream — and every one of those used
+ * or a whole JSON document mislabelled as a stream - and every one of those used
  * to read as "no response" and come back as a 502.
  */
 export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
@@ -206,7 +208,7 @@ function translateFramesToChunks(frames, eventFormat, fallbackModel) {
 
 /**
  * Last resort: walk the frames and collect whatever assistant text, reasoning,
- * tool calls and usage they carry, wherever they put it. Deliberately dumb — it
+ * tool calls and usage they carry, wherever they put it. Deliberately dumb - it
  * exists so an unfamiliar provider shape surfaces as a rough answer instead of a
  * blank one.
  */
@@ -358,7 +360,7 @@ function accumulateOpenAIChunks(chunks, fallbackModel) {
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, requestedModel, clientRawRequest, onRequestSuccess, customToolNames, toolNameMap, trackDone, appendLog, reqTag, log }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, requestedModel, clientRawRequest, onRequestSuccess, customToolNames, toolNameMap, trackDone, appendLog, reqTag, log, modelMultipliers = null, isAntiProbe = false }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && isResponsesProvider(provider));
   if (!isSSE) return null; // not handled here
@@ -411,7 +413,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
       // Build client-format response.
       // input_tokens EXCLUDES cached tokens on cache-capable upstreams, so summing
-      // only input+output under-reports prompt_tokens — measured: 2012 reported
+      // only input+output under-reports prompt_tokens - measured: 2012 reported
       // where the real prompt was ~5344 with 5332 served from cache. Fold the cache
       // counters in, and keep them visible in prompt_tokens_details so a client can
       // tell a cache hit from a small prompt.
@@ -463,6 +465,10 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       }
 
       applyModelAlias(finalResp, alias);
+      if (sourceFormat === FORMATS.CLAUDE) {
+        finalResp = openAICompletionToClaudeMessage(finalResp);
+      }
+
       return { success: true, response: new Response(JSON.stringify(restoreToolNames(finalResp, toolNameMap)), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
     } catch (err) {
       console.error("[ChatCore] Responses API SSE→JSON failed:", err);
@@ -492,7 +498,53 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
     if (onRequestSuccess) await onRequestSuccess();
 
-    const usage = parsed.usage || {};
+    let usage = parsed.usage || {};
+    const outTokens = usage?.completion_tokens ?? usage?.output_tokens ?? 0;
+    const inTokens = usage?.prompt_tokens ?? usage?.input_tokens ?? 0;
+
+    if (!hasValidUsage(usage)) {
+      const estimatedOut = estimateResponseOutputTokens(parsed);
+      const estimatedIn = estimateInputTokens(body);
+      if (estimatedIn > 0 || estimatedOut > 0) {
+        usage = {
+          prompt_tokens: estimatedIn,
+          completion_tokens: estimatedOut,
+          total_tokens: estimatedIn + estimatedOut,
+          estimated: true,
+        };
+        parsed.usage = usage;
+      }
+    } else if (outTokens === 0) {
+      const estimatedOut = estimateResponseOutputTokens(parsed);
+      if (estimatedOut > 0) {
+        usage = { ...usage };
+        if (usage.completion_tokens !== undefined || usage.prompt_tokens !== undefined) {
+          usage.completion_tokens = estimatedOut;
+          usage.total_tokens = (usage.prompt_tokens || 0) + estimatedOut;
+        } else if (usage.output_tokens !== undefined || usage.input_tokens !== undefined) {
+          usage.output_tokens = estimatedOut;
+          usage.total_tokens = (usage.input_tokens || 0) + estimatedOut;
+        }
+        parsed.usage = usage;
+      }
+    } else if (inTokens === 0 && body) {
+      const estimatedIn = estimateInputTokens(body);
+      if (estimatedIn > 0) {
+        usage = { ...usage };
+        if (usage.prompt_tokens !== undefined || usage.completion_tokens !== undefined) {
+          usage.prompt_tokens = estimatedIn;
+          usage.total_tokens = estimatedIn + (usage.completion_tokens || 0);
+        } else if (usage.input_tokens !== undefined || usage.output_tokens !== undefined) {
+          usage.input_tokens = estimatedIn;
+          usage.total_tokens = estimatedIn + (usage.output_tokens || 0);
+        }
+        parsed.usage = usage;
+      }
+    }
+
+    if (modelMultipliers && usage) {
+      usage = applyUsageMultipliers(usage, modelMultipliers);
+    }
     appendLog({ tokens: usage, status: "200 OK" });
     saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, requestedModel, endpoint: clientRawRequest?.endpoint, silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
@@ -510,14 +562,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       status: "success"
     }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 
-    // Re-attach usage explicitly. This handler already HAS the correct usage — it is
-    // the same object written to the usage DB, and for a cached Claude request that DB
-    // row reads cache_read_input_tokens: 11022 — yet the client was observed receiving
-    // no usage field at all (verified 2026-08-04 with a fingerprinted payload matched
-    // on both sides). Whatever drops it between assembly and serialisation, the client
-    // must not be left unable to account for its own token spend: a caller cannot tell
-    // a 90%-cached request from a cheap one without this.
     if (usage && Object.keys(usage).length > 0) parsed.usage = usage;
+    if (isAntiProbe && requestedModel && parsed) parsed.model = requestedModel;
 
     // Strip reasoning_content only when content is non-empty.
     // When content is empty (e.g. thinking models that used all tokens for reasoning),
@@ -541,7 +587,9 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     applyModelAlias(parsed, alias);
     const finalBody = sourceFormat === FORMATS.OPENAI_RESPONSES
       ? chatCompletionToResponses(parsed, customToolNames)
-      : parsed;
+      : sourceFormat === FORMATS.CLAUDE
+        ? openAICompletionToClaudeMessage(parsed)
+        : parsed;
 
     return { success: true, response: new Response(JSON.stringify(restoreToolNames(finalBody, toolNameMap)), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
   } catch (err) {

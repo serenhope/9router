@@ -48,6 +48,55 @@ describe("standalone build assets", () => {
       .toBe("wrapper");
   });
 
+  // getGuardModule() resolves the guard by path under the standalone dir; when
+  // next build's tracing misses them the standalone server answers 503 "guard
+  // unavailable" instead of serving.
+  it("stages src/ and scripts/ so the standalone auth guard can load", () => {
+    const projectRoot = createBuildFixture(".next");
+    mkdirSync(join(projectRoot, "src", "lib", "db", "repos"), { recursive: true });
+    mkdirSync(join(projectRoot, "scripts"), { recursive: true });
+    writeFileSync(join(projectRoot, "src", "dashboardGuard.js"), "guard");
+    writeFileSync(join(projectRoot, "src", "lib", "db", "repos", "securityLogRepo.js"), "repo");
+    writeFileSync(join(projectRoot, "scripts", "auth-guard-hooks.mjs"), "hooks");
+
+    copyStandaloneAssets({ projectRoot, distDir: ".next" });
+
+    expect(readFileSync(join(projectRoot, ".next", "standalone", "src", "dashboardGuard.js"), "utf8")).toBe("guard");
+    expect(readFileSync(join(projectRoot, ".next", "standalone", "src", "lib", "db", "repos", "securityLogRepo.js"), "utf8")).toBe("repo");
+    expect(readFileSync(join(projectRoot, ".next", "standalone", "scripts", "auth-guard-hooks.mjs"), "utf8")).toBe("hooks");
+  });
+
+  it("stages open-sse/ so runtime tool defs and executors can load in standalone", () => {
+    const projectRoot = createBuildFixture(".next");
+    mkdirSync(join(projectRoot, "open-sse", "utils"), { recursive: true });
+    writeFileSync(join(projectRoot, "open-sse", "utils", "opencodeV2Defs.json"), '{"read":{}}');
+
+    copyStandaloneAssets({ projectRoot, distDir: ".next" });
+
+    expect(readFileSync(join(projectRoot, ".next", "standalone", "open-sse", "utils", "opencodeV2Defs.json"), "utf8"))
+      .toBe('{"read":{}}');
+  });
+
+  // Tracing never sees the guard's runtime `import "next/server"`: the guard is
+  // copied in after the build, so it is not in the webpack graph. The standalone
+  // tree therefore carried a partial next package and every request answered 503
+  // "guard unavailable" with ENOENT node_modules/next/server.js.
+  it("mirrors the full next package over the traced partial one", () => {
+    const projectRoot = createBuildFixture(".next");
+    mkdirSync(join(projectRoot, "node_modules", "next"), { recursive: true });
+    writeFileSync(join(projectRoot, "node_modules", "next", "server.js"), "full server");
+    mkdirSync(join(projectRoot, ".next", "standalone", "node_modules", "next"), { recursive: true });
+    writeFileSync(join(projectRoot, ".next", "standalone", "node_modules", "next", "package.json"), "partial");
+
+    copyStandaloneAssets({ projectRoot, distDir: ".next" });
+
+    expect(readFileSync(join(projectRoot, ".next", "standalone", "node_modules", "next", "server.js"), "utf8"))
+      .toBe("full server");
+    // The mirror replaces the traced directory instead of merging into it.
+    expect(() => readFileSync(join(projectRoot, ".next", "standalone", "node_modules", "next", "package.json")))
+      .toThrow();
+  });
+
   it("does not modify workspace-traced CLI builds", () => {
     const projectRoot = createBuildFixture(".next-cli-build");
     const previousMode = process.env.NEXT_TRACING_ROOT_MODE;

@@ -19,18 +19,31 @@ export default function NoAuthProxyCard({ providerId }) {
   const [rotateStrategy, setRotateStrategy] = useState("none");
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [opencodeInstalled, setOpencodeInstalled] = useState(true);
+  const [copiedCmd, setCopiedCmd] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
       fetch("/api/proxy-pools?isActive=true", { cache: "no-store" }).then((r) => r.ok ? r.json() : { proxyPools: [] }),
       fetch("/api/settings", { cache: "no-store" }).then((r) => r.ok ? r.json() : {}),
-    ]).then(([poolData, settingsData]) => {
+      fetch("/api/providers", { cache: "no-store" }).then((r) => r.ok ? r.json() : {}),
+    ]).then(([poolData, settingsData, providersData]) => {
       if (cancelled) return;
       setProxyPools(poolData.proxyPools || []);
       const override = (settingsData.providerStrategies || {})[providerId] || {};
-      setProxyPoolId(override.proxyPoolId || NONE_PROXY_POOL_VALUE);
+      // A saved pool id can go stale if the pool was deleted after saving.
+      // Only trust the override when it still resolves to a current option,
+      // otherwise fall back to no proxy so the select never points at nothing.
+      const savedPoolId = override.proxyPoolId;
+      const poolStillExists =
+        savedPoolId === NONE_PROXY_POOL_VALUE ||
+        (poolData.proxyPools || []).some((p) => p.id === savedPoolId);
+      setProxyPoolId(poolStillExists ? savedPoolId : NONE_PROXY_POOL_VALUE);
       setRotateStrategy(override.rotateStrategy || "none");
+      if (providersData?.opencodeInstalled !== undefined) {
+        setOpencodeInstalled(Boolean(providersData.opencodeInstalled));
+      }
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [providerId]);
@@ -76,54 +89,54 @@ export default function NoAuthProxyCard({ providerId }) {
   const canRotate = proxyPools.length >= 2;
   const isRotation = rotateStrategy !== "none";
 
+  const proxyPoolOptions = [
+    { value: NONE_PROXY_POOL_VALUE, label: "None (direct / unproxied)" },
+    ...proxyPools.map((pool) => ({ value: pool.id, label: pool.name })),
+  ];
+
   return (
     <Card>
       <div className="flex items-center gap-3 mb-4">
         <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-green-500/10 text-green-500">
-          <span className="material-symbols-outlined text-[20px]">lock_open</span>
+          <span className="material-symbols-outlined text-[20px]">lock_open_right</span>
         </div>
         <div className="flex-1">
           <p className="text-sm font-medium">No authentication required</p>
-          <p className="text-xs text-text-muted">Ready to use as-is, or route it through a proxy pool to bypass IP-based limits.</p>
+          <p className="text-xs text-text-muted">
+            Ready to use as-is, or route it through a proxy pool to bypass IP-based limits.
+          </p>
         </div>
         {savedFlash && <Badge variant="success" size="sm">Saved</Badge>}
       </div>
 
-      <Select
-        label="Proxy Pool"
-        value={proxyPoolId}
-        onChange={(e) => handlePoolChange(e.target.value)}
-        disabled={saving || isRotation}
-        options={[
-          { value: NONE_PROXY_POOL_VALUE, label: "None (direct)" },
-          ...proxyPools.map((pool) => ({ value: pool.id, label: pool.name })),
-        ]}
-        hint={isRotation ? "Pool selector is ignored when rotation is active — all active pools are used." : undefined}
-      />
+      <div className="space-y-4">
+        <Select
+          label="Proxy Source"
+          value={proxyPoolId}
+          onChange={(e) => handlePoolChange(e.target.value)}
+          disabled={saving || isRotation}
+          options={proxyPoolOptions}
+          hint={
+            isRotation
+              ? "Rotation is on, so it uses every active proxy pool. The pool selector is ignored."
+              : undefined
+          }
+        />
 
-      <div className="flex flex-col gap-2 mt-4">
-        <label className="text-sm font-medium text-text-main">Rotation Strategy</label>
-        <select
-          value={rotateStrategy}
-          onChange={(e) => handleStrategyChange(e.target.value)}
-          disabled={saving}
-          className="py-2 px-3 text-sm text-text-main bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-md focus:ring-1 focus:ring-primary/30 focus:border-primary/50 focus:outline-none transition-all disabled:opacity-50"
-        >
-          {STRATEGIES.map((s) => (
-            <option key={s.value} value={s.value} disabled={s.value !== "none" && !canRotate}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-        <p className="text-xs text-text-muted">
-          {!canRotate
-            ? `Need at least 2 active proxy pools for rotation.`
-            : isRotation
-              ? rotateStrategy === "round-robin"
-                ? `Rotating through all ${proxyPools.length} active pools in order. State is in-memory (resets on restart).`
-                : `Picking a random pool from ${proxyPools.length} active pools each request.`
-              : `Uses the selected pool above. Set to Round-robin or Random to rotate across all active pools.`}
-        </p>
+        {proxyPools.length > 0 && (
+          <Select
+            label="Rotation Strategy"
+            value={rotateStrategy}
+            onChange={(e) => handleStrategyChange(e.target.value)}
+            disabled={saving || !canRotate}
+            options={STRATEGIES}
+            hint={
+              canRotate
+                ? "Rotate across all active proxy pools on every request"
+                : "Add at least 2 active proxy pools to enable rotation"
+            }
+          />
+        )}
       </div>
     </Card>
   );

@@ -4,6 +4,12 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Modal } from "@/shared/components";
 import { translate } from "@/i18n/runtime";
+import { useTaskStore } from "@/store/taskStore";
+
+// Server-side bulk insert runs serially (priority transaction), so very
+// large payloads are split client-side into batches. Keeps each request
+// small and lets the overlay report real per-account progress.
+const BULK_BATCH_SIZE = 20;
 
 const PLACEHOLDER = `[
   {
@@ -28,9 +34,9 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
   const [submitting, setSubmitting] = useState(false);
   const [parseError, setParseError] = useState("");
   const [result, setResult] = useState(null);
+  const [importProgress, setImportProgress] = useState(null); // { done, total }
 
   const handleClose = () => {
-    if (submitting) return;
     setJsonText("");
     setParseError("");
     setResult(null);
@@ -59,17 +65,47 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
     }
 
     setSubmitting(true);
+    setImportProgress({ done: 0, total: accounts.length });
+    const taskId = "bulk-import-codex";
+    useTaskStore.getState().start({
+      id: taskId,
+      title: translate("Importing accounts"),
+      message: `0/${accounts.length} accounts`,
+      progress: 0,
+      href: typeof window !== "undefined" ? window.location.pathname : null,
+    });
+    // Close modal immediately so the user can navigate or do other work
+    // while the task progresses in the background (visible in notification bell).
+    onClose();
     try {
-      const res = await fetch("/api/oauth/codex/bulk-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accounts }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setParseError(data?.error || `Request failed: ${res.status}`);
-        return;
+      let success = 0;
+      let failed = 0;
+      const results = [];
+      for (let offset = 0; offset < accounts.length; offset += BULK_BATCH_SIZE) {
+        const batch = accounts.slice(offset, offset + BULK_BATCH_SIZE);
+        const res = await fetch("/api/oauth/codex/bulk-import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accounts: batch }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setParseError(data?.error || `Request failed: ${res.status}`);
+          return;
+        }
+        success += data.success || 0;
+        failed += data.failed || 0;
+        for (const item of data.results || []) {
+          results.push({ ...item, index: (item.index ?? 0) + offset });
+        }
+        const currentDone = Math.min(accounts.length, offset + batch.length);
+        setImportProgress({ done: currentDone, total: accounts.length });
+        useTaskStore.getState().update(taskId, {
+          message: `${currentDone}/${accounts.length} accounts`,
+          progress: Math.round((currentDone / accounts.length) * 100),
+        });
       }
+      const data = { success, failed, results };
       setResult(data);
       if (data.success > 0 && typeof onSuccess === "function") {
         onSuccess();
@@ -77,11 +113,16 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
     } catch (err) {
       setParseError(err.message || translate("Request failed"));
     } finally {
+      useTaskStore.getState().finish(taskId);
       setSubmitting(false);
+      setImportProgress(null);
     }
   };
 
   const failedItems = result?.results?.filter((r) => !r.ok) || [];
+  const importPct = importProgress && importProgress.total > 0
+    ? Math.round((importProgress.done / importProgress.total) * 100)
+    : null;
 
   return (
     <Modal isOpen={isOpen} title={translate("Bulk Add Codex Accounts")} onClose={handleClose}>
@@ -111,8 +152,8 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
                 result.failed > 0 ? "text-yellow-400" : "text-green-400"
               }`}
             >
-              ✓ {result.success} {translate("added")}
-              {result.failed > 0 ? `, ✗ ${result.failed} ${translate("failed")}` : ""}
+              {result.success} {translate("added")}
+              {result.failed > 0 ? `, ${result.failed} ${translate("failed")}` : ""}
             </div>
             {failedItems.length > 0 && (
               <ul className="rounded border border-accent/20 bg-sidebar/50 p-2 text-xs font-mono max-h-40 overflow-y-auto">
@@ -132,9 +173,9 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
             fullWidth
             disabled={submitting || !jsonText.trim()}
           >
-            {submitting ? translate("Importing...") : translate("Import All")}
+            {translate("Import All")}
           </Button>
-          <Button onClick={handleClose} variant="ghost" fullWidth disabled={submitting}>
+          <Button onClick={handleClose} variant="ghost" fullWidth>
             {translate("Close")}
           </Button>
         </div>

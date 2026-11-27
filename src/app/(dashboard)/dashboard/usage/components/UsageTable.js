@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
 import PropTypes from "prop-types";
 import Card from "@/shared/components/Card";
 import Badge from "@/shared/components/Badge";
+import { TableScroll } from "@/shared/components/PageShell";
 
 const fmt = (n) => new Intl.NumberFormat().format(n || 0);
 const fmtCost = (n) => `$${(n || 0).toFixed(2)}`;
@@ -18,8 +19,12 @@ function fmtTime(iso) {
 }
 
 function SortIcon({ field, currentSort, currentOrder }) {
-  if (currentSort !== field) return <span className="ml-1 opacity-20">↕</span>;
-  return <span className="ml-1">{currentOrder === "asc" ? "↑" : "↓"}</span>;
+  if (currentSort !== field) return <span className="material-symbols-outlined ml-1 text-[12px] leading-none opacity-20">swap_vert</span>;
+  return (
+    <span className="material-symbols-outlined ml-1 text-[12px] leading-none">
+      {currentOrder === "asc" ? "north" : "south"}
+    </span>
+  );
 }
 
 SortIcon.propTypes = {
@@ -36,13 +41,13 @@ function ValueCells({ item, viewMode, isSummary = false }) {
     return (
       <>
         <td className="px-6 py-3 text-right text-text-muted">
-          {isSummary && item.promptTokens === undefined ? "—" : fmt(item.promptTokens)}
+          {isSummary && item.promptTokens === undefined ? "-" : fmt(item.promptTokens)}
         </td>
         <td className="px-6 py-3 text-right text-text-muted">
-          {item.cachedTokens ? fmt(item.cachedTokens) : "—"}
+          {item.cachedTokens ? fmt(item.cachedTokens) : "-"}
         </td>
         <td className="px-6 py-3 text-right text-text-muted">
-          {isSummary && item.completionTokens === undefined ? "—" : fmt(item.completionTokens)}
+          {isSummary && item.completionTokens === undefined ? "-" : fmt(item.completionTokens)}
         </td>
         <td className="px-6 py-3 text-right font-medium">
           {fmt(item.totalTokens)}
@@ -53,13 +58,13 @@ function ValueCells({ item, viewMode, isSummary = false }) {
   return (
     <>
       <td className="px-6 py-3 text-right text-text-muted">
-        {isSummary && item.inputCost === undefined ? "—" : fmtCost(item.inputCost)}
+        {isSummary && item.inputCost === undefined ? "-" : fmtCost(item.inputCost)}
       </td>
       <td className="px-6 py-3 text-right text-text-muted">
-        {item.cachedCost ? fmtCost(item.cachedCost) : "—"}
+        {item.cachedCost ? fmtCost(item.cachedCost) : "-"}
       </td>
       <td className="px-6 py-3 text-right text-text-muted">
-        {isSummary && item.outputCost === undefined ? "—" : fmtCost(item.outputCost)}
+        {isSummary && item.outputCost === undefined ? "-" : fmtCost(item.outputCost)}
       </td>
       <td className="px-6 py-3 text-right font-medium text-warning">
         {fmtCost(item.totalCost || item.cost)}
@@ -156,17 +161,17 @@ export default function UsageTable({
 
   return (
     <Card className="overflow-hidden">
-      <div className="p-4 border-b border-border bg-bg-subtle/50">
+      <div className="p-4 border-b border-border bg-bg-alt/50">
         <h3 className="font-semibold">{title}</h3>
       </div>
-      <div className="overflow-x-auto">
+      <TableScroll minWidth="min-w-[720px]">
         <table className="w-full text-sm text-left">
-          <thead className="bg-bg-subtle/30 text-text-muted uppercase text-xs">
+          <thead className="bg-bg-alt/30 text-text-muted uppercase text-xs">
             <tr>
               {columns.map((col) => (
                 <th
                   key={col.field}
-                  className={`px-6 py-3 cursor-pointer hover:bg-bg-subtle/50 ${col.align === "right" ? "text-right" : ""}`}
+                  className={`px-6 py-3 cursor-pointer hover:bg-bg-alt/50 ${col.align === "right" ? "text-right" : ""}`}
                   onClick={() => onToggleSort(tableType, col.field)}
                 >
                   {col.label}{" "}
@@ -176,7 +181,7 @@ export default function UsageTable({
               {valueColumns.map((col) => (
                 <th
                   key={col.field}
-                  className="px-6 py-3 text-right cursor-pointer hover:bg-bg-subtle/50"
+                  className="px-6 py-3 text-right cursor-pointer hover:bg-bg-alt/50"
                   onClick={() => onToggleSort(tableType, col.field)}
                 >
                   {col.label}{" "}
@@ -190,13 +195,13 @@ export default function UsageTable({
               <Fragment key={group.groupKey}>
                 {/* Group summary row */}
                 <tr
-                  className="group-summary cursor-pointer hover:bg-bg-subtle/50 transition-colors"
+                  className="group-summary cursor-pointer hover:bg-bg-alt/50 transition-colors"
                   onClick={() => toggleGroup(group.groupKey)}
                 >
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-2">
                       <span className={`material-symbols-outlined text-[18px] text-text-muted transition-transform ${expanded.has(group.groupKey) ? "rotate-90" : ""}`}>
-                        chevron_right
+                        arrow_forward_ios
                       </span>
                       <span className={`font-medium transition-colors ${group.summary.pending > 0 ? "text-primary" : ""}`}>
                         {group.summary.resolvedModel && group.summary.resolvedModel !== group.groupKey ? (
@@ -217,7 +222,7 @@ export default function UsageTable({
                 {expanded.has(group.groupKey) && group.items.map((item) => (
                   <tr
                     key={`detail-${item.key}`}
-                    className="group-detail hover:bg-bg-subtle/20 transition-colors"
+                    className="group-detail hover:bg-bg-alt/20 transition-colors"
                   >
                     {renderDetailCells(item)}
                     <ValueCells item={item} viewMode={viewMode} />
@@ -234,7 +239,7 @@ export default function UsageTable({
             )}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
     </Card>
   );
 }

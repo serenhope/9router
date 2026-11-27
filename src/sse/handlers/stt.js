@@ -2,10 +2,10 @@ import {
   extractApiKey, isValidApiKey, apiKeyGateFailure,
   getProviderCredentials, markAccountUnavailable,
 } from "../services/auth.js";
-import { getSettings } from "@/lib/localDb";
+import { getSettings, getCustomModels } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleSttCore } from "open-sse/handlers/sttCore.js";
-import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { errorResponse, unavailableResponse, maskHiddenError } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
@@ -17,7 +17,24 @@ const CREDENTIALED_PROVIDERS = new Set(
     .map(([id]) => id)
 );
 
-export async function handleStt(request) {
+// Custom-model transport marker: models registered through
+// /api/models/custom may pin a specialized STT transport (e.g.
+// "gemini-live"). The engine dispatches on the marker itself, so the app
+// layer only resolves it - same getModelInfo-style provider+model pairing,
+// restricted to type "stt" records.
+async function resolveCustomModelTransport(provider, model) {
+  try {
+    const customModels = await getCustomModels();
+    const hit = customModels.find((c) => c && c.type === "stt"
+      && c.providerAlias === provider && c.id === model
+      && typeof c.transport === "string" && c.transport.trim());
+    return hit ? hit.transport.trim() : null;
+  } catch {
+    return null; // DB unreadable → built-in registry marker still applies
+  }
+}
+
+async function _handleStt(request) {
   let formData;
   try {
     formData = await request.formData();
@@ -49,14 +66,16 @@ export async function handleStt(request) {
   const { provider, model } = modelInfo;
   log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
 
+  const modelTransport = await resolveCustomModelTransport(provider, model);
+
   // noAuth providers
   if (!CREDENTIALED_PROVIDERS.has(provider)) {
-    const result = await handleSttCore({ provider, model, formData, sttConfig: AI_PROVIDERS[provider]?.sttConfig });
+    const result = await handleSttCore({ provider, model, formData, sttConfig: AI_PROVIDERS[provider]?.sttConfig, transport: modelTransport });
     if (result.success) return result.response;
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "STT failed");
   }
 
-  // Credentialed — fallback loop
+  // Credentialed - fallback loop
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
@@ -70,13 +89,17 @@ export async function handleStt(request) {
         const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
         return unavailableResponse(status, `[${provider}/${model}] ${msg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
-      if (excludeConnectionIds.size === 0) return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      if (excludeConnectionIds.size === 0) {
+        log.warn("AUTH", `No active credentials for provider: ${provider}`);
+        return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`, null, settings.hideError);
+      }
+      log.warn("AUTH", `No more accounts available for ${provider}`);
+      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable", null, settings.hideError);
     }
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
-    const result = await handleSttCore({ provider, model, formData, credentials, sttConfig: AI_PROVIDERS[provider]?.sttConfig });
+    const result = await handleSttCore({ provider, model, formData, sttConfig: AI_PROVIDERS[provider]?.sttConfig, transport: modelTransport, credentials });
 
     if (result.success) return result.response;
 
@@ -89,4 +112,15 @@ export async function handleStt(request) {
     }
     return result.response || errorResponse(result.status, result.error);
   }
+}
+
+/**
+ * Public entry: every error body leaving this handler passes through the
+ * Hide Raw Errors mask, so no branch can leak an upstream message.
+ */
+export async function handleStt(request) {
+  const response = await _handleStt(request);
+  if (!response || response.status < 400) return response;
+  const settings = await getSettings();
+  return maskHiddenError(response, Boolean(settings?.hideError));
 }

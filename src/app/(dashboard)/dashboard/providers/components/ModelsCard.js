@@ -34,18 +34,17 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
             </span>
           </div>
         )}
-        <div className="relative group/btn">
-          <button onClick={() => onCopy(fullModel, `model-${model.id}`)} className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary">
-            <span className="material-symbols-outlined text-sm">{copied === `model-${model.id}` ? "check" : "content_copy"}</span>
-          </button>
-          <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
-            {copied === `model-${model.id}` ? "Copied!" : "Copy"}
-          </span>
-        </div>
+        <button
+          onClick={() => onCopy(fullModel, `model-${model.id}`)}
+          title={copied === `model-${model.id}` ? "Copied" : "Copy"}
+          className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all shrink-0"
+        >
+          <span className="material-symbols-outlined text-[14px]">{copied === `model-${model.id}` ? "check" : "content_copy"}</span>
+        </button>
         {isFree && <span className="text-[10px] font-bold text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">FREE</span>}
         {isCustom && (
           <button onClick={onDeleteAlias} className="p-0.5 hover:bg-red-500/10 rounded text-text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity ml-auto" title="Remove custom model">
-            <span className="material-symbols-outlined text-sm">close</span>
+            <span className="material-symbols-outlined text-sm">close_small</span>
           </button>
         )}
       </div>
@@ -197,7 +196,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
     } finally { setTestingModelId(null); }
   };
 
-  // Built-in models — filter by kindFilter if provided
+  // Built-in models - filter by kindFilter if provided
   const allBuiltIn = getModelsByProviderId(providerId);
   const builtInModels = kindFilter
     ? allBuiltIn.filter((m) => {
@@ -219,7 +218,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
     <>
       <Card>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Models{kindFilter ? ` — ${kindFilter.toUpperCase()}` : ""}</h2>
+          <h2 className="text-lg font-semibold">Models{kindFilter ? ` - ${kindFilter.toUpperCase()}` : ""}</h2>
         </div>
         {testError && <p className="text-xs text-red-500 mb-3 break-words">{testError}</p>}
 
@@ -265,7 +264,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
             onClick={() => setShowAddCustomModel(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-dashed border-black/15 dark:border-white/15 text-xs text-text-muted hover:text-primary hover:border-primary/40 transition-colors"
           >
-            <span className="material-symbols-outlined text-sm">add</span>
+            <span className="material-symbols-outlined text-sm">add_circle</span>
             Add Model
           </button>
         </div>
@@ -285,6 +284,6 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
 
 ModelsCard.propTypes = {
   providerId: PropTypes.string.isRequired,
-  kindFilter: PropTypes.string, // e.g. "tts", "embedding" — filters models shown
+  kindFilter: PropTypes.string, // e.g. "tts", "embedding" - filters models shown
   providerAliasOverride: PropTypes.string, // override alias (e.g. for custom-embedding nodes using prefix)
 };

@@ -6,6 +6,7 @@ import Link from "next/link";
 import PropTypes from "prop-types";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import HeaderMenu from "@/shared/components/HeaderMenu";
+import NotificationBell from "@/shared/components/NotificationBell";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS } from "@/shared/constants/providers";
@@ -41,7 +42,7 @@ const getPageInfo = (pathname) => {
     return {
       title: kindConfig?.label || kindId,
       description: `Manage your ${kindConfig?.label || kindId} providers`,
-      icon: kindConfig?.icon || "perm_media",
+      icon: kindConfig?.icon || "video_library",
       breadcrumbs: [],
     };
   }
@@ -71,14 +72,14 @@ const getPageInfo = (pathname) => {
     return {
       title: "Providers",
       description: "Manage your AI provider connections",
-      icon: "dns",
+      icon: "hub",
       breadcrumbs: [],
     };
   if (pathname.includes("/combos"))
     return {
       title: "Combos",
       description: "Model combos with fallback",
-      icon: "layers",
+      icon: "merge_type",
       breadcrumbs: [],
     };
   if (pathname.includes("/usage"))
@@ -86,91 +87,99 @@ const getPageInfo = (pathname) => {
       title: "Usage & Analytics",
       description:
         "Monitor your API usage, token consumption, and request logs",
-      icon: "bar_chart",
+      icon: "query_stats",
       breadcrumbs: [],
     };
   if (pathname.includes("/auth-files"))
     return {
       title: "Auth Files",
       description: "Map provider credentials stored in the local database",
-      icon: "vpn_key",
+      icon: "key_vertical",
       breadcrumbs: [],
     };
   if (pathname.includes("/quota"))
     return {
       title: "Quota Tracker",
       description: "Track and manage your API quota limits",
-      icon: "data_usage",
+      icon: "speed",
       breadcrumbs: [],
     };
   if (pathname.includes("/mitm"))
     return {
       title: "MITM Proxy",
       description: "Intercept CLI tool traffic and route through 9Router",
-      icon: "security",
+      icon: "shield_lock",
       breadcrumbs: [],
     };
   if (pathname.includes("/token-saver"))
     return {
       title: "Token Saver",
       description: "Compress prompts and outputs to save tokens",
-      icon: "savings",
+      icon: "compress",
       breadcrumbs: [],
     };
   if (pathname.includes("/cli-tools"))
     return {
       title: "CLI Tools",
       description: "Configure CLI tools",
-      icon: "terminal",
+      icon: "code_blocks",
       breadcrumbs: [],
     };
   if (pathname.includes("/proxy-pools"))
     return {
       title: "Proxy Pools",
       description: "Manage your proxy pool configurations",
-      icon: "lan",
+      icon: "router",
       breadcrumbs: [],
     };
   if (pathname.includes("/skills"))
     return {
       title: "Agent Skills",
-      description: "Copy a link and paste to your AI to use 9Router — no install needed",
-      icon: "extension",
+      description: "Copy this link into your AI. No install needed.",
+      icon: "auto_stories",
       breadcrumbs: [],
     };
   if (pathname.includes("/endpoint"))
     return {
       title: "Endpoint",
       description: "API endpoint configuration",
-      icon: "api",
+      icon: "network_node",
       breadcrumbs: [],
     };
   if (pathname.includes("/profile"))
     return {
       title: "Settings",
-      description: "Manage your preferences",
-      icon: "settings",
+      description: "9Router configuration and preferences",
+      icon: "manage_accounts",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/experiments"))
+    return {
+      title: "Experiment Features",
+      description: "Experimental and advanced security toggles",
+      icon: "biotech",
       breadcrumbs: [],
     };
   if (pathname.includes("/translator"))
     return {
       title: "Translator",
       description: "Debug translation flow between formats",
-      icon: "translate",
+      icon: "swap_horiz",
       breadcrumbs: [],
     };
-  if (pathname.includes("/console-log"))
+
+  if (pathname.includes("/logs") || pathname.includes("/console-log") || pathname.includes("/error-log"))
     return {
-      title: "Console Log",
-      description: "Live server console output",
-      icon: "monitor",
+      title: "Error & Console Logs",
+      description: "Live system console stream and captured error records",
+      icon: "summarize",
       breadcrumbs: [],
     };
   if (pathname === "/dashboard")
     return {
       title: "Endpoint",
       description: "API endpoint configuration",
-      icon: "api",
+      icon: "network_node",
       breadcrumbs: [],
     };
   return { title: "", description: "", breadcrumbs: [] };
@@ -224,15 +233,17 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
   };
 
   return (
-    <header className="shrink-0 flex items-center justify-between gap-3 px-4 lg:px-8 pt-3 pb-2 border-b border-border-subtle bg-surface/60 backdrop-blur-xl lg:bg-transparent lg:backdrop-blur-none z-20">
+    <header className="neo-topbar min-h-16 shrink-0 flex items-center justify-between gap-3 px-4 lg:px-8 pt-3 pb-2 border-b border-border-subtle bg-surface z-20">
       {/* Mobile menu button */}
       <div className="flex items-center gap-3 lg:hidden shrink-0">
         {showMenuButton && (
           <button
+            type="button"
             onClick={onMenuClick}
-            className="flex items-center justify-center p-1.5 rounded-[10px] text-text-main hover:text-primary hover:bg-surface-2 transition-colors"
+            aria-label="Open dashboard navigation"
+            className="flex size-10 items-center justify-center rounded-[10px] text-text-main transition-colors hover:bg-surface-2 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
           >
-            <span className="material-symbols-outlined">menu</span>
+            <span className="material-symbols-outlined" aria-hidden="true">menu_open</span>
           </button>
         )}
       </div>
@@ -247,8 +258,8 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
                 className="flex items-center gap-2"
               >
                 {index > 0 && (
-                  <span className="material-symbols-outlined text-text-muted text-base">
-                    chevron_right
+                  <span className="material-symbols-outlined text-text-muted text-base" aria-hidden="true">
+                    arrow_right_alt
                   </span>
                 )}
                 {crumb.href ? (
@@ -309,7 +320,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
             className="hidden sm:flex items-center min-w-0 max-w-[220px] px-3 py-1.5 rounded-full border border-border bg-surface/70 text-xs text-text-muted truncate"
             title={displayName}
           >
-            <span className="material-symbols-outlined text-[14px] mr-1.5 text-primary">person</span>
+            <span className="material-symbols-outlined text-[14px] mr-1.5 text-primary">account_circle</span>
             <span className="truncate">{displayName}</span>
             <span className="ml-2 shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
               {loginMethod}
@@ -318,18 +329,21 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
         )}
         <HeaderSearch />
         <a
-          href="https://github.com/serenhope/9router"
+          href="https://github.com/alvin-revoers/9router"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-2 px-3 py-1.5 rounded-[10px] text-xs font-medium text-text-muted hover:text-text-main hover:bg-surface-2 transition-all border border-border-subtle"
-          title="GitHub Repository"
-          aria-label="GitHub Repository"
+          className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-[10px] text-xs font-medium text-text-muted hover:text-text-main hover:bg-surface-2 transition-all border border-border-subtle"
+          title="Visit on GitHub"
+          aria-label="Visit on GitHub"
         >
           <svg className="size-4 fill-current shrink-0" viewBox="0 0 24 24">
             <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
           </svg>
-          <span className="whitespace-nowrap">Visit On GitHub</span>
+          <span className="whitespace-nowrap">
+            Visit on GitHub
+          </span>
         </a>
+        <NotificationBell />
         <HeaderMenu onLogout={handleLogout} />
       </div>
     </header>
@@ -345,9 +359,9 @@ function HeaderSearch() {
   if (!visible) return null;
 
   return (
-    <div className="relative min-w-0 w-[160px] sm:w-[220px]">
+    <div className="relative min-w-0 flex-1 max-w-[140px] sm:max-w-[220px]">
       <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-text-muted text-[16px] pointer-events-none">
-        search
+        manage_search
       </span>
       <input
         type="text"
@@ -363,7 +377,7 @@ function HeaderSearch() {
           className="absolute right-1 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main p-0.5 rounded"
           aria-label="Clear search"
         >
-          <span className="material-symbols-outlined text-[16px]">close</span>
+          <span className="material-symbols-outlined text-[16px]">cancel</span>
         </button>
       )}
     </div>

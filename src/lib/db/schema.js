@@ -2,8 +2,8 @@
 // (add/remove/alter a table, column, or index in TABLES). It drives the
 // pre-change safety backup in migrate.js: when the stored version is lower,
 // one lightweight DB backup is taken before applying schema changes. Forgetting
-// to bump only skips that backup — it does NOT break the additive auto-sync.
-export const SCHEMA_VERSION = 8;
+// to bump only skips that backup - it does NOT break the additive auto-sync.
+export const SCHEMA_VERSION = 16;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -93,6 +93,18 @@ export const TABLES = {
       ipWhitelist: "TEXT DEFAULT ''",
       expiresAt: "TEXT",
       systemPrompt: "TEXT DEFAULT ''",
+      permissions: "TEXT DEFAULT ''",
+      createdBy: "TEXT DEFAULT ''",
+      // One key is bounded by exactly one kind of budget: tokens, money, or requests.
+      // Three caps can be stored at once (a key may switch later without losing the
+      // other numbers) but only the selected one is enforced, so a key can never be
+      // blocked by a limit the owner meant to replace.
+      limitKind: "TEXT DEFAULT 'tokens'",
+      requestLimit: "INTEGER DEFAULT 0",
+      usedRequests: "INTEGER DEFAULT 0",
+      dailyCostLimit: "REAL DEFAULT 0",
+      costSpent: "REAL DEFAULT 0",
+      costDay: "TEXT DEFAULT ''",
     },
     indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
   },
@@ -102,6 +114,8 @@ export const TABLES = {
       name: "TEXT UNIQUE NOT NULL",
       kind: "TEXT",
       models: "TEXT NOT NULL",
+      // 0 means auto: the window follows the largest member model.
+      contextWindow: "INTEGER DEFAULT 0",
       createdAt: "TEXT NOT NULL",
       updatedAt: "TEXT NOT NULL",
     },
@@ -145,6 +159,42 @@ export const TABLES = {
       data: "TEXT NOT NULL",
     },
   },
+  // Persistent security trail. loginLimiter kept failures in a Map that died
+  // with the process, so repeated probing across restarts was invisible.
+  securityEvents: {
+    columns: {
+      id: "INTEGER PRIMARY KEY AUTOINCREMENT",
+      at: "TEXT NOT NULL",
+      type: "TEXT NOT NULL",
+      severity: "TEXT NOT NULL",
+      ip: "TEXT NOT NULL",
+      actor: "TEXT",
+      method: "TEXT",
+      path: "TEXT",
+      status: "INTEGER DEFAULT 0",
+      detail: "TEXT",
+      userAgent: "TEXT",
+    },
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_se_at ON securityEvents(at DESC)",
+      "CREATE INDEX IF NOT EXISTS idx_se_severity ON securityEvents(severity)",
+      "CREATE INDEX IF NOT EXISTS idx_se_type ON securityEvents(type)",
+    ],
+  },
+  // Recent dashboard/API traffic (excluding LLM streams), trimmed in place.
+  accessEvents: {
+    columns: {
+      id: "INTEGER PRIMARY KEY AUTOINCREMENT",
+      at: "TEXT NOT NULL",
+      method: "TEXT",
+      path: "TEXT",
+      status: "INTEGER DEFAULT 0",
+      ms: "INTEGER DEFAULT 0",
+      ip: "TEXT",
+      role: "TEXT",
+    },
+    indexes: ["CREATE INDEX IF NOT EXISTS idx_ae_at ON accessEvents(at DESC)"],
+  },
   requestDetails: {
     columns: {
       id: "TEXT PRIMARY KEY",
@@ -161,6 +211,20 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_rd_model ON requestDetails(model)",
       "CREATE INDEX IF NOT EXISTS idx_rd_conn ON requestDetails(connectionId)",
     ],
+  },
+  errorLogs: {
+    columns: {
+      id: "INTEGER PRIMARY KEY AUTOINCREMENT",
+      timestamp: "TEXT NOT NULL",
+      provider: "TEXT",
+      model: "TEXT",
+      endpoint: "TEXT",
+      statusCode: "INTEGER",
+      errorMessage: "TEXT NOT NULL",
+      errorType: "TEXT",
+      stack: "TEXT",
+    },
+    indexes: ["CREATE INDEX IF NOT EXISTS idx_el_ts ON errorLogs(timestamp DESC)"],
   },
 };
 

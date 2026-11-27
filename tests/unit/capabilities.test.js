@@ -115,7 +115,7 @@ describe("getCapabilitiesForModel", () => {
   });
 });
 
-describe("getCapabilitiesForModel — MiMo (<think>-tag reasoning, always-on)", () => {
+describe("getCapabilitiesForModel - MiMo (<think>-tag reasoning, always-on)", () => {
   it("mimo-v2.5 has vision + reasoning + deepseek format, cannot disable", () => {
     const caps = getCapabilitiesForModel(null, "mimo-v2.5");
     expect(caps.vision).toBe(true);
@@ -154,7 +154,7 @@ describe("getCapabilitiesForModel — MiMo (<think>-tag reasoning, always-on)", 
   });
 });
 
-describe("getCapabilitiesForModel — Qwen max/plus vision", () => {
+describe("getCapabilitiesForModel - Qwen max/plus vision", () => {
   it("qwen3.7-max has vision (*qwen*max* fires before *qwen3.7*)", () => {
     const caps = getCapabilitiesForModel(null, "qwen3.7-max");
     expect(caps.vision).toBe(true);
@@ -184,7 +184,7 @@ describe("getCapabilitiesForModel — Qwen max/plus vision", () => {
   });
 });
 
-describe("getCapabilitiesForModel — MiniMax M2.x vision", () => {
+describe("getCapabilitiesForModel - MiniMax M2.x vision", () => {
   it("minimax-m2.7 has vision", () => {
     const caps = getCapabilitiesForModel(null, "minimax-m2.7");
     expect(caps.vision).toBe(true);
@@ -208,7 +208,7 @@ describe("getCapabilitiesForModel — MiniMax M2.x vision", () => {
   });
 });
 
-describe("getCapabilitiesForModel — DeepSeek V4 text-only", () => {
+describe("getCapabilitiesForModel - DeepSeek V4 text-only", () => {
   it("deepseek-v4-pro has no vision", () => {
     const caps = getCapabilitiesForModel(null, "deepseek-v4-pro");
     expect(caps.vision).toBe(false);
@@ -228,7 +228,7 @@ describe("getCapabilitiesForModel — DeepSeek V4 text-only", () => {
   });
 });
 
-describe("getCapabilitiesForModel — codebuddy-cn provider overrides", () => {
+describe("getCapabilitiesForModel - codebuddy-cn provider overrides", () => {
   it("deepseek-v4-pro via codebuddy-cn uses openai thinking format", () => {
     const caps = getCapabilitiesForModel("codebuddy-cn", "deepseek-v4-pro");
     expect(caps.vision).toBe(true);
@@ -248,5 +248,86 @@ describe("getCapabilitiesForModel — codebuddy-cn provider overrides", () => {
     const caps = getCapabilitiesForModel("unknown-provider", "mimo-v2.5");
     expect(caps.vision).toBe(true);
     expect(caps.thinkingFormat).toBe("deepseek");
+  });
+
+  it("opencode-go claude-haiku-5-5 uses adaptive thinking, other haiku ids stay budget", () => {
+    // OpenCode Go rejects `thinking.type.enabled` for this model (400) and asks for
+    // thinking.type.adaptive + output_config.effort, which claude-adaptive emits.
+    const haiku55 = getCapabilitiesForModel("opencode-go", "claude-haiku-5-5");
+    expect(haiku55.thinkingFormat).toBe("claude-adaptive");
+    expect(haiku55.reasoning).toBe(true);
+    expect(haiku55.vision).toBe(true);
+    // The upstream catalog reports context_length 1000000 for this id; without the
+    // explicit value the provider entry does NOT inherit MODEL_CAPABILITIES (it is
+    // spread over DEFAULT_CAPABILITIES only) and the model shows 200k. maxOutput is
+    // stated for the same reason: the override short-circuits before the catalog
+    // overlay, so the synced catalog's 128000 would never be applied otherwise.
+    expect(haiku55.contextWindow).toBe(1000000);
+    expect(haiku55.maxOutput).toBe(128000);
+
+    // The override is provider-scoped: the global haiku pattern (claude-budget) still
+    // governs every other provider, including the bare/anthropic lookup.
+    expect(getCapabilitiesForModel(undefined, "claude-haiku-5-5").thinkingFormat).toBe("claude-budget");
+    expect(getCapabilitiesForModel("claude", "claude-haiku-5-5").thinkingFormat).toBe("claude-budget");
+    expect(getCapabilitiesForModel("opencode-go", "claude-haiku-4-5-20251001").thinkingFormat).toBe("claude-budget");
+  });
+
+  it("commandcode claude-haiku-5-5 is pinned to the catalog limits, not the fallback", () => {
+    // The commandcode branch returns 1M/384k for every unlisted model — for this id
+    // that fallback happened to guess the context right, but only by accident: the
+    // provider catalog (GET api.commandcode.ai/provider/v1/models) reports
+    // context_length 1000000 with maxOutput 128000 (claude-haiku-4-5 stays 200000).
+    // The explicit entry pins maxOutput and keeps thinking on the commandcode path.
+    const caps = getCapabilitiesForModel("commandcode", "claude-haiku-5-5");
+    expect(caps.contextWindow).toBe(1000000);
+    expect(caps.maxOutput).toBe(128000);
+    expect(caps.thinkingFormat).toBe("commandcode");
+    expect(caps.vision).toBe(true);
+    // the generic fallback still governs unlisted commandcode models
+    expect(getCapabilitiesForModel("commandcode", "deepseek/deepseek-v4.1-flash")).toMatchObject({
+      contextWindow: 1000000,
+      maxOutput: 384000,
+    });
+  });
+});
+
+describe("OpenCode Free ids newer than the capability tables", () => {
+  // ids missing here fall through to DEFAULT_CAPABILITIES (reasoning: false),
+  // and applyThinking() then deletes the client's reasoning_effort — see #2690.
+  // Modalities/limits are taken verbatim from models.dev.
+  it("reports reasoning and the models.dev limits for space-bunny", () => {
+    expect(getCapabilitiesForModel(undefined, "space-bunny-free")).toMatchObject({
+      reasoning: true,
+      thinkingFormat: "openai",
+      contextWindow: 1048576,
+      maxOutput: 524288,
+    });
+    expect(getCapabilitiesForModel("opencode-go", "space-bunny")).toMatchObject({
+      reasoning: true,
+      contextWindow: 1048576,
+      maxOutput: 524288,
+    });
+  });
+
+  it("keeps per-id modalities and limits instead of a generic floor", () => {
+    // text-only, small context — a shared pattern rule would overstate both.
+    expect(getCapabilitiesForModel(undefined, "big-pickle")).toMatchObject({
+      reasoning: true,
+      vision: false,
+      contextWindow: 200000,
+      maxOutput: 32000,
+    });
+    expect(getCapabilitiesForModel(undefined, "ring-2.6-1t-free")).toMatchObject({
+      reasoning: true,
+      vision: false,
+      contextWindow: 262000,
+      maxOutput: 66000,
+    });
+    expect(getCapabilitiesForModel(undefined, "exo-free")).toMatchObject({
+      reasoning: true,
+      vision: true,
+      contextWindow: 1048576,
+      maxOutput: 131072,
+    });
   });
 });

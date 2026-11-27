@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
 
+export const dynamic = "force-dynamic";
+
 /**
  * POST /api/oauth/codex/bulk-import
  * Bulk import multiple codex (OAuth) account JSON objects in one call.
@@ -50,7 +52,7 @@ export async function POST(request) {
   let success = 0;
   let failed = 0;
 
-  // SERIAL loop — createProviderConnection reads max(priority) and reorders
+  // SERIAL loop - createProviderConnection reads max(priority) and reorders
   // inside a transaction. Parallel calls would race on priority assignment.
   for (let i = 0; i < accounts.length; i++) {
     const raw = accounts[i];

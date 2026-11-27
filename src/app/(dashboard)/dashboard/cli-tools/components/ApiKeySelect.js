@@ -27,7 +27,7 @@ export default function ApiKeySelect({ value, onChange, apiKeys = [], cloudEnabl
     [apiKeys, savedKeys]
   );
 
-  // Derive the active option from value — no sync effects needed when the parent updates it
+  // Derive the active option from value - no sync effects needed when the parent updates it
   const matched = value ? options.find((o) => o.value === value || o.url === value) : null;
   const mode = matched ? matched.value : (customMode || value ? CUSTOM_VALUE : (options[0]?.value ?? CUSTOM_VALUE));
   const inputValue = customMode ? customInput : (value || "");
@@ -93,7 +93,7 @@ export default function ApiKeySelect({ value, onChange, apiKeys = [], cloudEnabl
         </select>
         {isSaved && (
           <button type="button" onClick={handleDeleteSaved} className="p-1 text-text-muted hover:text-red-500 rounded transition-colors shrink-0" title="Delete saved key">
-            <span className="material-symbols-outlined text-[14px]">delete</span>
+            <span className="material-symbols-outlined text-[14px]">remove</span>
           </button>
         )}
       </div>

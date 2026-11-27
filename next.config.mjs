@@ -1,7 +1,31 @@
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { releaseFromHeading } from "./src/lib/changelogRelease.mjs";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
+// Stamp the build with the revision and the release it was made from. A deploy
+// that ships without .git history still knows what it is, so the update banner can
+// compare it against the repository instead of staying silent forever.
+function stampBuild() {
+  const stamp = {};
+  try {
+    stamp.APP_REVISION = process.env.APP_REVISION
+      || execFileSync("git", ["rev-parse", "HEAD"], { cwd: projectRoot, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+  } catch {
+    // Built outside a checkout: the release heading is the only anchor left.
+  }
+  try {
+    const changelog = readFileSync(join(projectRoot, "CHANGELOG.md"), "utf8");
+    const heading = changelog.match(/^#\s+((?:v\d[^\s(]*|\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4})[^\n]*)/m);
+    const release = releaseFromHeading(heading?.[1]);
+    if (release || process.env.APP_RELEASE) stamp.APP_RELEASE = process.env.APP_RELEASE || release;
+  } catch {
+    // No changelog in the build context: the release signal stays unknown.
+  }
+  return stamp;
+}
 // CLI bundling needs workspace root so tracing includes hoisted node_modules (slim ~50MB).
 // Docker / default uses projectRoot so server.js lands at /app/server.js (not nested).
 const tracingRoot = process.env.NEXT_TRACING_ROOT_MODE === "workspace"
@@ -16,23 +40,42 @@ const nextConfig = {
   // `open` must stay external. It derives its own directory from `import.meta.url`, and
   // webpack replaces that with the absolute path of the BUILD machine as a string literal.
   // A release built on macOS therefore ships `file:///Users/.../open/index.js`, which
-  // `fileURLToPath` rejects on Windows ("File URL path must be absolute" — no drive
+  // `fileURLToPath` rejects on Windows ("File URL path must be absolute" - no drive
   // letter). That throw happens at module scope, so every consumer of `open` dies on
-  // import — including xAI/Grok token refresh, which loads the OAuth service that imports
+  // import - including xAI/Grok token refresh, which loads the OAuth service that imports
   // it. Keeping it external preserves the real `import.meta.url` at runtime.
-  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "open"],
+  // @aws-sdk/credential-providers must stay external for the same class of reason: it reads
+  // ~/.aws/config and the SSO token cache from disk at runtime and resolves its credential
+  // plugins by dynamic require, neither of which survives bundling.
+  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "open", "@aws-sdk/credential-providers"],
   turbopack: {
     root: tracingRoot
-  },
-  outputFileTracingRoot: tracingRoot,
-  outputFileTracingExcludes: {
-    "*": ["./gitbook/**/*"]
   },
   images: {
     unoptimized: true
   },
-  env: {},
+  env: stampBuild(),
   experimental: {
+    // Cap build workers: each worker loads the SQLite driver, and on a high-core
+    // host Next spawns enough of them to abort the build (SIGABRT) mid-prerender.
+    cpus: 4,
+    // Next 14 reads tracing keys here (top-level is Next 15+ and ignored with a
+    // warning). #4: also exclude Windows user-profile junctions (EPERM scandir
+    // AppData/Local/Application Data) plus roaming/config caches from NFT tracing.
+    outputFileTracingRoot: tracingRoot,
+    outputFileTracingExcludes: {
+      "*": [
+        "./gitbook/**/*",
+        "**/AppData/Local/**/*",
+        "**/AppData/Roaming/**/*",
+        "**/.config/**/*",
+        "**/.codex/**/*",
+        "**/Cookies/**/*",
+      ],
+    },
+    // Next 14 reads this key (top-level serverExternalPackages is Next 15+ and
+    // ignored with a warning). Keep both so the db adapters stay external.
+    serverComponentsExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "open"],
     // #1529/#1572: LLM clients can send long context or base64 image payloads through /v1 rewrites.
     proxyClientMaxBodySize,
     // Cache fetch responses across HMR refreshes for faster dev reloads.
@@ -55,6 +98,12 @@ const nextConfig = {
       aggregateTimeout: 300,
       ignored: /[\\/](node_modules|\.git|logs|\.next|\.next-cli-build|gitbook|cli|open-sse\.old|tests|docs)[\\/]/,
     };
+    // Defense in depth: bun:sqlite is never used on Node 22 runners, and the
+    // runtime import is already guarded + dynamic - keep it out of the bundle.
+    if (isServer) {
+      config.externals = config.externals || [];
+      if (!config.externals.includes("bun:sqlite")) config.externals.push("bun:sqlite");
+    }
     return config;
   },
   async rewrites() {

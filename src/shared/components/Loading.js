@@ -2,8 +2,13 @@
 
 import { cn } from "@/shared/utils/cn";
 
-// Spinner loading
-export function Spinner({ size = "md", className }) {
+// Loading surfaces that stay inside their own container: a four-box indicator, a full-page
+// block, or a skeleton. Long-running work does NOT live here - it reports through the task
+// store into the notification bell (`taskStore` -> `NotifToast`). The floating banner and its
+// wrappers are gone: a fixed overlay rendered nothing, and the inline variant covered the form.
+
+// Four-box loading indicator. Each square takes its turn to make progress visible without a ring.
+export function Spinner({ size = "md", className, decorative = false }) {
   const sizes = {
     sm: "size-4",
     md: "size-6",
@@ -14,12 +19,17 @@ export function Spinner({ size = "md", className }) {
   return (
     <span
       className={cn(
-        "material-symbols-outlined animate-spin text-brand-500",
+        "loading-boxes text-brand-500",
         sizes[size],
         className
       )}
+      role={decorative ? undefined : "status"}
+      aria-label={decorative ? undefined : "Loading"}
+      aria-hidden={decorative ? "true" : undefined}
     >
-      progress_activity
+      {Array.from({ length: 4 }, (_, index) => (
+        <span key={index} className="loading-boxes__square" aria-hidden="true" />
+      ))}
     </span>
   );
 }

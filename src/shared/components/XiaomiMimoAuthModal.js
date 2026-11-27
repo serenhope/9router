@@ -10,7 +10,7 @@ import { translate } from "@/i18n/runtime";
  *
  * Desktop Plan = Xiaomi account weekly quota (mimo-v2.6 family). Two ways in:
  *   1. Import local MiMo Desktop credentials (~/.local/share/mimocode/auth.json)
- *   2. Server-side login — no Desktop needed; picks a MiMo account cluster
+ *   2. Server-side login - no Desktop needed; picks a MiMo account cluster
  *      (cn / sgp / ams / ru / in). The account session (passToken) is captured
  *      server-side and stored per connection.
  *
@@ -18,11 +18,11 @@ import { translate } from "@/i18n/runtime";
  */
 
 const CLUSTERS = [
-  { id: "cn", flag: "🇨🇳", name: "China (Mainland)", host: "mimo-server-cn" },
-  { id: "sgp", flag: "🇸🇬", name: "Singapore", host: "mimo-server-sgp" },
-  { id: "ams", flag: "🇪🇺", name: "Europe · Amsterdam", host: "mimo-server-ams" },
-  { id: "ru", flag: "🇷🇺", name: "Russia", host: "mimo-server-ru" },
-  { id: "in", flag: "🇮🇳", name: "India", host: "mimo-server-in" },
+  { id: "cn", tag: "CN", name: "China (Mainland)", host: "mimo-server-cn" },
+  { id: "sgp", tag: "SG", name: "Singapore", host: "mimo-server-sgp" },
+  { id: "ams", tag: "EU", name: "Europe · Amsterdam", host: "mimo-server-ams" },
+  { id: "ru", tag: "RU", name: "Russia", host: "mimo-server-ru" },
+  { id: "in", tag: "IN", name: "India", host: "mimo-server-in" },
 ];
 
 export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
@@ -157,7 +157,7 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
           if (sd.status === "pending") return;
           stopSessionPoll();
           if (sd.status !== "done") {
-            setSessError(sd.error || "Login session expired — please retry.");
+            setSessError(sd.error || "Your login session expired. Please try again.");
             return;
           }
           const save = await fetch("/api/oauth/xiaomi-mimo/api-key", {
@@ -193,7 +193,7 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
     <div className="bg-card p-3 rounded-lg border border-border flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <span className="material-symbols-outlined text-primary text-base">login</span>
+          <span className="material-symbols-outlined text-primary text-base">input</span>
           <span className="text-xs sm:text-sm font-semibold">Browser Login</span>
           <span className="text-[11px] text-text-muted">No Desktop required</span>
         </div>
@@ -232,7 +232,7 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
           <div className="text-center py-6">
             <div className="size-12 mx-auto mb-3 rounded-full bg-primary/10 flex items-center justify-center">
               <span className="material-symbols-outlined text-2xl text-primary animate-spin">
-                progress_activity
+                autorenew
               </span>
             </div>
             <p className="text-sm text-text-muted">Reading local MiMo Desktop credentials...</p>
@@ -244,7 +244,7 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
           <div className="text-center py-6">
             <div className="size-12 mx-auto mb-3 rounded-full bg-primary/10 flex items-center justify-center">
               <span className="material-symbols-outlined text-2xl text-primary animate-spin">
-                progress_activity
+                autorenew
               </span>
             </div>
             <p className="text-sm font-medium">Connecting...</p>
@@ -255,34 +255,34 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
         {phase === "found" && detectResult && (
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-text-muted px-0.5">
-              <span className="material-symbols-outlined text-primary text-sm">desktop_windows</span>
+              <span className="material-symbols-outlined text-primary text-sm">computer</span>
               <span>Desktop Plan · Local credentials</span>
             </div>
 
             {existingConnection ? (
-              <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="bg-info/10 p-3 rounded-lg border border-info/30">
                 <div className="flex gap-2.5 items-start">
-                  <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-lg mt-0.5">
-                    check_circle
+                  <span className="material-symbols-outlined text-info text-lg mt-0.5">
+                    task_alt
                   </span>
-                  <div className="text-sm text-blue-800 dark:text-blue-200">
+                  <div className="text-sm text-info">
                     <p className="font-medium">This account is already connected (no need to import again)</p>
                     <p className="text-xs mt-0.5 opacity-80">
-                      UID: {detectResult.uid || "—"} · Status: {existingConnection.testStatus === "active" ? "Active" : "Untested"}
+                      UID: {detectResult.uid || "n/a"} · Status: {existingConnection.testStatus === "active" ? "Active" : "Untested"}
                     </p>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
+              <div className="bg-success/10 p-3 rounded-lg border border-success/30">
                 <div className="flex gap-2.5 items-start">
-                  <span className="material-symbols-outlined text-green-600 dark:text-green-400 text-lg mt-0.5">
-                    check_circle
+                  <span className="material-symbols-outlined text-success text-lg mt-0.5">
+                    task_alt
                   </span>
-                  <div className="text-sm text-green-800 dark:text-green-200">
+                  <div className="text-sm text-success">
                     <p className="font-medium">Xiaomi MiMo Desktop credentials found!</p>
                     <p className="text-xs mt-0.5 opacity-80">
-                      UID: {detectResult.uid || "—"} · Source: {detectResult.source?.split(/[\\/]/).pop()}
+                      UID: {detectResult.uid || "n/a"} · Source: {detectResult.source?.split(/[\\/]/).pop()}
                     </p>
                   </div>
                 </div>
@@ -290,8 +290,8 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
             )}
 
             {error && (
-              <div className="bg-red-50 dark:bg-red-900/20 p-2.5 rounded-lg border border-red-200 dark:border-red-800">
-                <p className="text-xs text-red-600 dark:text-red-400">{translate(error)}</p>
+              <div className="bg-danger/10 p-2.5 rounded-lg border border-danger/30">
+                <p className="text-xs text-danger">{translate(error)}</p>
               </div>
             )}
 
@@ -320,13 +320,13 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
         {/* No local desktop credentials */}
         {phase === "not-found" && (
           <div className="flex flex-col gap-3">
-            <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg border border-amber-200 dark:border-amber-800">
+            <div className="bg-warning/10 p-3 rounded-lg border border-warning/30">
               <div className="flex gap-2.5 items-start">
-                <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-lg mt-0.5">info</span>
-                <div className="text-sm text-amber-800 dark:text-amber-200">
+                <span className="material-symbols-outlined text-warning text-lg mt-0.5">help_outline</span>
+                <div className="text-sm text-warning">
                   <p className="font-medium">No local Desktop credentials found</p>
                   <p className="text-xs mt-0.5 opacity-80">
-                    You can still sign in via browser — no Desktop client needed.
+                    You can still sign in via browser - no Desktop client needed.
                   </p>
                 </div>
               </div>
@@ -344,11 +344,11 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
 
         {/* Cluster selection sub-modal */}
         {showClusterModal && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4  animate-in fade-in duration-150" style={{ backgroundColor: "var(--color-scrim)" }}>
             <div className="relative w-full max-w-sm bg-surface border border-border-subtle rounded-[14px] shadow-2xl p-5 flex flex-col gap-3.5 animate-in zoom-in-95 duration-150">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary text-lg">public</span>
+                  <span className="material-symbols-outlined text-primary text-lg">language</span>
                   <h3 className="text-sm font-semibold">Select account cluster</h3>
                 </div>
                 <button
@@ -356,7 +356,7 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
                   onClick={() => setShowClusterModal(false)}
                   className="text-text-muted hover:text-text-primary p-1 rounded-md transition-colors cursor-pointer"
                 >
-                  <span className="material-symbols-outlined text-lg">close</span>
+                  <span className="material-symbols-outlined text-lg">cancel</span>
                 </button>
               </div>
 
@@ -370,7 +370,7 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
                     onClick={() => startSessionLogin(c.id)}
                     className="p-3 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-all text-left flex items-start gap-3 group cursor-pointer"
                   >
-                    <span className="text-2xl mt-0.5">{c.flag}</span>
+                    <LocaleBadge tag={c.tag} className="mt-0.5 h-6 min-w-[32px] text-[11px]" />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold group-hover:text-primary transition-colors">
                         {c.name}

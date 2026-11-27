@@ -69,7 +69,7 @@ function CollapsibleSection({ title, children, defaultOpen = false, icon = null 
           "material-symbols-outlined text-[20px] text-text-muted transition-transform duration-200",
           isOpen ? "rotate-90" : ""
         )}>
-          chevron_right
+          arrow_forward_ios
         </span>
       </button>
       
@@ -109,6 +109,9 @@ export default function RequestDetailsTab() {
   });
   const [loading, setLoading] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState(null);
+  // Set when the per-record full payload could not be loaded (key session), so
+  // the drawer can say why instead of showing a redacted body silently.
+  const [fullBodyError, setFullBodyError] = useState("");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [providers, setProviders] = useState([]);
   const [providerNameCache, setProviderNameCache] = useState(null);
@@ -162,9 +165,28 @@ export default function RequestDetailsTab() {
     fetchDetails();
   }, [fetchDetails]);
 
-  const handleViewDetail = (detail) => {
+  const handleViewDetail = async (detail) => {
     setSelectedDetail(detail);
+    setFullBodyError("");
     setIsDrawerOpen(true);
+
+    // The listing redacts conversation bodies; the full payload comes from an
+    // admin-only per-record endpoint and is merged over the row once it lands.
+    const id = detail?.id;
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/usage/request-details/${encodeURIComponent(id)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFullBodyError(data.error || "Full request body is not available for this session");
+        return;
+      }
+      if (data.detail) {
+        setSelectedDetail((prev) => (prev && prev.id === id ? { ...prev, ...data.detail } : prev));
+      }
+    } catch (err) {
+      setFullBodyError(err.message || "Failed to load the full request body");
+    }
   };
 
   const handlePageChange = (newPage) => {
@@ -268,7 +290,7 @@ export default function RequestDetailsTab() {
                 <tr>
                   <td colSpan="7" className="p-8 text-center text-text-muted">
                     <div className="flex items-center justify-center gap-2">
-                      <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
+                      <span className="material-symbols-outlined animate-spin text-[20px]">autorenew</span>
                       Loading...
                     </div>
                   </td>
@@ -307,10 +329,10 @@ export default function RequestDetailsTab() {
                       {getInputTokens(detail.tokens).toLocaleString()}
                     </td>
                     <td className="p-4 text-sm text-text-main text-right font-mono">
-                      {getCachedTokens(detail.tokens) > 0 ? getCachedTokens(detail.tokens).toLocaleString() : "—"}
+                      {getCachedTokens(detail.tokens) > 0 ? getCachedTokens(detail.tokens).toLocaleString() : "-"}
                     </td>
                     <td className="p-4 text-sm text-text-main text-right font-mono">
-                      {getCacheCreationTokens(detail.tokens) > 0 ? getCacheCreationTokens(detail.tokens).toLocaleString() : "—"}
+                      {getCacheCreationTokens(detail.tokens) > 0 ? getCacheCreationTokens(detail.tokens).toLocaleString() : "-"}
                     </td>
                     <td className="p-4 text-sm text-text-main text-right font-mono">
                       {detail.tokens?.completion_tokens?.toLocaleString() || 0}
@@ -358,6 +380,12 @@ export default function RequestDetailsTab() {
       >
         {selectedDetail && (
           <div className="space-y-6">
+            {fullBodyError && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+                <span className="material-symbols-outlined text-[16px]">help</span>
+                <span>{fullBodyError}</span>
+              </div>
+            )}
             <div className="grid min-w-0 grid-cols-1 gap-4 text-sm sm:grid-cols-2">
               <div>
                 <span className="text-text-muted">ID:</span>{" "}
@@ -427,7 +455,7 @@ export default function RequestDetailsTab() {
             {selectedDetail.pxpipe && (
               <div className="rounded-lg border border-black/5 dark:border-white/5 p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="material-symbols-outlined text-[18px] text-text-muted">image</span>
+                  <span className="material-symbols-outlined text-[18px] text-text-muted">image_search</span>
                   <span className="font-semibold text-sm text-text-main">PXPIPE</span>
                   <span className={cn(
                     "text-xs px-2 py-0.5 rounded",
@@ -460,21 +488,21 @@ export default function RequestDetailsTab() {
                 ) : (
                   <p className="text-sm text-text-muted">
                     Reason: <span className="font-mono">{selectedDetail.pxpipe.reason}</span>
-                    {selectedDetail.pxpipe.detail ? ` — ${selectedDetail.pxpipe.detail}` : ""}
+                    {selectedDetail.pxpipe.detail ? ` - ${selectedDetail.pxpipe.detail}` : ""}
                   </p>
                 )}
               </div>
             )}
 
             <div className="space-y-4">
-              <CollapsibleSection title="1. Client Request (Input)" defaultOpen={true} icon="input">
+              <CollapsibleSection title="1. Client Request (Input)" defaultOpen={true} icon="move_to_inbox">
                 <pre className="max-h-[300px] max-w-full overflow-auto rounded-lg border border-black/5 bg-black/5 p-3 font-mono text-xs text-text-main dark:border-white/5 dark:bg-white/5 sm:p-4">
                   {JSON.stringify(selectedDetail.request, null, 2)}
                 </pre>
               </CollapsibleSection>
 
               {selectedDetail.providerRequest && (
-                <CollapsibleSection title="2. Provider Request (Translated)" icon="translate">
+                <CollapsibleSection title="2. Provider Request (Translated)" icon="sync_alt">
                   <pre className="max-h-[300px] max-w-full overflow-auto rounded-lg border border-black/5 bg-black/5 p-3 font-mono text-xs text-text-main dark:border-white/5 dark:bg-white/5 sm:p-4">
                     {JSON.stringify(selectedDetail.providerRequest, null, 2)}
                   </pre>
@@ -482,7 +510,7 @@ export default function RequestDetailsTab() {
               )}
 
               {selectedDetail.providerResponse && (
-                <CollapsibleSection title="3. Provider Response (Raw)" icon="data_object">
+                <CollapsibleSection title="3. Provider Response (Raw)" icon="data_array">
                   <pre className="max-h-[300px] max-w-full overflow-auto rounded-lg border border-black/5 bg-black/5 p-3 font-mono text-xs text-text-main dark:border-white/5 dark:bg-white/5 sm:p-4">
                     {typeof selectedDetail.providerResponse === 'object'
                       ? JSON.stringify(selectedDetail.providerResponse, null, 2)
@@ -492,11 +520,11 @@ export default function RequestDetailsTab() {
                 </CollapsibleSection>
               )}
               
-              <CollapsibleSection title="4. Client Response (Final)" defaultOpen={true} icon="output">
+              <CollapsibleSection title="4. Client Response (Final)" defaultOpen={true} icon="outbox">
                 {selectedDetail.response?.thinking && (
                   <div className="mb-4">
                     <h4 className="font-semibold text-text-main mb-2 flex items-center gap-2 text-xs uppercase tracking-wide opacity-70">
-                      <span className="material-symbols-outlined text-[16px]">psychology</span>
+                      <span className="material-symbols-outlined text-[16px]">neurology</span>
                       Thinking Process
                     </h4>
                     <pre className="max-h-[200px] max-w-full overflow-auto rounded-lg border border-amber-200 bg-amber-50 p-3 font-mono text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100 sm:p-4">

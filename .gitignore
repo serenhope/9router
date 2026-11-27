@@ -15,6 +15,9 @@
 
 # next.js
 /.next/
+/.next-dev/
+/.next-test/
+/.test-data/
 /.next-cli-build/
 /out/
 cli/.build-home/
@@ -90,6 +93,7 @@ graphify-out/*
 # Kiro local workspace state
 .kiro/
 9router-*
+!public/providers/9router-logo.png
 
 # Local sensitive / temp files
 .engine-token.txt

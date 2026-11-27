@@ -24,24 +24,27 @@ export const metadata = {
 };
 
 export const viewport = {
-  themeColor: "#0a0a0a",
+  themeColor: "#f7f1e4",
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Apply persisted theme before first paint so a reload does not flash the
-            default (light) theme before the client store hydrates. Mirrors the
-            zustand-persist "theme" key and the `dark` class applyTheme() sets. */}
+        {/* Lock the neobrutalist theme before first paint */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `document.documentElement.classList.add('dark');`,
+            __html: `var r=document.documentElement;r.classList.remove('dark','glass','brutalist');r.classList.add('neobrutalism');`,
           }}
         />
         <script
           dangerouslySetInnerHTML={{
-            __html: `var d=document,r=d.documentElement,f=function(){r.classList.add('fonts-loaded')};if(d.fonts&&d.fonts.load){d.fonts.load('24px "Material Symbols Outlined"').then(f).catch(f);setTimeout(f,3000)}else{f()}`,
+            /* Reveal icon glyphs once the icon font is usable. document.fonts.ready
+               settles when font loading is idle, which is later and more reliable
+               than a single load() callback (that one can resolve before the woff2
+               is decoded). setTimeout is the backstop: icons must never stay at
+               opacity 0 just because the font request was slow or failed. */
+            __html: `var d=document,r=d.documentElement;r.classList.add('fonts-loading');var f=function(){r.classList.add('fonts-loaded');r.classList.remove('fonts-loading')};if(d.fonts&&d.fonts.ready){d.fonts.ready.then(f).catch(f);setTimeout(f,1500)}else{f()}`,
           }}
         />
       </head>

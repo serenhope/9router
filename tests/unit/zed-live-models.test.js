@@ -1,9 +1,10 @@
 // Route-level acceptance for the Zed live-model wiring:
 //   GET /api/providers/[connectionId]/models  →  resolveZedModels  →  UI rows
-// RUN WITH AN ISOLATED DB:  DATA_DIR=$(mktemp -d) npx vitest run ...
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { GET } from "@/app/api/providers/[id]/models/route.js";
-import { createProviderConnection } from "@/models/index.js";
+// Self-isolating: DATA_DIR points at a temp dir so seeding never touches ~/.9router.
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 
 // Transport stub BELOW resolveZedModels: proxyAwareFetch captures the native
 // fetch at import time, so stubbing globalThis.fetch cannot intercept it.
@@ -72,6 +73,24 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// Imports must be dynamic so DATA_DIR is set before the DB layer loads.
+const originalDataDir = process.env.DATA_DIR;
+let GET;
+let createProviderConnection;
+
+beforeAll(async () => {
+  process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "9router-zed-live-"));
+  vi.resetModules();
+  ({ GET } = await import("@/app/api/providers/[id]/models/route.js"));
+  ({ createProviderConnection } = await import("@/models/index.js"));
+});
+
+afterAll(() => {
+  fs.rmSync(process.env.DATA_DIR, { recursive: true, force: true });
+  if (originalDataDir === undefined) delete process.env.DATA_DIR;
+  else process.env.DATA_DIR = originalDataDir;
+});
+
 async function seedZed(n) {
   return createProviderConnection({
     provider: "zed",
@@ -88,7 +107,7 @@ async function getModels(connectionId) {
   return GET(req, { params: Promise.resolve({ id: connectionId }) });
 }
 
-describe("criterion 1+2 — active connection + live catalog → models with metadata", () => {
+describe("criterion 1+2 - active connection + live catalog → models with metadata", () => {
   it("returns enabled models with preserved metadata, no secrets", async () => {
     const conn = await seedZed("m1");
     const res = await getModels(conn.id);
@@ -108,7 +127,7 @@ describe("criterion 1+2 — active connection + live catalog → models with met
   });
 });
 
-describe("criterion 4 — disabled models excluded", () => {
+describe("criterion 4 - disabled models excluded", () => {
   it("is_disabled entries never reach the UI", async () => {
     const conn = await seedZed("m2");
     const data = await (await getModels(conn.id)).json();
@@ -116,7 +135,7 @@ describe("criterion 4 — disabled models excluded", () => {
   });
 });
 
-describe("criterion 4b — empty catalog → explicit warning", () => {
+describe("criterion 4b - empty catalog → explicit warning", () => {
   it("returns warning instead of silent zero", async () => {
     stub.mode = "empty";
     const conn = await seedZed("m3");
@@ -128,7 +147,7 @@ describe("criterion 4b — empty catalog → explicit warning", () => {
   });
 });
 
-describe("criterion 5 — resolver failure → useful warning, no crash", () => {
+describe("criterion 5 - resolver failure → useful warning, no crash", () => {
   it("returns 200 with warning text", async () => {
     stub.mode = "error";
     const conn = await seedZed("m4");
@@ -140,14 +159,14 @@ describe("criterion 5 — resolver failure → useful warning, no crash", () => 
   });
 });
 
-describe("criterion 6 (route) — unknown connection → 404", () => {
+describe("criterion 6 (route) - unknown connection → 404", () => {
   it("rejects missing connections", async () => {
     const res = await getModels("00000000-0000-0000-0000-000000000000");
     expect(res.status).toBe(404);
   });
 });
 
-describe("criterion 5 (guard) — unsupported provider unchanged", () => {
+describe("criterion 5 (guard) - unsupported provider unchanged", () => {
   it("still 400s for providers without a models config", async () => {
     const conn = await createProviderConnection({
       provider: "kimchi-nope",

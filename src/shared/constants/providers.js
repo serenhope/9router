@@ -1,6 +1,6 @@
 // Provider definitions
 import REGISTRY from "open-sse/providers/registry/index.js";
-import { RISK_NOTICE } from "@/shared/constants/providersDisplay";
+import { RISK_NOTICE } from "@/shared/constants/providersDisplay.js";
 
 const MEDIA_ENTRY_KEYS = [
   "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",
@@ -31,10 +31,14 @@ function buildProviderEntry(r) {
     ...(r.hasProviderSpecificData ? { hasProviderSpecificData: true } : {}),
     ...(r.noAuth ? { noAuth: true } : {}),
     ...(r.passthroughModels ? { passthroughModels: true } : {}),
+    ...(r.statusBadge ? { statusBadge: r.statusBadge } : {}),
     ...(r.hasOAuth ? { hasOAuth: true } : {}),
     ...(r.authModes ? { authModes: r.authModes } : {}),
     ...(r.authType ? { authType: r.authType } : {}),
     ...(r.authHint ? { authHint: r.authHint } : {}),
+    ...(r.apiKeyOptionalWith ? { apiKeyOptionalWith: r.apiKeyOptionalWith } : {}),
+    ...(r.credentialForm ? { credentialForm: r.credentialForm } : {}),
+    ...(Array.isArray(r.aliases) ? { aliases: r.aliases } : {}),
   };
 }
 
@@ -45,11 +49,17 @@ const byCategory = (cat) => Object.fromEntries(
 export const FREE_PROVIDERS = byCategory("free");
 export const FREE_TIER_PROVIDERS = byCategory("freeTier");
 
+// No-credential providers that live on their own shelf above the free tiers.
+export const UNAUTH_PROVIDER_IDS = ["mimocode", "opencode", "deepai"];
+export const UNAUTH_PROVIDERS = Object.fromEntries(
+  UNAUTH_PROVIDER_IDS.filter((id) => FREE_PROVIDERS[id]).map((id) => [id, FREE_PROVIDERS[id]])
+);
+
 // Thinking config definitions
 // options: list of selectable modes ("auto" = no override from server)
 // defaultMode: fallback when user hasn't configured
-// extended: claude-style thinking (thinking.type + budget_tokens) — used by most providers
-// effort: openai-style reasoning_effort — only openai + codex
+// extended: claude-style thinking (thinking.type + budget_tokens) - used by most providers
+// effort: openai-style reasoning_effort - only openai + codex
 export const THINKING_CONFIG = {
   extended: {
     options: ["auto", "on", "off"],
@@ -68,18 +78,18 @@ export const APIKEY_PROVIDERS = byCategory("apikey");
 // Web Cookie Providers (use browser session cookie instead of API key)
 export const WEB_COOKIE_PROVIDERS = byCategory("webCookie");
 
-// Media provider kinds — each kind maps to a route and endpoint config
+// Media provider kinds - each kind maps to a route and endpoint config
 export const MEDIA_PROVIDER_KINDS = [
-  { id: "embedding",   label: "Embedding",      icon: "data_array",        endpoint: { method: "POST", path: "/v1/embeddings" } },
-  { id: "image",       label: "Text to Image",  icon: "brush",             endpoint: { method: "POST", path: "/v1/images/generations" } },
-  { id: "imageToText", label: "Image to Text",  icon: "image_search",      endpoint: { method: "POST", path: "/v1/images/understanding" } },
-  { id: "tts",         label: "Text To Speech", icon: "record_voice_over", endpoint: { method: "POST", path: "/v1/audio/speech" } },
-  { id: "stt",         label: "Speech To Text", icon: "mic",               endpoint: { method: "POST", path: "/v1/audio/transcriptions" } },
-  { id: "webSearch",   label: "Web Search",     icon: "travel_explore",    endpoint: { method: "POST", path: "/v1/search" } },
-  { id: "webFetch",    label: "Web Fetch",      icon: "language",          endpoint: { method: "POST", path: "/v1/web/fetch" } },
-  { id: "video",       label: "Video",          icon: "movie",             endpoint: { method: "POST", path: "/v1/videos/generations" } },
-  { id: "music",       label: "Music",          icon: "music_note",        endpoint: { method: "POST", path: "/v1/audio/music" } },
-  { id: "systemone",   label: "System One",     icon: "psychology",        endpoint: { method: "POST", path: "/v1/systemone" }, isNew: true },
+  { id: "embedding",   label: "Embedding",      icon: "data_object",       endpoint: { method: "POST", path: "/v1/embeddings" } },
+  { id: "image",       label: "Text to Image",  icon: "palette",           endpoint: { method: "POST", path: "/v1/images/generations" } },
+  { id: "imageToText", label: "Image to Text",  icon: "document_scanner", endpoint: { method: "POST", path: "/v1/images/understanding" } },
+  { id: "tts",         label: "Text To Speech", icon: "text_to_speech",    endpoint: { method: "POST", path: "/v1/audio/speech" } },
+  { id: "stt",         label: "Speech To Text", icon: "speech_to_text",    endpoint: { method: "POST", path: "/v1/audio/transcriptions" } },
+  { id: "webSearch",   label: "Web Search",     icon: "manage_search",     endpoint: { method: "POST", path: "/v1/search" } },
+  { id: "webFetch",    label: "Web Fetch",      icon: "public",            endpoint: { method: "POST", path: "/v1/web/fetch" } },
+  { id: "video",       label: "Video",          icon: "video_library",     endpoint: { method: "POST", path: "/v1/videos/generations" } },
+  { id: "music",       label: "Music",          icon: "queue_music",       endpoint: { method: "POST", path: "/v1/audio/music" } },
+  { id: "systemone",   label: "System One",     icon: "smart_toy",         endpoint: { method: "POST", path: "/v1/systemone" }, isNew: true },
 ];
 
 export const OPENAI_COMPATIBLE_PREFIX = "openai-compatible-";
@@ -111,7 +121,7 @@ export const AUTH_METHODS = {
 // Helper: Get provider by alias
 export function getProviderByAlias(alias) {
   for (const provider of Object.values(AI_PROVIDERS)) {
-    if (provider.alias === alias || provider.id === alias) {
+    if (provider.alias === alias || provider.id === alias || (Array.isArray(provider.aliases) && provider.aliases.includes(alias))) {
       return provider;
     }
   }
@@ -133,6 +143,9 @@ export function getProviderAlias(providerId) {
 // Alias to ID mapping (for quick lookup)
 export const ALIAS_TO_ID = Object.values(AI_PROVIDERS).reduce((acc, p) => {
   acc[p.alias] = p.id;
+  if (Array.isArray(p.aliases)) {
+    for (const a of p.aliases) acc[a] = p.id;
+  }
   return acc;
 }, {});
 

@@ -142,7 +142,7 @@ export async function refreshAccessToken(provider, refreshToken, credentials, lo
 }
 
 // CLIProxyAPI DeviceFlowClient.RefreshToken: form body (no client_secret) + X-Msh-* headers
-// Delegate to refreshAccessToken("kimi", ...) — profile carries the X-Msh headers.
+// Delegate to refreshAccessToken("kimi", ...) - profile carries the X-Msh headers.
 export async function refreshKimiToken(refreshToken, credentials, log) {
   return refreshAccessToken("kimi", refreshToken, credentials, log);
 }
@@ -509,7 +509,7 @@ export async function refreshCopilotToken(githubAccessToken, log) {
   }, log);
 }
 
-// CodeBuddy (Tencent) refresh — POST /v2/plugin/auth/token/refresh with the
+// CodeBuddy (Tencent) refresh - POST /v2/plugin/auth/token/refresh with the
 // refresh token carried in the X-Refresh-Token header (not a form body),
 // matching the official CodeBuddy CLI. Response: { code: 0, data: <token> }.
 export async function refreshCodebuddyToken(refreshToken, log) {
@@ -574,7 +574,7 @@ export async function refreshCodebuddyIntlToken(refreshToken, log) {
         Accept: "application/json",
         "User-Agent": oauth.userAgent,
         "X-Requested-With": "XMLHttpRequest",
-        "X-Domain": "www.codebuddy.ai",
+        "X-Domain": "www.workbuddy.ai",
         "X-Refresh-Token": refreshToken,
         "X-Auth-Refresh-Source": "plugin",
         "X-Product": "SaaS",
@@ -614,7 +614,7 @@ export async function refreshCodebuddyIntlToken(refreshToken, log) {
   }, log);
 }
 
-// Trae refresh — POST ExchangeToken with JSON body {ClientID, RefreshToken, ClientSecret, UserID}.
+// Trae refresh - POST ExchangeToken with JSON body {ClientID, RefreshToken, ClientSecret, UserID}.
 // Response: {Result: {AccessToken, RefreshToken, TokenType, ExpiresAt}}.
 export async function refreshTraeToken(refreshToken, credentials, log) {
   if (!refreshToken) return null;
@@ -688,7 +688,7 @@ export async function refreshTraeToken(refreshToken, credentials, log) {
 }
 
 // Zed access_token is long-lived; auth flow returns no refresh_token.
-// No refresh possible — re-login required when token expires/revoked.
+// No refresh possible - re-login required when token expires/revoked.
 // Mirrors cursor/kilocode null-refresh pattern.
 export function refreshZedToken() {
   return null;
@@ -701,7 +701,153 @@ export function refreshZedToken() {
 export async function refreshWindsurfToken(credentials, log) {
   log?.info?.(
     "TOKEN_REFRESH",
-    "windsurf: apiKey is long-lived (no refresh_token flow) — skipping"
+    "windsurf: apiKey is long-lived (no refresh_token flow) - skipping"
   );
   return null;
+}
+
+// ── MiniMax Code (mcode) ─────────────────────────────────────────────────────
+// MiniMax refresh tokens are SINGLE-USE: sending the same one twice answers
+// invalid_grant (HTTP 400) and signs the account out. Two paths reach refresh
+// (background scheduler + executor's on-401 retry) and may hold different
+// snapshots of one connection, so dedupRefresh keys on the spent token value —
+// a token already sent resolves to the cached result instead of a second send.
+// An invalid_grant is the ONLY answer that means the sign-in is gone; anything
+// else (5xx, timeout) returns null and the current access token stays usable.
+const MINIMAX_CODE_SITES = {
+  "minimax-code": "https://account.minimax.cn/oauth2/token",
+  "minimax-code-global": "https://account.minimax.io/oauth2/token",
+};
+
+export async function refreshMiniMaxCodeToken(provider, refreshToken, log) {
+  const tokenUrl = MINIMAX_CODE_SITES[provider];
+  if (!tokenUrl || !refreshToken) return null;
+  return dedupRefresh(provider, refreshToken, async () => {
+    try {
+      const response = await fetch(tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: refreshToken,
+          client_id: "mcode-public",
+          scope: "agent.default",
+          audience: "agent-backend",
+        }).toString(),
+        signal: AbortSignal.timeout(30000),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || (data && typeof data.error === "string" && data.error)) {
+        const code = data?.error || `HTTP ${response.status}`;
+        if (response.status === 400 && data?.error === "invalid_grant") {
+          log?.warn?.("TOKEN_REFRESH", `MiniMax refresh token spent/rejected (${provider}) — sign-in gone`);
+          return { error: "invalid_grant" };
+        }
+        log?.error?.("TOKEN_REFRESH", `MiniMax token refresh failed (${provider})`, { status: response.status, error: code });
+        return null;
+      }
+      if (!data?.access_token) {
+        log?.error?.("TOKEN_REFRESH", `MiniMax refresh returned no access_token (${provider})`);
+        return null;
+      }
+      return {
+        accessToken: data.access_token,
+        // MiniMax rotates the refresh token on every refresh; keep the old one
+        // only if the answer oddly omits it.
+        refreshToken: data.refresh_token || refreshToken,
+        expiresIn: data.expires_in,
+      };
+    } catch (error) {
+      log?.error?.("TOKEN_REFRESH", `Error refreshing MiniMax token (${provider}): ${error.message}`);
+      return null;
+    }
+  }, log);
+}
+
+// ── Nous Research Portal (hermes-cli) ────────────────────────────────────────
+// Flow: refresh_token → new access_token → mint fresh agent_key.
+export async function refreshNousToken(refreshToken, log) {
+  if (!refreshToken) return null;
+  return dedupRefresh("nous", refreshToken, async () => {
+    try {
+      const tokenResponse = await fetch("https://portal.nousresearch.com/api/oauth/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "x-nous-refresh-token": refreshToken,
+        },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: refreshToken,
+          client_id: "hermes-cli",
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!tokenResponse.ok) {
+        const error = await tokenResponse.text().catch(() => "");
+        log?.error?.("TOKEN_REFRESH", "Failed to refresh Nous token", {
+          status: tokenResponse.status,
+          error,
+        });
+        return null;
+      }
+
+      const tokenData = await tokenResponse.json();
+      if (!tokenData?.access_token) {
+        log?.error?.("TOKEN_REFRESH", "Nous token refresh returned no access_token");
+        return null;
+      }
+
+      let agentKey = null;
+      let agentKeyId = null;
+      let agentKeyExpiresAt = null;
+      try {
+        const agentKeyResponse = await fetch("https://portal.nousresearch.com/api/oauth/agent-key", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Authorization: `Bearer ${tokenData.access_token}`,
+          },
+          body: JSON.stringify({
+            min_ttl_seconds: 7200,
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+
+        if (agentKeyResponse.ok) {
+          const agentKeyData = await agentKeyResponse.json();
+          agentKey = agentKeyData.api_key || null;
+          agentKeyId = agentKeyData.key_id || null;
+          agentKeyExpiresAt = agentKeyData.expires_at || null;
+          log?.info?.("TOKEN_REFRESH", "Nous agent key minted successfully");
+        } else {
+          const error = await agentKeyResponse.text().catch(() => "");
+          log?.warn?.("TOKEN_REFRESH", "Failed to mint Nous agent key, falling back to access_token", { error });
+        }
+      } catch (mintErr) {
+        log?.warn?.("TOKEN_REFRESH", `Nous agent key mint error: ${mintErr?.message || mintErr}`);
+      }
+
+      return {
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token || refreshToken,
+        expiresIn: tokenData.expires_in,
+        apiKey: agentKey || tokenData.access_token,
+        agentKey,
+        providerSpecificData: {
+          ...(agentKeyId ? { agentKeyId } : {}),
+          ...(agentKeyExpiresAt ? { agentKeyExpiresAt } : {}),
+        },
+      };
+    } catch (error) {
+      log?.error?.("TOKEN_REFRESH", `Error refreshing Nous token: ${error.message}`);
+      return null;
+    }
+  }, log);
 }

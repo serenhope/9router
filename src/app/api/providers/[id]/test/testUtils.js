@@ -1,10 +1,19 @@
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { testProxyUrl } from "@/lib/network/proxyTest";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
+import { probeBedrockCredentials } from "open-sse/executors/bedrock.js";
+import { probeGeminiWebCookie } from "open-sse/services/geminiWebCookie.js";
 import { resolveOllamaLocalHost, PROVIDERS } from "open-sse/config/providers.js";
 import { CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
+import {
+  NOUS_CHAT_COMPLETIONS_URL,
+  NOUS_VALIDATION_MODEL,
+  createNousApiKeyProbe,
+  getNousApiKeyValidationError,
+  isNousApiKeyAccepted,
+} from "open-sse/services/nous.js";
 import {
   refreshProviderCredentials,
   shouldRefreshCredentials,
@@ -29,7 +38,7 @@ const OAUTH_TEST_CONFIG = {
     authHeader: "Authorization",
     authPrefix: "Bearer ",
     extraHeaders: { "Content-Type": "application/json", "originator": "codex_cli_rs", "User-Agent": `codex_cli_rs/${CODEX_CLI_VERSION}` },
-    // Minimal invalid body — triggers fast 400 without consuming quota
+    // Minimal invalid body - triggers fast 400 without consuming quota
     body: JSON.stringify({ model: "gpt-5.3-codex", input: [], stream: false, store: false }),
     // 400 (bad request) means auth succeeded; only 401/403 means token is bad
     acceptStatuses: [400],
@@ -66,7 +75,7 @@ const OAUTH_TEST_CONFIG = {
   qoder: {
     // Test by hitting Qoder's userinfo endpoint with the device token.
     // refreshable: false because the device-flow refresh endpoint returns
-    // 403 for our flow (users re-login when expired). No checkExpiry —
+    // 403 for our flow (users re-login when expired). No checkExpiry -
     // we want the actual URL probe to run so revoked tokens surface.
     url: "https://openapi.qoder.sh/api/v1/userinfo",
     method: "GET",
@@ -93,7 +102,7 @@ const OAUTH_TEST_CONFIG = {
   },
   cline: { refreshable: true },
   gitlab: {
-    // Test by hitting the GitLab user API — requires api or read_user scope
+    // Test by hitting the GitLab user API - requires api or read_user scope
     url: "https://gitlab.com/api/v4/user",
     method: "GET",
     authHeader: "Authorization",
@@ -111,7 +120,7 @@ const OAUTH_TEST_CONFIG = {
     },
     refreshable: false,
   },
-  // Grok CLI / Grok Build — probe /v1/user (no inference quota). Headers mirror official CLI.
+  // Grok CLI / Grok Build - probe /v1/user (no inference quota). Headers mirror official CLI.
   "grok-cli": {
     url: PROVIDERS["grok-cli"]?.userUrl || "https://cli-chat-proxy.grok.com/v1/user",
     method: "GET",
@@ -127,19 +136,43 @@ const OAUTH_TEST_CONFIG = {
       }),
     },
     refreshable: true,
-    // Subscription spending-limit is not an auth failure — token is fine, credits aren't.
+    // Subscription spending-limit is not an auth failure - token is fine, credits aren't.
     // Accept 402 so the connection stays "active" with a warning (same idea as Codex 400).
     acceptStatuses: [402],
     softFailMessage: {
       402: "Connected, but Grok Build credits are exhausted (spending limit). Add credits or upgrade SuperGrok.",
     },
   },
+  // Muse Code subscription - probe /v1/models with the minted LLM|… key
+  "muse": {
+    url: "https://api.meta.ai/v1/models",
+    method: "GET",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    extraHeaders: { "x-api-version": "1.0.0" },
+    refreshable: false,
+  },
+  nous: {
+    url: NOUS_CHAT_COMPLETIONS_URL,
+    method: "POST",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    extraHeaders: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: NOUS_VALIDATION_MODEL,
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 1,
+      stream: false,
+    }),
+    refreshable: true,
+    useApiKey: true
+  },
 };
 
 /**
  * Classify an OAuth probe response as success / soft-success / hard-fail.
  * Soft success (e.g. 402 spending-limit on Grok CLI) means auth works but the
- * account cannot spend — keep connection active and surface a warning.
+ * account cannot spend - keep connection active and surface a warning.
  * Exported for unit tests.
  */
 export function classifyOAuthProbeResult(res, config, bodyText = "") {
@@ -154,7 +187,7 @@ export function classifyOAuthProbeResult(res, config, bodyText = "") {
 
   // Soft success only when the provider configured an explicit message for this
   // status (e.g. Grok CLI 402 spending-limit). Codex-style acceptStatuses:[400]
-  // stays silent success — 400 there only proves auth, not a user-facing warning.
+  // stays silent success - 400 there only proves auth, not a user-facing warning.
   if (!res.ok && config?.acceptStatuses?.includes(status)) {
     const softMap = config.softFailMessage || {};
     if (softMap[status]) {
@@ -247,7 +280,7 @@ async function refreshOAuthToken(connection) {
       return { accessToken: data.access_token, expiresIn: data.expires_in, refreshToken: data.refresh_token || refreshToken };
     }
 
-    if (provider === "codex" || provider === "grok-cli" || provider === "xai") {
+    if (provider === "codex" || provider === "grok-cli" || provider === "xai" || provider === "nous") {
       return await refreshProviderCredentials(provider, connection, console);
     }
 
@@ -336,7 +369,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     return { valid: true, error: null, refreshed: false, newTokens: null };
   }
 
-  let accessToken = connection.accessToken;
+  let accessToken = config.useApiKey ? (connection.apiKey || connection.accessToken) : connection.accessToken;
   let refreshed = false;
   let newTokens = null;
 
@@ -344,7 +377,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
   if (config.refreshable && tokenExpired && connection.refreshToken) {
     const tokens = await refreshOAuthToken(connection);
     if (tokens) {
-      accessToken = tokens.accessToken;
+      accessToken = config.useApiKey ? (tokens.apiKey || tokens.accessToken) : tokens.accessToken;
       refreshed = true;
       newTokens = tokens;
     } else {
@@ -425,10 +458,11 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     if (res.status === 401 && config.refreshable && !refreshed && connection.refreshToken) {
       const tokens = await refreshOAuthToken(connection);
       if (tokens) {
-        const retryUrl = config.buildUrl ? config.buildUrl(tokens.accessToken) : testUrl;
+        const retryToken = config.useApiKey ? (tokens.apiKey || tokens.accessToken) : tokens.accessToken;
+        const retryUrl = config.buildUrl ? config.buildUrl(retryToken) : testUrl;
         const retryHeaders = config.noAuth
           ? { ...config.extraHeaders }
-          : { [config.authHeader]: `${config.authPrefix}${tokens.accessToken}`, ...config.extraHeaders };
+          : { [config.authHeader]: `${config.authPrefix}${retryToken}`, ...config.extraHeaders };
         const retryOpts = { method: config.method, headers: retryHeaders };
         if (config.body) retryOpts.body = config.body;
         const retryRes = await fetchWithConnectionProxy(retryUrl, retryOpts, effectiveProxy);
@@ -480,7 +514,7 @@ async function fetchWithConnectionProxy(url, options = {}, effectiveProxy = null
   });
 }
 
-async function testApiKeyConnection(connection, effectiveProxy = null) {
+export async function testApiKeyConnection(connection, effectiveProxy = null) {
   if (isOpenAICompatibleProvider(connection.provider)) {
     const modelsBase = connection.providerSpecificData?.baseUrl;
     if (!modelsBase) return { valid: false, error: "Missing base URL" };
@@ -519,6 +553,19 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       // 400/529 still confirms key accepted; only 401/403 = bad key
       const valid = res.status !== 401 && res.status !== 403;
       return { valid, error: valid ? null : "Invalid API key or base URL" };
+    } catch (err) {
+      return { valid: false, error: err.message };
+    }
+  }
+
+  // AWS-signed providers (Bedrock): without this every Test ends in the switch's default,
+  // "Provider test not supported", and marks a working connection as errored.
+  if (AI_PROVIDERS[connection.provider]?.credentialForm === "aws") {
+    try {
+      return await probeBedrockCredentials(
+        connection,
+        (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy),
+      );
     } catch (err) {
       return { valid: false, error: err.message };
     }
@@ -578,6 +625,20 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       case "openrouter": {
         const res = await fetchWithConnectionProxy("https://openrouter.ai/api/v1/auth/key", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+      }
+      case "nous": {
+        // /models is public on Nous; a minimal chat request is required to
+        // distinguish an accepted Portal key from an arbitrary Bearer value.
+        const probe = createNousApiKeyProbe(connection.apiKey);
+        const res = await fetchWithConnectionProxy(probe.url, {
+          ...probe.options,
+          signal: AbortSignal.timeout(8000),
+        }, effectiveProxy);
+        const valid = isNousApiKeyAccepted(res.status);
+        return {
+          valid,
+          error: valid ? null : getNousApiKeyValidationError(res.status),
+        };
       }
       case "glm": {
         const res = await fetchWithConnectionProxy("https://api.z.ai/api/anthropic/v1/messages", {
@@ -696,6 +757,34 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const res = await fetchWithConnectionProxy("https://api.hyperbolic.xyz/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
+      case "llmtr": {
+        // /v1/models answers 200 for any bearer token. A one-token chat call
+        // returns 401 for a bad key and anything else for a key the gateway accepts.
+        const res = await fetchWithConnectionProxy("https://llmtr.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${connection.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "qwen/qwen3.8-27b-free",
+            messages: [{ role: "user", content: "ping" }],
+            max_tokens: 1,
+          }),
+        }, effectiveProxy);
+        const valid = res.status !== 401 && res.status !== 403;
+        return { valid, error: valid ? null : "Invalid API key" };
+      }
+      case "tokenharbor":
+      case "dahl":
+      case "atria":
+      case "agnes":
+      case "bai":
+      case "muse": {
+        const cfg = PROVIDERS[connection.provider];
+        const res = await fetchWithConnectionProxy(cfg.validateUrl, { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+      }
       case "ollama": {
         const res = await fetch("https://ollama.com/api/tags", { headers: { Authorization: `Bearer ${connection.apiKey}` } });
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
@@ -706,7 +795,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         return { valid: res.ok, error: res.ok ? null : `Ollama not reachable at ${host}` };
       }
       case "deepgram": {
-        const res = await fetchWithConnectionProxy("https://api.deepgram.com/v1/projects", { headers: { Authorization: `Token ${connection.apiKey}` } }, effectiveProxy);
+        const res = await fetchWithConnectionProxy("https://api.deepgram.com/v1/projects", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
       case "assemblyai": {
@@ -718,7 +807,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
       case "fal-ai": {
-        const res = await fetchWithConnectionProxy("https://api.fal.ai/v1/models?limit=1", { headers: { Authorization: `Key ${connection.apiKey}` } }, effectiveProxy);
+        const res = await fetchWithConnectionProxy("https://api.fal.ai/v1/models?limit=1", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         const valid = res.status !== 401 && res.status !== 403;
         return { valid, error: valid ? null : "Invalid API key" };
       }
@@ -726,51 +815,10 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const res = await fetchWithConnectionProxy("https://llm.chutes.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
-      case "deepseek-web": {
-        let token = connection.apiKey.trim();
-        if (token.startsWith("{")) {
-          try {
-            const parsed = JSON.parse(token);
-            if (parsed && typeof parsed.value === "string") token = parsed.value.trim();
-          } catch {}
-        }
-        if (token.includes("userToken=")) {
-          const m = token.match(/userToken=([^;]+)/);
-          if (m) token = m[1].trim();
-        }
-        if (token.startsWith("Bearer ")) token = token.slice(7).trim();
-        token = token.replace(/^["']|["']$/g, "").trim();
-
-        if (!token) return { valid: false, error: "Invalid token format" };
-
-        const res = await fetchWithConnectionProxy("https://chat.deepseek.com/api/v0/users/current", {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            Origin: "https://chat.deepseek.com",
-            Referer: "https://chat.deepseek.com/",
-            "x-app-version": "20241129.0",
-            "x-client-platform": "web",
-          },
-        }, effectiveProxy).catch(() => null);
-
-        if (!res || !res.ok) return { valid: false, error: "Invalid token or connection failed" };
-        const data = await res.json().catch(() => null);
-        if (!data || data.code !== 0 || (data.data && data.data.biz_code !== undefined && data.data.biz_code !== 0)) {
-          return { valid: false, error: data?.msg || data?.data?.biz_msg || "Invalid token - rejected by chat.deepseek.com" };
-        }
-        return { valid: true, error: null };
-      }
       case "opencode": {
-        // Connectivity-only probe: GET /models never exercises the Responses
-        // tool path, so a green dashboard test does NOT rule out 403
-        // FreeTierError on POST /zen/v1/responses with tools (requires
-        // bash+read decoys + tool_choice auto — see OpenCodeExecutor).
-        const res = await fetchWithConnectionProxy("https://opencode.ai/zen/v1/models", {
-          headers: { Authorization: "Bearer public", "User-Agent": "opencode/1.18.31" },
-        }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "OpenCode free tier unavailable" };
+        // OpenCode Free uses public credentials; avoid quota-consuming upstream
+        // probes during dashboard connection tests.
+        return { valid: true, error: null };
       }
       case "opencode-go": {
         const res = await fetchWithConnectionProxy("https://opencode.ai/zen/go/v1/chat/completions", {
@@ -828,7 +876,7 @@ case "llm7": {
         return { valid: res.ok, error: res.ok ? null : "Invalid API key or base URL" };
       }
       case "kimchi": {
-        // Dual-auth: same validation endpoint as the OAuth flow — the token (API key
+        // Dual-auth: same validation endpoint as the OAuth flow - the token (API key
         // or OAuth access token) is sent as Authorization: Bearer.
         const url = KIMCHI_CONFIG.validationUrl || "https://api.cast.ai/v1/llm/openai/supported-providers";
         const res = await fetchWithConnectionProxy(url, {
@@ -840,6 +888,30 @@ case "llm7": {
           },
         }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key", refreshed: false };
+      }
+      case "gemini-web": {
+        // The credential is a browser session, so a chat completion is the wrong
+        // probe twice over: no API route accepts a raw cookie, and the web queue
+        // routinely runs past the 15s test budget, which surfaced as "cookie
+        // invalid" while the session was perfectly alive.
+        const probe = await probeGeminiWebCookie(connection.apiKey);
+        return { valid: probe.valid, error: probe.valid ? null : probe.error, warning: probe.warning || null, refreshed: false };
+      }
+      case "deepseek-web": {
+        const raw = String(connection?.apiKey || "").trim();
+        let token = raw;
+        if (raw.startsWith("{")) {
+          try {
+            const parsed = JSON.parse(raw);
+            token = parsed.value || parsed.userToken || parsed.token || raw;
+          } catch {
+            token = raw;
+          }
+        }
+        if (token.toLowerCase().startsWith("bearer ")) token = token.slice(7).trim();
+        token = token.replace(/^["']|["']$/g, "").trim();
+        if (!token) return { valid: false, error: "UserToken is required", refreshed: false };
+        return { valid: true, error: null, refreshed: false };
       }
       default:
         return { valid: false, error: "Provider test not supported" };
@@ -899,6 +971,7 @@ export async function testSingleConnection(id) {
   if (result.refreshed && result.newTokens) {
     if (result.newTokens.accessToken) updateData.accessToken = result.newTokens.accessToken;
     if (result.newTokens.refreshToken) updateData.refreshToken = result.newTokens.refreshToken;
+    if (result.newTokens.apiKey) updateData.apiKey = result.newTokens.apiKey;
     if (result.newTokens.idToken) updateData.idToken = result.newTokens.idToken;
     if (result.newTokens.lastRefreshAt) updateData.lastRefreshAt = result.newTokens.lastRefreshAt;
     if (result.newTokens.expiresIn) updateData.expiresIn = result.newTokens.expiresIn;

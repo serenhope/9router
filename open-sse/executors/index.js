@@ -1,6 +1,8 @@
 import { AntigravityExecutor } from "./antigravity.js";
 import { AzureExecutor } from "./azure.js";
+import { BedrockExecutor } from "./bedrock.js";
 import { GeminiCLIExecutor } from "./gemini-cli.js";
+import { GeminiWebExecutor } from "./gemini-web.js";
 import { GithubExecutor } from "./github.js";
 import { IFlowExecutor } from "./iflow.js";
 import { QoderExecutor } from "./qoder.js";
@@ -12,10 +14,9 @@ import { VertexExecutor } from "./vertex.js";
 import { OpenCodeExecutor } from "./opencode.js";
 import { OpenCodeGoExecutor } from "./opencode-go.js";
 import { OpenCodeZenExecutor } from "./opencode-zen.js";
+import { OpenCodeV2Executor } from "./opencodeV2.js";
+import { OpenCodeLaneExecutor } from "./opencodeLane.js";
 import { GrokCliExecutor } from "./grok-cli.js";
-import { DeepSeekWebExecutor } from "./deepseek-web.js";
-import { GeminiWebExecutor } from "./gemini-web.js";
-import { KimiWebExecutor } from "./kimi-web.js";
 import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
 import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
@@ -27,12 +28,19 @@ import TraeExecutor from "./trae.js";
 import ZedExecutor from "./zed.js";
 import WindsurfExecutor from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
+import { MinimaxCodeExecutor } from "./minimax-code.js";
 import { DevinCliExecutor } from "./devin-cli.js";
+import { DeepSeekWebExecutor } from "./deepseek-web.js";
+import { ZCodeExecutor } from "./zcode.js";
+import { DeepAIExecutor } from "./deepai.js";
 
 const executors = {
   antigravity: new AntigravityExecutor(),
   azure: new AzureExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
+  "gemini-web": new GeminiWebExecutor(),
+  gweb: new GeminiWebExecutor(),
+  "gemini-cookie": new GeminiWebExecutor(),
   github: new GithubExecutor(),
   iflow: new IFlowExecutor(),
   qoder: new QoderExecutor(),
@@ -44,33 +52,45 @@ const executors = {
   cu: new CursorExecutor(), // Alias for cursor
   vertex: new VertexExecutor("vertex"),
   "vertex-partner": new VertexExecutor("vertex-partner"),
-  opencode: new OpenCodeExecutor(),
+  opencode: new OpenCodeLaneExecutor("opencode"),
+  oc: new OpenCodeLaneExecutor("opencode"),
   "opencode-go": new OpenCodeGoExecutor(),
   "opencode-zen": new OpenCodeZenExecutor(),
+  "opencode-v2": new OpenCodeLaneExecutor("opencode-v2"),
+  oc2: new OpenCodeLaneExecutor("opencode-v2"),
   "grok-cli": new GrokCliExecutor(),
   gcli: new GrokCliExecutor(), // Alias
   gb: new GrokCliExecutor(), // Alias (Grok Build)
-  "deepseek-web": new DeepSeekWebExecutor(),
-  dsw: new DeepSeekWebExecutor(),
-  "deepseek-cookie": new DeepSeekWebExecutor(),
-  "gemini-web": new GeminiWebExecutor(),
-  gweb: new GeminiWebExecutor(),
-  "gemini-cookie": new GeminiWebExecutor(),
-  "kimi-web": new KimiWebExecutor(),
-  kweb: new KimiWebExecutor(),
-  "kimi-cookie": new KimiWebExecutor(),
   "ollama-local": new OllamaLocalExecutor(),
   commandcode: new CommandCodeExecutor(),
   "xiaomi-tokenplan": new XiaomiTokenplanExecutor(),
   "xiaomi-mimo": new XiaomiMimoExecutor(),
+  mimocode: new MimoFreeExecutor(), // MiMoCode free channel (anonymous JWT)
+  "mimocode-free": new MimoFreeExecutor(), // Alias for mimocode
+  mmf: new MimoFreeExecutor(), // Retired id for the same channel
   "mimo-free": new MimoFreeExecutor(),
-  mmf: new MimoFreeExecutor(), // Alias for mimo-free
   "codebuddy-cn": new CodeBuddyExecutor(),
   "codebuddy-intl": new CodeBuddyIntlExecutor(),
   trae: new TraeExecutor(),
   zed: new ZedExecutor(),
   windsurf: new WindsurfExecutor(),
+  "minimax-code": new MinimaxCodeExecutor("minimax-code"),
+  "minimax-code-global": new MinimaxCodeExecutor("minimax-code-global"),
   "devin-cli": new DevinCliExecutor(),
+  bedrock: new BedrockExecutor(),
+  br: new BedrockExecutor(), // Alias for bedrock
+  // Second Bedrock entry for xAI's Grok, which speaks OpenAI Chat Completions rather than the
+  // Anthropic Messages format. Same executor, different registry transport format — the pattern
+  // vertex / vertex-partner already uses.
+  "bedrock-xai": new BedrockExecutor("bedrock-xai"),
+  brx: new BedrockExecutor("bedrock-xai"), // Alias for bedrock-xai
+  "deepseek-web": new DeepSeekWebExecutor(),
+  dsw: new DeepSeekWebExecutor(),
+  "deepseek-cookie": new DeepSeekWebExecutor(),
+  zcode: new ZCodeExecutor(),
+  zc: new ZCodeExecutor(),
+  deepai: new DeepAIExecutor(),
+  dai: new DeepAIExecutor(),
 };
 
 const defaultCache = new Map();
@@ -88,7 +108,9 @@ export function hasSpecializedExecutor(provider) {
 export { BaseExecutor } from "./base.js";
 export { AntigravityExecutor } from "./antigravity.js";
 export { AzureExecutor } from "./azure.js";
+export { BedrockExecutor } from "./bedrock.js";
 export { GeminiCLIExecutor } from "./gemini-cli.js";
+export { GeminiWebExecutor } from "./gemini-web.js";
 export { GithubExecutor } from "./github.js";
 export { IFlowExecutor } from "./iflow.js";
 export { QoderExecutor } from "./qoder.js";
@@ -101,6 +123,8 @@ export { DefaultExecutor } from "./default.js";
 export { OpenCodeExecutor } from "./opencode.js";
 export { OpenCodeGoExecutor } from "./opencode-go.js";
 export { OpenCodeZenExecutor } from "./opencode-zen.js";
+export { OpenCodeV2Executor } from "./opencodeV2.js";
+export { OpenCodeLaneExecutor } from "./opencodeLane.js";
 export { GrokCliExecutor } from "./grok-cli.js";
 export { OllamaLocalExecutor } from "./ollama-local.js";
 export { CommandCodeExecutor } from "./commandcode.js";
@@ -113,3 +137,6 @@ export { default as TraeExecutor } from "./trae.js";
 export { default as ZedExecutor } from "./zed.js";
 export { default as WindsurfExecutor } from "./windsurf.js";
 export { DevinCliExecutor } from "./devin-cli.js";
+export { DeepSeekWebExecutor } from "./deepseek-web.js";
+export { ZCodeExecutor } from "./zcode.js";
+export { DeepAIExecutor } from "./deepai.js";

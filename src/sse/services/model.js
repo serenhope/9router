@@ -1,20 +1,7 @@
 // Re-export from open-sse with localDb integration
 import { getModelAliases, getComboByName, getProviderNodes } from "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
-import REGISTRY from "open-sse/providers/registry/index.js";
-
-// Local provider alias overrides (HMR-friendly, applied on top of open-sse map)
-const LOCAL_PROVIDER_ALIASES = {
-  xmtp: "xiaomi-tokenplan",
-  "xiaomi-tokenplan": "xiaomi-tokenplan",
-};
-
-const RESERVED_PROVIDER_PREFIXES = new Set(Object.keys(LOCAL_PROVIDER_ALIASES));
-for (const entry of REGISTRY) {
-  RESERVED_PROVIDER_PREFIXES.add(entry.id);
-  if (entry.alias) RESERVED_PROVIDER_PREFIXES.add(entry.alias);
-  for (const alias of entry.aliases || []) RESERVED_PROVIDER_PREFIXES.add(alias);
-}
+import { LOCAL_PROVIDER_ALIASES, isReservedProviderPrefix } from "@/shared/utils/providerPrefix.js";
 
 // How many studio names one request may chain through before it looks like a loop.
 const MAX_STUDIO_HOPS = 3;
@@ -39,12 +26,29 @@ export async function resolveModelAlias(alias) {
  * Get full model info (parse or resolve)
  */
 export async function getModelInfo(modelStr, studioHops = 0) {
+  const requested = String(modelStr ?? "").trim();
+
+  // A studio name may carry its own prefix (`anthropic/claude-opus-5`), which
+  // parseModel would read as a provider route. An exact studio match wins, so a
+  // prefix is only a label until the operator names a studio after it.
+  if (requested.includes("/") && studioHops < MAX_STUDIO_HOPS) {
+    try {
+      const { getStudioModel } = await import("@/lib/db/repos/modelEditorRepo.js");
+      const prefixedStudio = await getStudioModel(requested);
+      if (prefixedStudio?.targetModel) {
+        const next = String(prefixedStudio.targetModel).trim();
+        if (prefixedStudio.isComboTarget) return { provider: null, model: next };
+        return await getModelInfo(next, studioHops + 1);
+      }
+    } catch { /* fall through to normal parsing */ }
+  }
+
   const parsed = parseModel(modelStr);
 
   if (!parsed.isAlias) {
     // Provider-node prefixes are user-defined. They must not override built-in
     // provider ids/aliases such as `cf`, `cloudflare-ai`, `openai`, or `hf`.
-    if (!RESERVED_PROVIDER_PREFIXES.has(parsed.providerAlias)) {
+    if (!isReservedProviderPrefix(parsed.providerAlias)) {
       const openaiNodes = await getProviderNodes({ type: "openai-compatible" });
       const matchedOpenAI = openaiNodes.find((node) => node.prefix === parsed.providerAlias);
       if (matchedOpenAI) {
@@ -82,6 +86,11 @@ export async function getModelInfo(modelStr, studioHops = 0) {
   try {
    const { getStudioModel } = await import("@/lib/db/repos/modelEditorRepo.js");
    const studio = studioHops < MAX_STUDIO_HOPS ? await getStudioModel(parsed.model) : null;
+   if (studio?.isComboTarget) {
+    // The studio name points at a combo: answer the combo name itself so the
+    // caller handles it as a combo (fallback, fusion, rotation).
+    return { provider: null, model: studio.targetModel };
+   }
    if (studio?.targetModel?.includes("/")) {
    // The target is a model string too, and it may carry a custom node prefix
    // (`kr/gpt-oss-120b`). parseModel would hand back `kr` as the provider and

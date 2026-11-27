@@ -40,17 +40,48 @@ function store() {
 function toModel(callName, value) {
   if (!value || typeof value !== "object") return null;
   const target = typeof value.targetModel === "string" ? value.targetModel.trim() : "";
-  if (!target || !target.includes("/")) return null;
+  if (!target) return null;
   const firstSlash = target.indexOf("/");
+  // A bare name is a combo target (validated at the API layer). Anything else
+  // must stay a provider/model pair so old records keep resolving as before.
+  if (firstSlash < 0) return toComboTargetModel(callName, value, target);
+  if (firstSlash === 0 || firstSlash === target.length - 1) return null;
   return {
   callName,
   displayName: (value.displayName || "").trim() || callName,
+  // Free-form label this model claims in a model listing. Never derived from the
+  // target, so a studio model can present itself as whatever the owner wants.
+  ownedBy: (typeof value.ownedBy === "string" ? value.ownedBy.trim() : "") || "",
   targetModel: target,
    targetLabel: (value.targetLabel || value.targetModel || "").trim() || target,
   provider: target.slice(0, firstSlash),
   model: target.slice(firstSlash + 1),
   contextWindow: Number(value.contextWindow) || 0,
   systemPrompt: typeof value.systemPrompt === "string" ? value.systemPrompt : "",
+  inputMultiplier: Number(value.inputMultiplier) > 0 ? Number(value.inputMultiplier) : undefined,
+  outputMultiplier: Number(value.outputMultiplier) > 0 ? Number(value.outputMultiplier) : undefined,
+  antiProbe: typeof value.antiProbe === "boolean" ? value.antiProbe : undefined,
+  createdAt: value.createdAt || "",
+  };
+}
+
+// Studio model pointing at a combo: the callable name routes into the combo,
+// so provider/model are the combo coordinates the caps and router code use.
+function toComboTargetModel(callName, value, target) {
+  return {
+  callName,
+  displayName: (value.displayName || "").trim() || callName,
+  ownedBy: (typeof value.ownedBy === "string" ? value.ownedBy.trim() : "") || "",
+  targetModel: target,
+   targetLabel: (value.targetLabel || value.targetModel || "").trim() || target,
+  provider: "combo",
+  model: target,
+  isComboTarget: true,
+  contextWindow: Number(value.contextWindow) || 0,
+  systemPrompt: typeof value.systemPrompt === "string" ? value.systemPrompt : "",
+  inputMultiplier: Number(value.inputMultiplier) > 0 ? Number(value.inputMultiplier) : undefined,
+  outputMultiplier: Number(value.outputMultiplier) > 0 ? Number(value.outputMultiplier) : undefined,
+  antiProbe: typeof value.antiProbe === "boolean" ? value.antiProbe : undefined,
   createdAt: value.createdAt || "",
   };
 }
@@ -78,7 +109,7 @@ export async function getStudioModels() {
         if (m.callName in aliases) await deleteModelAlias(m.callName);
       }
     } catch {
-      /* fail open — the studio list is still returned */
+      /* fail open - the studio list is still returned */
     }
   }
 
@@ -87,19 +118,26 @@ export async function getStudioModels() {
 
 /** One studio model by callable name, or null. */
 export async function getStudioModel(callName) {
-  if (!callName || callName.includes("|") || callName.includes("/")) return null;
-  const value = await store().get(callName);
-  return value ? toModel(callName, value) : null;
+  const name = String(callName ?? "").trim();
+  // A callable name may carry prefixes (`anthropic/workhorse` or `fake/provider/model`);
+  // the legacy per-model override key stays excluded because it holds a `provider|model`.
+  if (!name || name.includes("|")) return null;
+  const value = await store().get(name);
+  return value ? toModel(name, value) : null;
 }
 
-export async function setStudioModel({ callName, displayName, targetModel, targetLabel, contextWindow, systemPrompt }) {
+export async function setStudioModel({ callName, displayName, ownedBy, targetModel, targetLabel, contextWindow, systemPrompt, inputMultiplier, outputMultiplier, antiProbe }) {
   const payload = {
   callName,
   displayName: (displayName || "").trim(),
+  ownedBy: (ownedBy || "").trim(),
   targetModel: (targetModel || "").trim(),
    targetLabel: (targetLabel || targetModel || "").trim(),
   contextWindow: Number(contextWindow) || 0,
   systemPrompt: systemPrompt || "",
+  ...(Number(inputMultiplier) > 0 ? { inputMultiplier: Number(inputMultiplier) } : {}),
+  ...(Number(outputMultiplier) > 0 ? { outputMultiplier: Number(outputMultiplier) } : {}),
+  ...(typeof antiProbe === "boolean" ? { antiProbe } : {}),
   createdAt: new Date().toISOString(),
   };
   await store().set(callName, payload);

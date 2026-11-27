@@ -1,6 +1,6 @@
 import { CODEBUDDY_INTL_CONFIG } from "../constants/oauth.js";
 
-// CodeBuddy International — mirrors codebuddy-cn flow against the .ai domain.
+// CodeBuddy International - mirrors codebuddy-cn flow against the .ai domain.
 const codebuddyIntl = {
   config: CODEBUDDY_INTL_CONFIG,
   flowType: "device_code",
@@ -12,7 +12,7 @@ const codebuddyIntl = {
         Accept: "application/json",
         "User-Agent": config.userAgent,
         "X-Requested-With": "XMLHttpRequest",
-        "X-Domain": "www.codebuddy.ai",
+        "X-Domain": "www.workbuddy.ai",
         "X-No-Authorization": "true",
         "X-No-User-Id": "true",
         "X-Product": "SaaS",
@@ -39,7 +39,7 @@ const codebuddyIntl = {
         Accept: "application/json",
         "User-Agent": config.userAgent,
         "X-Requested-With": "XMLHttpRequest",
-        "X-Domain": "www.codebuddy.ai",
+        "X-Domain": "www.workbuddy.ai",
         "X-No-Authorization": "true",
         "X-No-User-Id": "true",
         "X-No-Enterprise-Id": "true",

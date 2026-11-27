@@ -3,7 +3,7 @@ name: 9router-stt
 description: Speech-to-text via 9Router /v1/audio/transcriptions using OpenAI Whisper / Groq / Gemini / Deepgram / AssemblyAI / NVIDIA / HuggingFace models. Use when the user wants to transcribe audio, convert speech to text, or get subtitles from audio files.
 ---
 
-# 9Router — Speech-to-Text
+# 9Router - Speech-to-Text
 
 Requires `NINEROUTER_URL` (and `NINEROUTER_KEY` if auth enabled). See https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router/SKILL.md for setup.
 
@@ -77,3 +77,4 @@ Default (`response_format=json`):
 | `assemblyai` | `universal-3-pro`, `universal-2` | Async upload+poll handled server-side |
 | `nvidia` | `nvidia/parakeet-ctc-1.1b-asr` | NIM endpoint |
 | `huggingface` | `openai/whisper-large-v3`, `openai/whisper-small` | HF Inference API |
+| `elevenlabs` | `scribe_v1`, `scribe_v2` | Whisper-compatible shape; `xi-api-key` auth, not Bearer. Extra params: `timestamps_granularity` (`word`/`character`/`none`), `tag_audio_events`, and speaker labelling via **either** `diarize=true` **or** `num_speakers` (1–32) — sending both makes the request invalid, so `diarize` wins and `num_speakers` is dropped. Blank `language` is omitted upstream for auto-detect. `srt`/`vtt` and `verbose_json` segments are served from Scribe's own `additional_formats` render, so `segments[]` is omitted when the upstream render is unavailable rather than synthesized. Does not accept `temperature` or `prompt` — those are not forwarded. |

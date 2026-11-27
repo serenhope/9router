@@ -131,7 +131,7 @@ function sleep(ms) {
 function runInstall() {
   state.attempt += 1;
   setPhase("installing");
-  pushLog(`[updater] attempt ${state.attempt}/${maxRetries} — npm i -g ${packageName} --prefer-online`);
+  pushLog(`[updater] attempt ${state.attempt}/${maxRetries} - npm i -g ${packageName} --prefer-online`);
 
   const isWin = process.platform === "win32";
   const cmd = isWin ? "npm.cmd" : "npm";

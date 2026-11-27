@@ -18,9 +18,45 @@ const DEFAULT_TTS_RESPONSE_EXAMPLE = `// Audio will appear here after running.
   "audio": "//NExAANaAIIAUAAANNNNNNNN..." // base64 encoded MP3
 }`;
 
+function pcmToWavBlob(pcmArrayBuffer, sampleRate = 24000, numChannels = 1) {
+  const bytesPerSample = 2; // 16-bit
+  const blockAlign = numChannels * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = pcmArrayBuffer.byteLength;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  function writeString(offset, string) {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  }
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM format
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true); // 16-bit
+  writeString(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  new Uint8Array(buffer, 44).set(new Uint8Array(pcmArrayBuffer));
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
 export function TtsExampleCard({ providerId }) {
   const providerAlias = getProviderAlias(providerId);
   const config = TTS_PROVIDER_CONFIG[providerId] || TTS_PROVIDER_CONFIG["edge-tts"];
+  const formatOptions = config.formatOptions || [
+    { value: "mp3", label: "MP3 (Binary)" },
+    { value: "json", label: "JSON (Base64)" },
+  ];
 
   // Voice state
   const [selectedVoice, setSelectedVoice]     = useState(config.defaultVoiceId || "");
@@ -46,8 +82,9 @@ export function TtsExampleCard({ providerId }) {
   const [useTunnel, setUseTunnel]       = useState(false);
   const [localEndpoint, setLocalEndpoint]   = useState("");
   const [tunnelEndpoint, setTunnelEndpoint] = useState("");
-  const [responseFormat, setResponseFormat] = useState("mp3"); // mp3 | json
+  const [responseFormat, setResponseFormat] = useState(() => config.defaultFormat || config.formatOptions?.[0]?.value || "mp3");
   const [audioUrl, setAudioUrl]         = useState("");
+  const [downloadUrl, setDownloadUrl]   = useState("");
   const [jsonResponse, setJsonResponse] = useState(null); // Store JSON response
   const [running, setRunning]           = useState(false);
   const [error, setError]               = useState("");
@@ -81,11 +118,29 @@ export function TtsExampleCard({ providerId }) {
       .then((d) => { if (d.publicUrl) setTunnelEndpoint(d.publicUrl); })
       .catch(() => {});
 
+    // Re-initialize model and voice state when providerId changes
+    const initialModel = (() => {
+      const cfgModels = AI_PROVIDERS[providerId]?.ttsConfig?.models;
+      if (cfgModels?.length) return cfgModels[0].id;
+      if (config.hasModelSelector && config.modelKey) {
+        const models = getModelsByProviderId(config.modelKey);
+        return models?.[0]?.id || "";
+      }
+      return "";
+    })();
+    setSelectedModel(initialModel);
+    setVoiceId(config.defaultVoiceId || "");
+    setSelectedVoice(config.defaultVoiceId || "");
+    setSelectedVoiceName("");
+    setCountryVoices([]);
+    setSelectedLang("");
+    setResponseFormat(config.defaultFormat || config.formatOptions?.[0]?.value || "mp3");
+    setAudioUrl("");
+    setDownloadUrl("");
+
     // Pre-select default voice based on provider config
     if (config.voiceSource === "hardcoded") {
-      const defaultModel = config.hasModelSelector && config.modelKey
-        ? (getModelsByProviderId(config.modelKey)?.[0]?.id || "")
-        : "";
+      const defaultModel = initialModel;
       // Use per-model voices if available, else flat list
       const voices = (config.voicesPerModel && defaultModel)
         ? (getTtsVoicesForModel(providerId, defaultModel) || [])
@@ -103,6 +158,7 @@ export function TtsExampleCard({ providerId }) {
           setCountryVoices(voices);
           setSelectedVoice(voices[0].id);
           setSelectedVoiceName(voices[0].name || voices[0].id);
+          if (config.hasVoiceIdInput) setVoiceId(voices[0].id);
         }
       }
     }
@@ -120,13 +176,13 @@ export function TtsExampleCard({ providerId }) {
       setSelectedVoice(voices[0].id);
       setSelectedVoiceName(voices[0].name || voices[0].id);
     } else {
-      // Model has no preset voices (voicedesign/voiceclone) — drop stale voice
+      // Model has no preset voices (voicedesign/voiceclone) - drop stale voice
       setSelectedVoice("");
       setSelectedVoiceName("");
     }
   }, [selectedModel]);
 
-  // Open modal — load language list
+  // Open modal - load language list
   const openModal = async () => {
     setModalOpen(true);
     setModalSearch("");
@@ -187,6 +243,16 @@ export function TtsExampleCard({ providerId }) {
   // For ElevenLabs/config-driven: prefer manual voiceId (if any), else fall back to selectedVoice
   const activeVoiceId = config.hasVoiceIdInput ? (voiceId || selectedVoice) : selectedVoice;
   const modelFull = (() => {
+    if (providerId === "selfhosted-tts") {
+      const model = selectedModel.trim();
+      const voice = activeVoiceId.trim();
+      return model ? `${providerAlias}/${model}${voice ? `/${voice}` : ""}` : "";
+    }
+    if (providerId === "ollama-local") {
+      const model = (selectedModel || "phonon:multilingual").trim();
+      const voice = activeVoiceId.trim();
+      return `${providerAlias}/${model}${voice && voice !== "default" ? `/${voice}` : ""}`;
+    }
     if (config.hasModelSelector && selectedModel && activeVoiceId) return `${providerAlias}/${selectedModel}/${activeVoiceId}`;
     if (config.hasModelSelector && selectedModel) return `${providerAlias}/${selectedModel}`;
     if (activeVoiceId) return `${providerAlias}/${activeVoiceId}`;
@@ -197,19 +263,25 @@ export function TtsExampleCard({ providerId }) {
     const b = { model: modelFull, input };
     if (config.hasLanguageHint && languageHint) b.language = languageHint;
     if (config.hasStyleInput && style.trim()) b.style = style.trim();
+    if (responseFormat && responseFormat !== "json" && responseFormat !== "mp3") {
+      b.response_format = responseFormat;
+    }
     return b;
   })();
+
+  const outputExt = responseFormat === "pcm" ? "pcm" : (responseFormat === "wav" || providerId === "ollama-local") ? "wav" : "mp3";
   const curlSnippet = `curl -X POST ${endpoint}/v1/audio/speech${responseFormat === "json" ? "?response_format=json" : ""} \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${apiKey || "YOUR_KEY"}" \\
   -d '${JSON.stringify(ttsBody)}' \\
-  ${responseFormat === "json" ? "" : "--output speech.mp3"}`;
+  ${responseFormat === "json" ? "" : `--output speech.${outputExt}`}`;
 
   const handleRun = async () => {
     if (!input.trim() || !modelFull) return;
     setRunning(true);
     setError("");
     setAudioUrl("");
+    setDownloadUrl("");
     setJsonResponse(null);
     const start = Date.now();
     try {
@@ -233,10 +305,21 @@ export function TtsExampleCard({ providerId }) {
         setJsonResponse(data); // Store full JSON response
         const format = data.format || "mp3";
         const audioBlob = await fetch(`data:audio/${format};base64,${data.audio}`).then(r => r.blob());
-        setAudioUrl(URL.createObjectURL(audioBlob));
+        const objUrl = URL.createObjectURL(audioBlob);
+        setAudioUrl(objUrl);
+        setDownloadUrl(objUrl);
+      } else if (responseFormat === "pcm") {
+        const pcmBuffer = await res.arrayBuffer();
+        const pcmBlob = new Blob([pcmBuffer], { type: "audio/pcm" });
+        setDownloadUrl(URL.createObjectURL(pcmBlob));
+        // Wrap raw PCM buffer with WAV header so browser <audio> tag can play it
+        const wavBlob = pcmToWavBlob(pcmBuffer, 24000, 1);
+        setAudioUrl(URL.createObjectURL(wavBlob));
       } else {
         const blob = await res.blob();
-        setAudioUrl(URL.createObjectURL(blob));
+        const objUrl = URL.createObjectURL(blob);
+        setAudioUrl(objUrl);
+        setDownloadUrl(objUrl);
       }
     } catch (e) {
       setError(e.message || "Network error");
@@ -265,7 +348,7 @@ export function TtsExampleCard({ providerId }) {
                     useTunnel ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-text-muted hover:text-primary"
                   }`}
                 >
-                  <span className="material-symbols-outlined text-[14px]">wifi_tethering</span>
+                  <span className="material-symbols-outlined text-[14px]">sensors</span>
                   Tunnel
                 </button>
               )}
@@ -281,9 +364,17 @@ export function TtsExampleCard({ providerId }) {
             </span>
           </Row>
 
-          {/* Model selector — prefer PROVIDER_MODELS[kind=tts], else providerModels via modelKey */}
-          {config.hasModelSelector && (config.modelKey || getModelsByProviderId(providerId).some(m => getModelKind(m) === "tts")) && (
+          {providerId === "selfhosted-tts" && (
             <Row label="Model">
+              <input
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                placeholder="e.g. kokoro or Qwen3-TTS-12Hz-1.7B-CustomVoice-bf16"
+                className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono"
+              />
+            </Row>
+          )}
+          {providerId !== "selfhosted-tts" && config.hasModelSelector && (config.modelKey || getModelsByProviderId(providerId).some(m => getModelKind(m) === "tts")) && (            <Row label="Model">
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
@@ -299,7 +390,7 @@ export function TtsExampleCard({ providerId }) {
             </Row>
           )}
 
-          {/* Language hint dropdown (Gemini, Xiaomi MiMo) — sends body.language to guide pronunciation */}
+          {/* Language hint dropdown (Gemini, Xiaomi MiMo) - sends body.language to guide pronunciation */}
           {config.hasLanguageHint && (
             <Row label="Language">
               <select
@@ -333,14 +424,14 @@ export function TtsExampleCard({ providerId }) {
                   onClick={openModal}
                   className="flex w-full items-center justify-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-border text-text-muted hover:text-primary hover:border-primary/40 transition-colors sm:w-auto sm:shrink-0"
                 >
-                  <span className="material-symbols-outlined text-[14px]">language</span>
+                  <span className="material-symbols-outlined text-[14px]">translate</span>
                   Select language
                 </button>
               </div>
             </Row>
           )}
 
-          {/* Voice chips — shown after language picked (edge-tts, local-device) or always (OpenAI/ElevenLabs/MiMo) */}
+          {/* Voice chips - shown after language picked (edge-tts, local-device) or always (OpenAI/ElevenLabs/MiMo) */}
           {countryVoices.length > 0 && (
             <Row label="Voice">
               <div className="flex flex-wrap gap-1.5">
@@ -373,7 +464,7 @@ export function TtsExampleCard({ providerId }) {
             </Row>
           )}
 
-          {/* Voice ID input (ElevenLabs) — manual entry or auto-fill from chip */}
+          {/* Voice ID input (ElevenLabs) - manual entry or auto-fill from chip */}
           {config.hasVoiceIdInput && (
             <Row label="Voice ID">
               <div className="flex flex-col gap-1">
@@ -384,7 +475,7 @@ export function TtsExampleCard({ providerId }) {
                       setVoiceId(e.target.value);
                       setSelectedVoice(e.target.value);
                     }}
-                    placeholder="e.g. CwhRBWXzGAHq8TQ4Fs17"
+                    placeholder={providerId === "selfhosted-tts" || providerId === "ollama-local" ? "e.g. Zoey, Easton, Freya, or default" : "e.g. CwhRBWXzGAHq8TQ4Fs17"}
                     className="w-full px-3 py-1.5 pr-7 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono"
                   />
                   {voiceId && (
@@ -393,7 +484,7 @@ export function TtsExampleCard({ providerId }) {
                       onClick={() => { setVoiceId(""); setSelectedVoice(""); }}
                       className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors"
                     >
-                      <span className="material-symbols-outlined text-[14px]">close</span>
+                      <span className="material-symbols-outlined text-[14px]">cancel</span>
                     </button>
                   )}
                 </div>
@@ -434,7 +525,7 @@ export function TtsExampleCard({ providerId }) {
                   onClick={() => setInput("")}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors"
                 >
-                  <span className="material-symbols-outlined text-[14px]">close</span>
+                  <span className="material-symbols-outlined text-[14px]">cancel</span>
                 </button>
               )}
             </div>
@@ -457,7 +548,7 @@ export function TtsExampleCard({ providerId }) {
                     onClick={() => setStyle("")}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors"
                   >
-                    <span className="material-symbols-outlined text-[14px]">close</span>
+                    <span className="material-symbols-outlined text-[14px]">cancel</span>
                   </button>
                 )}
               </div>
@@ -471,8 +562,9 @@ export function TtsExampleCard({ providerId }) {
               onChange={(e) => setResponseFormat(e.target.value)}
               className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
             >
-              <option value="mp3">MP3 (Binary)</option>
-              <option value="json">JSON (Base64)</option>
+              {formatOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
           </Row>
 
@@ -494,7 +586,7 @@ export function TtsExampleCard({ providerId }) {
                   className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span className="material-symbols-outlined text-[14px]" style={running ? { animation: "spin 1s linear infinite" } : undefined}>
-                    play_arrow
+                    play_circle
                   </span>
                   {running ? "Generating..." : "Run"}
                 </button>
@@ -510,10 +602,14 @@ export function TtsExampleCard({ providerId }) {
             <div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-1.5">
                 <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-                  Response {latency && <span className="font-normal normal-case">&#9889; {latency}ms</span>}
+                  Response {latency && <span className="inline-flex items-center gap-1 font-normal normal-case"><span className="material-symbols-outlined text-[11px] leading-none">speed</span>{latency}ms</span>}
                 </span>
-                <a href={audioUrl} download="speech.mp3" className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors">
-                  <span className="material-symbols-outlined text-[14px]">download</span>
+                <a
+                  href={downloadUrl || audioUrl}
+                  download={`speech.${responseFormat === "pcm" ? "pcm" : (responseFormat === "wav" || providerId === "ollama-local") ? "wav" : "mp3"}`}
+                  className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[14px]">file_download</span>
                   Download
                 </a>
               </div>
@@ -547,7 +643,7 @@ export function TtsExampleCard({ providerId }) {
       {modalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
-          style={{ backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)" }}
+          style={{ backgroundColor: "var(--color-scrim)", backdropFilter: "blur(2px)" }}
           onClick={() => setModalOpen(false)}
         >
           <div
@@ -559,7 +655,7 @@ export function TtsExampleCard({ providerId }) {
             <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0 rounded-t-xl">
               <h3 className="text-sm font-semibold">Select Language</h3>
               <button onClick={() => setModalOpen(false)} className="text-text-muted hover:text-primary transition-colors">
-                <span className="material-symbols-outlined text-[20px]">close</span>
+                <span className="material-symbols-outlined text-[20px]">cancel</span>
               </button>
             </div>
 
@@ -593,7 +689,7 @@ export function TtsExampleCard({ providerId }) {
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="text-xs text-text-muted">{c.voices.length} voices</span>
                         {selectedLang === c.code && (
-                          <span className="material-symbols-outlined text-[16px] text-primary">check</span>
+                          <span className="material-symbols-outlined text-[16px] text-primary">done</span>
                         )}
                       </div>
                     </button>

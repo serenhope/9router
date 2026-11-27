@@ -13,7 +13,7 @@
 //
 // ponytail: only numeric-suffix collision is handled. A user who manually
 // types an exact existing non-numbered custom name (no index) will still hit
-// the backend upsert — but bulk auto-naming always appends " <n>", so this
+// the backend upsert - but bulk auto-naming always appends " <n>", so this
 // path is unreachable from the bulk modal. Upgrade path: a backend
 // "skip-if-exists" flag on POST /api/providers if single-add ever needs it.
 
@@ -25,6 +25,9 @@
  */
 function parseLine(line, opts = {}) {
   const { isCloudflareAi = false } = opts;
+  if (!isCloudflareAi && /^LLM\|/i.test(line.trim())) {
+    return { baseName: 'LLM', apiKey: line.trim() };
+  }
   const parts = line.split("|");
 
   if (isCloudflareAi && parts.length >= 3) {
@@ -46,7 +49,7 @@ function parseLine(line, opts = {}) {
     return { baseName: baseName || "Key", apiKey };
   }
 
-  // apiKey only — auto-named "Key N"
+  // apiKey only - auto-named "Key N"
   const apiKey = parts[0].trim();
   return { baseName: "Key", apiKey };
 }
@@ -76,7 +79,7 @@ export function planBulkAdd(lines, existingNames, opts = {}) {
     const base = parsed.baseName;
 
     // Gap-fill from 1: smallest free "<base> <n>" not in `used`.
-    // O(batch * existing) — fine for bulk add (tens to low hundreds of keys).
+    // O(batch * existing) - fine for bulk add (tens to low hundreds of keys).
     let idx = 1;
     let name;
     for (;;) {

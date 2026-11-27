@@ -1,8 +1,29 @@
 /* source() sets scan base to src/ for both webpack + Turbopack; auto-detection still skips binaries + gitignore */
 @import "tailwindcss" source("../../");
+/* Chrome design tokens. Unlayered here on purpose: unlayered rules outrank
+   Tailwind's @layer utilities, so an interaction state (.chrome-focus,
+   .chrome-interactive) cannot be silently defeated by a stale utility still
+   sitting in a component's className list. Import position is irrelevant to
+   that ordering - only the layer - so right after tailwindcss is just tidy. */
+@import "../shared/styles/chrome.css";
+@import "../shared/styles/neobrutalism.css";
 /* Icon font comes from the material-symbols package; declared here instead of importing
    the package stylesheet because its unlayered .material-symbols-outlined rule would
-   outrank every Tailwind text-[..] utility and pin all icons to 24px. */
+   outrank every Tailwind text-[..] utility and pin all icons to 24px.
+
+   Two faces on purpose. The subset holds exactly the ligatures src/ uses (144
+   of them, see scripts/build-icon-subset.mjs) and is what actually gets
+   downloaded; the 3.96 MB package font stays as a src fallback so an icon added
+   without re-running the subset script still renders, just after the big file
+   arrives. `swap` instead of `block` so a slow first paint shows the icon
+   fallback rather than nothing at all. */
+@font-face {
+ font-family: "Material Symbols Outlined";
+ font-style: normal;
+ font-weight: 100 700;
+ font-display: swap;
+ src: url("/fonts/material-symbols-subset.woff2") format("woff2");
+}
 @font-face {
  font-family: "Material Symbols Outlined";
  font-style: normal;
@@ -13,12 +34,17 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Hide icon ligature text until font is ready */
+/* Icons are ligature text, so the raw words would flash ("grid_view") before the
+   font swaps in. Hide them until the font is ready -- but only until then: the
+   layout script adds .fonts-loaded from document.fonts.ready with a hard
+   fallback, so a font that never loads can no longer leave the whole UI without
+   icons. Without JS the icons stay visible, which is the safer failure. */
 .material-symbols-outlined { opacity: 0; }
-.fonts-loaded .material-symbols-outlined { opacity: 1; transition: opacity .12s ease-out; }
+.fonts-loaded .material-symbols-outlined,
+html:not(.fonts-loading) .material-symbols-outlined { opacity: 1; transition: opacity .12s ease-out; }
 
 /* ============================================================
-   9Router palette — adopted from 9remote_private/web
+   9Router palette - adopted from 9remote_private/web
    Brand orange (dark) / soft coral (light), neutral warm bases
    ============================================================ */
 :root {
@@ -44,6 +70,7 @@
   --color-surface: #ffffff;
   --color-surface-2: #f4f4f5;
   --color-surface-3: #e7e7e9;
+  --color-loading-box-idle: rgba(139, 137, 133, 0.1);
   --color-sidebar: rgba(244, 241, 236, 0.85);
 
   /* Borders */
@@ -75,6 +102,32 @@
     0 1px 2px rgba(15,23,42,0.04),
     0 12px 36px -8px rgba(15,23,42,0.10);
   --shadow-focus: 0 0 0 3px rgba(229,106,74,0.18);
+
+  /* Full-screen dim behind modals and long-task banners. A real variable,
+     not a Tailwind bg-black/x utility, so both themes can tune it: the dark
+     base is opaque and wants a uniform cut, while glass renders the aurora
+     behind the panel and wants a lighter veil that lets the colour through. */
+  --color-scrim: rgba(30, 24, 21, 0.34);
+
+  /* ---- Derived surfaces: aliases onto the scale above.
+     They exist because many components already reference these names
+     (`bg-bg-subtle`, `text-text-primary`, `hover:bg-bg-hover`) but no token
+     backed them, so the utility never emitted any colour at all - the element
+     rendered transparent in EVERY theme. Declared as real custom properties
+     (not just @theme entries) so the active theme can retune them in one place
+     exactly like the base tokens, and pointed at vars so they flip with
+     .dark automatically. */
+  --color-bg-base: var(--color-bg);
+  --color-bg-subtle: var(--color-bg-alt);
+  --color-bg-secondary: var(--color-surface-2);
+  --color-bg-tertiary: var(--color-surface-3);
+  --color-surface-secondary: var(--color-surface-2);
+  --color-text-primary: var(--color-text-main);
+  --color-border-hover: var(--color-primary);
+  /* Hover wash derived from the text colour so it inverts with the theme
+     instead of needing a dark: variant at every call site. Mirrors
+     --state-hover in chrome.css. */
+  --color-bg-hover: color-mix(in srgb, var(--color-text-main) 6%, transparent);
 
   color-scheme: light;
 }
@@ -124,6 +177,9 @@
     0 1px 2px rgba(0,0,0,0.4),
     0 16px 48px -8px rgba(0,0,0,0.55);
   --shadow-focus: 0 0 0 3px rgba(229, 106, 74, 0.18);
+
+  /* Dark scrim: a heavier uniform veil over the opaque base. */
+  --color-scrim: rgba(0, 0, 0, 0.55);
 
   color-scheme: dark;
 }
@@ -179,6 +235,25 @@ select {
   --color-success: var(--color-success);
   --color-warning: var(--color-warning);
   --color-info: var(--color-info);
+
+  /* Scrim + interaction washes exposed as utilities. --color-scrim already
+     existed as a var (modals/scrims tuned it per-mode) but was never reachable
+     from a Tailwind class, so overlays fell back to raw bg-black/NN that could
+     not follow the theme. */
+  --color-scrim: var(--color-scrim);
+  --color-state-hover: var(--state-hover);
+  --color-state-press: var(--state-press);
+
+  /* Derived surfaces (see :root). Self-referential so the utility carries the
+     var() reference and the active theme can retune it per-mode. */
+  --color-bg-base: var(--color-bg-base);
+  --color-bg-subtle: var(--color-bg-subtle);
+  --color-bg-secondary: var(--color-bg-secondary);
+  --color-bg-tertiary: var(--color-bg-tertiary);
+  --color-surface-secondary: var(--color-surface-secondary);
+  --color-text-primary: var(--color-text-primary);
+  --color-border-hover: var(--color-border-hover);
+  --color-bg-hover: var(--color-bg-hover);
 
   /* Static fallbacks (explicit per-mode usage if needed) */
   --color-bg-light: #FCFBF9;
@@ -314,15 +389,8 @@ input, textarea {
   background: linear-gradient(180deg, var(--color-bg-alt) 0%, var(--color-bg) 100%);
 }
 
-/* macOS Vibrancy */
-.bg-vibrancy {
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  background: rgba(255, 255, 255, 0.72);
-}
-.dark .bg-vibrancy {
-  background: rgba(38, 38, 38, 0.72);
-}
+/* Legacy sidebar surface alias; active themes provide a solid fill. */
+.bg-vibrancy { background: var(--color-sidebar); }
 
 /* macOS Traffic Lights */
 .traffic-lights {
@@ -338,7 +406,7 @@ input, textarea {
 .traffic-light.yellow { background: #FFBD2E; }
 .traffic-light.green { background: #27C93F; }
 
-/* Material Symbols — layered so a text-[..] utility can still size each icon */
+/* Material Symbols - layered so a text-[..] utility can still size each icon */
 @layer base {
 .material-symbols-outlined {
   font-family: 'Material Symbols Outlined', sans-serif;
@@ -356,7 +424,10 @@ input, textarea {
   white-space: nowrap;
   word-wrap: normal;
   direction: ltr;
-  font-feature-settings: 'liga';
+  /* Icon names are ligatures under GSUB 'rlig' (the font ships rlig, not liga);
+     naming it explicitly keeps the glyph substitution working no matter which
+     feature the browser happens to apply by default. */
+  font-feature-settings: 'liga' 1, 'rlig' 1;
   -webkit-font-feature-settings: 'liga';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -375,7 +446,7 @@ button {
   user-select: none;
 }
 
-/* Tailwind v4 dropped default button cursor — restore globally */
+/* Tailwind v4 dropped default button cursor - restore globally */
 button:not(:disabled),
 [role="button"]:not([aria-disabled="true"]),
 label[for],
@@ -392,11 +463,83 @@ button:disabled,
 /* ============================================================
    Animations
    ============================================================ */
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+/* Gray keeps inactive squares visible; brand color marks only the active step. */
+.loading-boxes {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.12em;
+  vertical-align: middle;
+  flex: none;
 }
-.animate-spin { animation: spin 1s linear infinite; }
+.loading-boxes__square {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--color-loading-box-idle);
+  background: var(--color-loading-box-idle);
+  box-shadow: none;
+  animation: loading-box-step 1s steps(1, end) infinite;
+}
+.loading-boxes__square:nth-child(2) { animation-delay: -0.75s; }
+.loading-boxes__square:nth-child(3) { animation-delay: -0.5s; }
+.loading-boxes__square:nth-child(4) { animation-delay: -0.25s; }
+@keyframes loading-box-step {
+  0%, 24.99% {
+    background-color: currentColor;
+    border-color: currentColor;
+  }
+  25%, 100% {
+    background-color: var(--color-loading-box-idle);
+    border-color: var(--color-loading-box-idle);
+  }
+}
+
+/* Existing icon spinners across the app now render the same four-square sequence. */
+.animate-spin { animation: none; }
+.material-symbols-outlined.animate-spin {
+  position: relative;
+  display: inline-block;
+  -webkit-text-fill-color: transparent;
+}
+.material-symbols-outlined.animate-spin::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(currentColor 0 0),
+    linear-gradient(currentColor 0 0),
+    linear-gradient(currentColor 0 0),
+    linear-gradient(currentColor 0 0),
+    linear-gradient(var(--color-loading-box-idle) 0 0),
+    linear-gradient(var(--color-loading-box-idle) 0 0),
+    linear-gradient(var(--color-loading-box-idle) 0 0),
+    linear-gradient(var(--color-loading-box-idle) 0 0);
+  background-position:
+    left top, right top, left bottom, right bottom,
+    left top, right top, left bottom, right bottom;
+  background-repeat: no-repeat;
+  background-size:
+    0 0, 0 0, 0 0, 0 0,
+    30% 30%, 30% 30%, 30% 30%, 30% 30%;
+  animation: legacy-loading-box-step 1s steps(1, end) infinite;
+}
+@keyframes legacy-loading-box-step {
+  0%, 24.99% {
+    background-size: 30% 30%, 0 0, 0 0, 0 0, 30% 30%, 30% 30%, 30% 30%, 30% 30%;
+  }
+  25%, 49.99% {
+    background-size: 0 0, 30% 30%, 0 0, 0 0, 30% 30%, 30% 30%, 30% 30%, 30% 30%;
+  }
+  50%, 74.99% {
+    background-size: 0 0, 0 0, 30% 30%, 0 0, 30% 30%, 30% 30%, 30% 30%, 30% 30%;
+  }
+  75%, 99.99% {
+    background-size: 0 0, 0 0, 0 0, 30% 30%, 30% 30%, 30% 30%, 30% 30%, 30% 30%;
+  }
+  100% {
+    background-size: 30% 30%, 0 0, 0 0, 0 0, 30% 30%, 30% 30%, 30% 30%, 30% 30%;
+  }
+}
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
@@ -429,6 +572,28 @@ button:disabled,
   to { transform: translateY(0); opacity: 1; }
 }
 .slide-in-right { animation: slideInFromRight 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+@keyframes progressSweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+.progress-indeterminate {
+  animation: progressSweep 1.1s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-boxes__square { animation: none; }
+  .loading-boxes__square:first-child {
+    background-color: currentColor;
+    border-color: currentColor;
+  }
+  .material-symbols-outlined.animate-spin::before {
+    animation: none;
+    background-size:
+      30% 30%, 0 0, 0 0, 0 0,
+      30% 30%, 30% 30%, 30% 30%, 30% 30%;
+  }
+  .progress-indeterminate { animation: none; transform: translateX(0); width: 40%; }
+}
 .fade-in { animation: fadeIn 0.2s ease-out forwards; }
 .slide-in-top { animation: slideInFromTop 0.18s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
 .modal-in {
@@ -450,6 +615,22 @@ button:disabled,
 @keyframes ctaShimmer {
   0% { transform: translateX(-120%) skewX(-20deg); }
   100% { transform: translateX(220%) skewX(-20deg); }
+}
+@keyframes proxyShimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+@keyframes proxyTextFlow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.proxy-shimmer-beam {
+  animation: proxyShimmer 3s ease-in-out infinite;
+}
+.proxy-text-gradient {
+  background-size: 200% auto;
+  animation: proxyTextFlow 4s ease infinite;
 }
 @keyframes ctaGlowPulse {
   0%, 100% { box-shadow: 0 8px 24px -8px rgba(229, 106, 74, 0.45), 0 0 0 0 rgba(229, 106, 74, 0.5); }

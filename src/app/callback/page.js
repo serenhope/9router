@@ -40,7 +40,7 @@ function CallbackContent() {
 
     // Method 1: postMessage to opener (popup mode)
     // Send once per expected origin. The browser delivers the message only
-    // when the opener's origin matches the targetOrigin we pass — using "*"
+    // when the opener's origin matches the targetOrigin we pass - using "*"
     // here would leak the code/state to any opener (e.g. an attacker page
     // that opened this URL in a popup), so iterate over the allowlist.
     if (window.opener) {
@@ -90,7 +90,7 @@ function CallbackContent() {
         {status === "processing" && (
           <>
             <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-              <span className="material-symbols-outlined text-3xl text-primary animate-spin">progress_activity</span>
+              <span className="material-symbols-outlined text-3xl text-primary animate-spin">hourglass_top</span>
             </div>
             <h1 className="text-xl font-semibold mb-2">Processing...</h1>
             <p className="text-text-muted">Please wait while we complete the authorization.</p>
@@ -99,8 +99,8 @@ function CallbackContent() {
 
         {(status === "success" || status === "done") && (
           <>
-            <div className="size-16 mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-              <span className="material-symbols-outlined text-3xl text-green-600">check_circle</span>
+            <div className="size-16 mx-auto mb-4 rounded-full bg-success/15 border border-success/30 flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl text-success">task_alt</span>
             </div>
             <h1 className="text-xl font-semibold mb-2">Authorization Successful!</h1>
             <p className="text-text-muted">
@@ -111,8 +111,8 @@ function CallbackContent() {
 
         {status === "manual" && (
           <>
-            <div className="size-16 mx-auto mb-4 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
-              <span className="material-symbols-outlined text-3xl text-yellow-600">info</span>
+            <div className="size-16 mx-auto mb-4 rounded-full bg-warning/15 border border-warning/30 flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl text-warning">help</span>
             </div>
             <h1 className="text-xl font-semibold mb-2">Copy This URL</h1>
             <p className="text-text-muted mb-4">
@@ -138,7 +138,7 @@ export default function CallbackPage() {
       <div className="min-h-screen flex items-center justify-center bg-bg">
         <div className="text-center p-8">
           <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-            <span className="material-symbols-outlined text-3xl text-primary animate-spin">progress_activity</span>
+            <span className="material-symbols-outlined text-3xl text-primary animate-spin">hourglass_top</span>
           </div>
           <p className="text-text-muted">Loading...</p>
         </div>

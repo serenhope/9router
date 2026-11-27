@@ -3,6 +3,7 @@ import { createProviderNode, getProviderNodes, updateProviderNode, getProviderNo
 import { OPENAI_COMPATIBLE_PREFIX, ANTHROPIC_COMPATIBLE_PREFIX, CUSTOM_EMBEDDING_PREFIX } from "@/shared/constants/providers";
 import { generateId } from "@/shared/utils";
 import { normalizeLogo } from "@/shared/utils/providerLogo";
+import { isReservedProviderPrefix } from "@/shared/utils/providerPrefix.js";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,8 @@ export async function GET() {
 export async function POST(request) {
  try {
  const body = await request.json();
- const { name, prefix, apiType, baseUrl, type, brand, logo } = body;
+ const { name, prefix, apiType, baseUrl, type, brand, logo, quotaEnabled, quotaPath } = body;
+
 
  if (!name?.trim()) {
  return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -42,14 +44,41 @@ export async function POST(request) {
  if (!prefix?.trim()) {
  return NextResponse.json({ error: "Prefix is required" }, { status: 400 });
  }
+ if (isReservedProviderPrefix(prefix)) {
+ return NextResponse.json({ error: `The prefix "${prefix.trim()}" is reserved by a built-in provider. Choose a unique prefix for this custom node.` }, { status: 400 });
+ }
 
  const normalizedLogo = normalizeLogo(logo);
  if (normalizedLogo === undefined) {
    return NextResponse.json({ error: "Logo must be a small PNG, JPEG, WebP or GIF data URL" }, { status: 400 });
  }
+    let normalizedQuotaPath = "/credits";
+    if (typeof quotaPath === "string" && quotaPath.trim()) {
+      normalizedQuotaPath = quotaPath.trim();
+      if (!/^https?:\/\//i.test(normalizedQuotaPath) && !normalizedQuotaPath.startsWith("/")) {
+        normalizedQuotaPath = `/${normalizedQuotaPath}`;
+      }
+    }
 
- // Determine type
- const nodeType = type || "openai-compatible";
+ // Determine type. An explicit type is required: silently defaulting an
+ // omitted type to openai-compatible created phantom "OpenAI Compatible"
+ // nodes from callers that never meant to add one.
+ const nodeType = type;
+ const VALID_NODE_TYPES = new Set(["openai-compatible", "anthropic-compatible", "custom-embedding"]);
+ if (!nodeType || !VALID_NODE_TYPES.has(nodeType)) {
+ return NextResponse.json({ error: "Provider node type is required" }, { status: 400 });
+ }
+
+ // A provider node must not silently duplicate another one. Retries and
+ // double submits used to insert a second node with a fresh id because only
+ // the id was unique, so nodes with the same name or prefix piled up.
+ const existingNodes = await getProviderNodes();
+ if (existingNodes.some((n) => n.prefix?.toLowerCase() === prefix.trim().toLowerCase())) {
+ return NextResponse.json({ error: "A provider with this prefix already exists" }, { status: 409 });
+ }
+ if (existingNodes.some((n) => n.name?.toLowerCase() === name.trim().toLowerCase())) {
+ return NextResponse.json({ error: "A provider with this name already exists" }, { status: 409 });
+ }
 
  if (nodeType === "openai-compatible") {
  if (!apiType || !["chat", "responses"].includes(apiType)) {
@@ -65,6 +94,8 @@ export async function POST(request) {
  name: name.trim(),
  brand,
  logo: normalizedLogo,
+ quotaEnabled: quotaEnabled === true,
+ quotaPath: normalizedQuotaPath,
  });
  return NextResponse.json({ node }, { status: 201 });
  }
@@ -104,6 +135,8 @@ export async function POST(request) {
  name: name.trim(),
  brand,
  logo: normalizedLogo,
+ quotaEnabled: quotaEnabled === true,
+ quotaPath: normalizedQuotaPath,
  });
  return NextResponse.json({ node }, { status: 201 });
  }
@@ -130,6 +163,9 @@ export async function PATCH(request) {
  // Sanitize prefix
  if (updateData.prefix !== undefined) {
  updateData.prefix = updateData.prefix.trim().replace(/^\/+|\/+$/g, "");
+ if (isReservedProviderPrefix(updateData.prefix)) {
+ return NextResponse.json({ error: `The prefix "${updateData.prefix}" is reserved by a built-in provider. Choose a unique prefix for this custom node.` }, { status: 400 });
+ }
  }
  // Sanitize baseUrl
  if (updateData.baseUrl !== undefined) {

@@ -1,30 +1,37 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Card, Button } from "@/shared/components";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { Card, Button, PageShell } from "@/shared/components";
 import { CONSOLE_LOG_CONFIG } from "@/shared/constants/config";
-
-const LOG_LEVEL_COLORS = {
-  LOG: "text-green-400",
-  INFO: "text-blue-400",
-  WARN: "text-yellow-400",
-  ERROR: "text-red-400",
-  DEBUG: "text-purple-400",
-};
+import { stripEmoji } from "@/shared/utils/plainText";
 
 function colorLine(line, index) {
-  // Detect log level from tags like [LOG], [INFO], [WARN], [ERROR], [DEBUG]
-  let levelColor = "text-gray-300";
-  if (line.includes("[ERROR]") || line.includes("✗")) levelColor = "text-red-400";
-  else if (line.includes("[WARN]")) levelColor = "text-yellow-400";
-  else if (line.includes("[INFO]") || line.includes("▶")) levelColor = "text-blue-400";
-  else if (line.includes("[DEBUG]")) levelColor = "text-purple-400";
-  else if (line.includes("✓") || line.includes("done")) levelColor = "text-green-400";
+  let levelColor = "text-text-main";
+  let tagBg = "";
+  if (line.includes("[ERROR]") || line.includes("✗") || line.includes("Error:") || line.includes("FAILED")) {
+    levelColor = "text-rose-400";
+    tagBg = "bg-rose-500/10";
+  } else if (line.includes("[WARN]") || line.includes("⚠️")) {
+    levelColor = "text-amber-400";
+    tagBg = "bg-amber-500/10";
+  } else if (line.includes("[INFO]") || line.includes("▶") || line.includes("ℹ️")) {
+    levelColor = "text-cyan-400";
+    tagBg = "bg-cyan-500/10";
+  } else if (line.includes("[DEBUG]") || line.includes("🐛")) {
+    levelColor = "text-text-muted";
+  } else if (line.includes("✓") || line.includes("done") || line.includes("SUCCESS")) {
+    levelColor = "text-emerald-400";
+    tagBg = "bg-emerald-500/10";
+  }
 
   return (
-    <div className="flex gap-2 hover:bg-white/5 px-1 rounded">
-      <span className="text-gray-600 select-none shrink-0 w-8 text-right">{index + 1}</span>
-      <span className={levelColor}>{line}</span>
+    <div className={`flex items-start gap-2.5 px-2 py-0.5 hover:bg-surface-2/60 rounded font-mono text-xs leading-relaxed transition-colors ${tagBg}`}>
+      <span className="text-text-muted/50 select-none shrink-0 w-9 text-right font-mono text-[11px] pt-0.5">
+        {index + 1}
+      </span>
+      <span className={`flex-1 break-all whitespace-pre-wrap ${levelColor}`}>
+        {stripEmoji(line)}
+      </span>
     </div>
   );
 }
@@ -32,15 +39,27 @@ function colorLine(line, index) {
 export default function ConsoleLogClient() {
   const [logs, setLogs] = useState([]);
   const [connected, setConnected] = useState(false);
+  const [filter, setFilter] = useState("");
+  const [levelFilter, setLevelFilter] = useState("all"); // "all", "report_problem", "warn", "info"
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [copied, setCopied] = useState(false);
   const logRef = useRef(null);
 
   const handleClear = async () => {
+    if (!window.confirm("Clear all console logs?")) return;
     try {
       await fetch("/api/translator/console-logs", { method: "DELETE" });
-      // UI cleared via SSE "clear" event
+      setLogs([]);
     } catch (err) {
       console.error("Failed to clear console logs:", err);
     }
+  };
+
+  const handleCopy = () => {
+    const text = filteredLogs.join("\n");
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   useEffect(() => {
@@ -49,21 +68,25 @@ export default function ConsoleLogClient() {
     es.onopen = () => setConnected(true);
 
     es.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
-      if (msg.type === "init") {
-        setLogs(msg.logs.slice(-CONSOLE_LOG_CONFIG.maxLines));
-      } else if (msg.type === "line") {
-        setLogs((prev) => {
-          const next = [...prev, msg.line];
-          return next.length > CONSOLE_LOG_CONFIG.maxLines ? next.slice(-CONSOLE_LOG_CONFIG.maxLines) : next;
-        });
-      } else if (msg.type === "lines") {
-        setLogs((prev) => {
-          const next = [...prev, ...msg.lines];
-          return next.length > CONSOLE_LOG_CONFIG.maxLines ? next.slice(-CONSOLE_LOG_CONFIG.maxLines) : next;
-        });
-      } else if (msg.type === "clear") {
-        setLogs([]);
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === "init") {
+          setLogs(msg.logs.slice(-CONSOLE_LOG_CONFIG.maxLines));
+        } else if (msg.type === "line") {
+          setLogs((prev) => {
+            const next = [...prev, msg.line];
+            return next.length > CONSOLE_LOG_CONFIG.maxLines ? next.slice(-CONSOLE_LOG_CONFIG.maxLines) : next;
+          });
+        } else if (msg.type === "lines") {
+          setLogs((prev) => {
+            const next = [...prev, ...msg.lines];
+            return next.length > CONSOLE_LOG_CONFIG.maxLines ? next.slice(-CONSOLE_LOG_CONFIG.maxLines) : next;
+          });
+        } else if (msg.type === "clear") {
+          setLogs([]);
+        }
+      } catch {
+        /* fail open */
       }
     };
 
@@ -74,43 +97,146 @@ export default function ConsoleLogClient() {
 
   // Auto-scroll to bottom on new logs
   useEffect(() => {
-    if (!logRef.current) return;
+    if (!autoScroll || !logRef.current) return;
     logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [logs]);
+  }, [logs, autoScroll]);
+
+  const filteredLogs = useMemo(() => {
+    return logs.filter((line) => {
+      if (levelFilter === "report_problem" && !(line.includes("[ERROR]") || line.includes("✗") || line.includes("Error:") || line.includes("FAILED"))) {
+        return false;
+      }
+      if (levelFilter === "warn" && !(line.includes("[WARN]") || line.includes("⚠️"))) {
+        return false;
+      }
+      if (levelFilter === "info" && !(line.includes("[INFO]") || line.includes("▶") || line.includes("ℹ️"))) {
+        return false;
+      }
+      if (filter && !line.toLowerCase().includes(filter.toLowerCase())) {
+        return false;
+      }
+      return true;
+    });
+  }, [logs, filter, levelFilter]);
 
   return (
-    <div className="">
-      <Card>
-        <div className="flex items-center justify-between px-4 pt-3 pb-2">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[18px] text-text-muted">receipt_long</span>
-            <span className="text-sm font-medium text-text-main">Console Logs</span>
-            <span className="text-xs text-text-muted">({logs.length} lines)</span>
+    <PageShell width="full" className="min-w-0">
+      <Card className="flex flex-col overflow-hidden rounded-2xl border-border bg-surface shadow-sm">
+        {/* Sleek Terminal Header */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 px-4 py-4 border-b border-border bg-surface-2/40 sm:px-5">
+          <div className="flex items-center gap-3">
+            {/* Terminal Window Dots */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="size-3 rounded-full bg-rose-500/80 inline-block" />
+              <span className="size-3 rounded-full bg-amber-500/80 inline-block" />
+              <span className="size-3 rounded-full bg-emerald-500/80 inline-block" />
+            </div>
+
+            <div className="h-4 w-px bg-border" />
+
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px] text-primary">code</span>
+              <span className="text-sm font-semibold text-text-main">Live Terminal Console</span>
+              <span className="text-xs text-text-muted font-mono">({filteredLogs.length} / {logs.length} lines)</span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className={`text-xs px-2 py-0.5 rounded ${connected ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}>
-              {connected ? "Connected" : "Disconnected"}
+
+          {/* Action buttons & Connection state */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-mono font-medium ${
+                connected
+                  ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                  : "bg-rose-500/10 text-rose-500 border border-rose-500/20"
+              }`}
+            >
+              <span className={`size-1.5 rounded-full ${connected ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
+              {connected ? "Live Stream" : "Disconnected"}
             </span>
-            <Button size="sm" variant="outline" icon="delete" onClick={handleClear}>
-              Clear
+
+            <Button
+              size="sm"
+              variant={autoScroll ? "primary" : "outline"}
+              icon={autoScroll ? "south" : "pause_circle"}
+              onClick={() => setAutoScroll(!autoScroll)}
+              title={autoScroll ? "Auto-scroll is ON" : "Auto-scroll is PAUSED"}
+            >
+              {autoScroll ? "Auto-scroll" : "Paused"}
             </Button>
+
+            {logs.length > 0 && (
+              <>
+                <Button size="sm" variant="outline" icon={copied ? "task_alt" : "file_copy"} onClick={handleCopy}>
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+                <Button size="sm" variant="danger" icon="delete_sweep" onClick={handleClear}>
+                  Clear
+                </Button>
+              </>
+            )}
           </div>
         </div>
+
+        {/* Filter bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 border-b border-border/60 bg-surface text-xs">
+          <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+            <span className="material-symbols-outlined text-[16px] text-text-muted">manage_search</span>
+            <input
+              type="text"
+              placeholder="Search console logs..."
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="w-full bg-transparent text-text-main placeholder-text-muted/60 focus:outline-none font-mono text-xs"
+            />
+            {filter && (
+              <button onClick={() => setFilter("")} className="text-text-muted hover:text-text-main">
+                <span className="material-symbols-outlined text-[14px]">cancel</span>
+              </button>
+            )}
+          </div>
+
+          {/* Level Filter Chips */}
+          <div className="flex items-center gap-1 shrink-0 font-mono text-[11px]">
+            {[
+              { id: "all", label: "ALL" },
+              { id: "report_problem", label: "ERRORS" },
+              { id: "warn", label: "WARNS" },
+              { id: "info", label: "INFO" },
+            ].map((lvl) => (
+              <button
+                key={lvl.id}
+                onClick={() => setLevelFilter(lvl.id)}
+                className={`px-2 py-0.5 rounded transition-colors ${
+                  levelFilter === lvl.id
+                    ? "bg-primary text-white font-semibold"
+                    : "text-text-muted hover:text-text-main hover:bg-surface-2"
+                }`}
+              >
+                {lvl.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Terminal Body */}
         <div
           ref={logRef}
-          className="bg-black rounded-b-lg p-4 text-xs font-mono h-[calc(100vh-220px)] overflow-y-auto"
+          className="p-3 sm:p-4 font-mono text-xs h-[calc(100dvh-290px)] md:h-[calc(100dvh-250px)] overflow-y-auto bg-surface-2 text-text-main select-text custom-scrollbar border border-border-subtle rounded-b-2xl"
         >
-          {logs.length === 0 ? (
-            <span className="text-text-muted">No console logs yet.</span>
+          {filteredLogs.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-text-muted/60 gap-2">
+              <span className="material-symbols-outlined text-3xl">code</span>
+              <span>{logs.length === 0 ? "Waiting for console output..." : "No log lines match current filter."}</span>
+            </div>
           ) : (
             <div className="space-y-0.5">
-              {logs.map((line, i) => (
+              {filteredLogs.map((line, i) => (
                 <div key={i}>{colorLine(line, i)}</div>
               ))}
             </div>
           )}
         </div>
       </Card>
-    </div>
+    </PageShell>
   );
 }

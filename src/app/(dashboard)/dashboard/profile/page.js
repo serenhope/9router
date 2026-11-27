@@ -3,11 +3,12 @@
 import { useState, useEffect, useRef } from "react";
 import { Card, Button, Toggle, Input, Select, DownloadBackupModal } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
-import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
+import SettingsHistory from "@/shared/components/SettingsHistory";
 import { cn } from "@/shared/utils/cn";
+import { useSessionStore } from "@/store/sessionStore";
+import { useTaskStore } from "@/store/taskStore";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
-import { LOCALE_FLAGS } from "@/shared/constants/locales";
 
 function getLocaleFromCookie() {
   if (typeof document === "undefined") return "en";
@@ -65,10 +66,17 @@ function BackupCountdown({ target, onExpire, showDate = false }) {
   );
 }
 
+// Background import-job endpoint built by agent B. POST starts a job from the
+// same JSON body as the direct import and answers { jobId }; GET
+// <endpoint>/<jobId> answers { status, progress, section, error }. A 404/405
+// means the endpoint does not exist yet and the caller falls back to POST /api/settings/database.
+const IMPORT_JOB_ENDPOINT = "/api/settings/database/jobs";
+
 export default function ProfilePage() {
   const [locale, setLocale] = useState(() => getLocaleFromCookie());
   const [langOpen, setLangOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
+  const sessionRole = useSessionStore((state) => state.role);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   const [settings, setSettings] = useState({ fallbackStrategy: "fill-first" });
   const [loading, setLoading] = useState(true);
@@ -127,6 +135,52 @@ export default function ProfilePage() {
   const certFileRef = useRef(null);
 
   const importFileRef = useRef(null);
+  // Progress state for backup export/import and test runs. `busy` holds
+  // { title, message, section, progress }. It has no overlay of its own: the
+  // task store below is the only surface it reaches, so the run is announced in
+  // the notification bell instead of taking over the page with a fixed scrim
+  // anchored bottom-right.
+  const [busy, setBusy] = useState(null);
+  const profileTaskRef = useRef(null);
+
+  // Report the backup run into the bell task store (no page overlay).
+  useEffect(() => {
+    if (busy) {
+      const taskId = "profile-backup-task";
+      profileTaskRef.current = taskId;
+      const pct = typeof busy.progress === "number" && Number.isFinite(busy.progress)
+        ? Math.min(100, Math.max(0, Math.round(busy.progress <= 1 ? busy.progress * 100 : busy.progress)))
+        : 0;
+      const taskData = {
+        id: taskId,
+        title: busy.title || "Backup Operation",
+        message: busy.message || "Working",
+        progress: pct,
+        href: "/dashboard/profile",
+      };
+      const existing = useTaskStore.getState().tasks.find((t) => t.id === taskId);
+      if (!existing || existing.state === "done") {
+        useTaskStore.getState().start(taskData);
+      } else {
+        useTaskStore.getState().update(taskId, {
+          title: taskData.title,
+          message: taskData.message,
+          progress: taskData.progress,
+        });
+      }
+    } else if (profileTaskRef.current) {
+      useTaskStore.getState().finish(profileTaskRef.current);
+      profileTaskRef.current = null;
+    }
+  }, [busy]);
+
+  useEffect(() => {
+    return () => {
+      if (profileTaskRef.current) {
+        useTaskStore.getState().finish(profileTaskRef.current);
+      }
+    };
+  }, []);
   const [proxyForm, setProxyForm] = useState({
     outboundProxyEnabled: false,
     outboundProxyUrl: "",
@@ -743,6 +797,7 @@ export default function ProfilePage() {
   const saveAutoBackup = async () => {
   setTgLoading(true);
   setTgStatus({ type: "", message: "" });
+  setBusy({ title: "Saving backup configuration", message: "Saving automatic backup settings" });
   try {
   const payload = {
   enabled: tgForm.enabled,
@@ -773,6 +828,7 @@ export default function ProfilePage() {
   setTgStatus({ type: "error", message: "An error occurred while saving the configuration" });
   } finally {
   setTgLoading(false);
+  setBusy(null);
   }
   };
 
@@ -783,6 +839,7 @@ export default function ProfilePage() {
   const runTestBackup = async (password) => {
   setTgLoading(true);
   setTgStatus({ type: "", message: "" });
+  setBusy({ title: "Sending test backup", message: "Uploading backup to the configured channel" });
   try {
   const res = await fetch("/api/settings/auto-backup", {
   method: "POST",
@@ -800,12 +857,14 @@ export default function ProfilePage() {
   setTgStatus({ type: "error", message: "An error occurred while sending the test backup" });
   } finally {
   setTgLoading(false);
+  setBusy(null);
   }
   };
 
   const handleExportDatabase = async (password, selectedSections = []) => {
     setDbLoading(true);
     setDbStatus({ type: "", message: "" });
+    setBusy({ title: "Preparing backup", message: "Exporting database" });
     try {
       const sectionsQuery = selectedSections && selectedSections.length > 0
         ? `?sections=${selectedSections.join(",")}`
@@ -837,6 +896,7 @@ export default function ProfilePage() {
       setDbStatus({ type: "error", message: err.message || "Failed to export database" });
     } finally {
       setDbLoading(false);
+      setBusy(null);
     }
   };
 
@@ -849,23 +909,112 @@ export default function ProfilePage() {
     setDbAuth({ open: true, mode: "import", password: "" });
   };
 
+  // Poll a background import job started by agent B. Resolves when the job
+  // reports done/failed, rejects on timeout or job failure. Non-blocking: the
+  // page stays interactive while polling, progress is mirrored to the overlay.
+  //
+  // Auth is the poll token issued at job creation, not the password: the import
+  // replaces the settings row that stores the password hash, so re-checking the
+  // password on every poll starts failing part-way through a restore that is
+  // actually succeeding. The password stays as a fallback for servers that
+  // predate the token.
+  const pollImportJob = async (jobId, password, pollToken) => {
+    const startedAt = Date.now();
+    const timeoutMs = 5 * 60 * 1000;
+    const pollHeaders = pollToken
+      ? { "x-9r-poll-token": pollToken }
+      : { "x-9r-password": password || "" };
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, 750));
+      const res = await fetch(`${IMPORT_JOB_ENDPOINT}/${encodeURIComponent(jobId)}`, {
+        headers: pollHeaders,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to check import status");
+      }
+      const data = await res.json().catch(() => ({}));
+      const status = String(data.status || "").toLowerCase();
+      if (typeof data.progress !== "undefined" || data.section || data.message) {
+        setBusy({
+          title: "Importing database",
+          message: data.message || "Import running in the background",
+          section: data.section || "",
+          progress: data.progress,
+        });
+      }
+      if (status === "done" || status === "completed" || status === "success") return;
+      if (status === "failed" || status === "error") {
+        throw new Error(data.error || "Failed to import database");
+      }
+      if (Date.now() - startedAt > timeoutMs) {
+        throw new Error("Import is taking too long, please check the result and try again");
+      }
+    }
+  };
+
+  // Direct (synchronous) import, used as the fallback when the background
+  // job endpoint from agent B is not available yet.
+  const runDirectImport = async (body) => {
+    const res = await fetch("/api/settings/database", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to import database");
+    }
+  };
+
   const runImportDatabase = async (password) => {
     const file = pendingImportRef.current;
     if (!file) return;
     setDbLoading(true);
+    setDbStatus({ type: "", message: "" });
+    setBusy({ title: "Importing database", message: "Reading backup file" });
     try {
       const raw = await file.text();
       const payload = JSON.parse(raw);
+      const body = { ...payload, password };
 
-      const res = await fetch("/api/settings/database", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, password }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to import database");
+      // Prefer the background job flow (agent B); fall back to the direct
+      // POST when the job endpoint answers 404/405 (not built yet).
+      let usedJob = false;
+      try {
+        const jobRes = await fetch(IMPORT_JOB_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (jobRes.status === 404 || jobRes.status === 405) {
+          await runDirectImport(body);
+        } else {
+          const jobData = await jobRes.json().catch(() => ({}));
+          if (!jobRes.ok) {
+            throw new Error(jobData.error || "Failed to import database");
+          }
+          if (jobData && jobData.jobId) {
+            usedJob = true;
+            setBusy({
+              title: "Importing database",
+              message: "Import running in the background",
+              section: jobData.section || "",
+              progress: jobData.progress,
+            });
+            await pollImportJob(jobData.jobId, password, jobData.pollToken);
+          } else {
+            await runDirectImport(body);
+          }
+        }
+      } catch (err) {
+        // Network-level failure of the job endpoint (not a job failure) also
+        // falls back to the direct import instead of failing the restore.
+        if (!usedJob && (err instanceof TypeError)) {
+          await runDirectImport(body);
+        } else {
+          throw err;
+        }
       }
 
       await reloadSettings();
@@ -875,6 +1024,7 @@ export default function ProfilePage() {
     } finally {
       pendingImportRef.current = null;
       setDbLoading(false);
+      setBusy(null);
     }
   };
 
@@ -912,15 +1062,28 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 sm:px-0">
-      <div className="flex flex-col gap-6">
+    <div className="w-full max-w-6xl mx-auto px-4 sm:px-0 min-w-0">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+        <header className="space-y-1 lg:col-span-2">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-text-main">Profile &amp; Settings</h1>
+          <p className="text-sm text-text-muted">Manage access, integrations, backups, and dashboard preferences.</p>
+        </header>
         {/* Local Mode Info */}
         <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
+              <span className="material-symbols-outlined text-[20px]">database</span>
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-lg font-semibold text-text-main">Database &amp; Backups</h2>
+              <p className="text-xs sm:text-sm text-text-muted">Local storage and backup operations.</p>
+            </div>
+          </div>
           <div className="flex flex-col gap-3">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-bg border border-border gap-2">
               <div>
                 <p className="font-medium text-sm sm:text-base">Database Location</p>
-                <p className="text-xs sm:text-sm text-text-muted font-mono break-all">~/.9router/db/data.sqlite</p>
+                <p className="text-xs sm:text-sm text-text-muted font-mono break-all">~/.9router/db/data.sqlite (default)</p>
               </div>
             </div>
             <div className="flex flex-col gap-2">
@@ -932,7 +1095,7 @@ export default function ProfilePage() {
                 )}
                 <Button
                   variant="secondary"
-                  icon="cloud_sync"
+                  icon="sync"
                   onClick={() => { setTgModalOpen(true); loadAutoBackup(); }}
                   className="w-full sm:w-auto"
                 >
@@ -942,7 +1105,7 @@ export default function ProfilePage() {
                 <div className="flex flex-col sm:flex-row gap-2">
                   <Button
                     variant="secondary"
-                    icon="download"
+                    icon="file_download"
                     onClick={() => setShowDownloadBackupModal(true)}
                     loading={dbLoading}
                     className="w-full sm:w-auto"
@@ -951,7 +1114,7 @@ export default function ProfilePage() {
                   </Button>
                   <Button
                     variant="outline"
-                    icon="upload"
+                    icon="drive_folder_upload"
                     onClick={() => importFileRef.current?.click()}
                     disabled={dbLoading}
                     className="w-full sm:w-auto"
@@ -967,7 +1130,7 @@ export default function ProfilePage() {
                   />
                 </div>
                 {dbStatus.message && (
-                  <p className={`text-sm ${dbStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
+                  <p className={`text-sm ${dbStatus.type === "error" ? "text-danger" : "text-success"}`}>
                     {dbStatus.message}
                   </p>
                 )}
@@ -980,7 +1143,7 @@ export default function ProfilePage() {
         <Card>
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
-              <span className="material-symbols-outlined text-[20px]">shield</span>
+              <span className="material-symbols-outlined text-[20px]">shield_person</span>
             </div>
             <h3 className="text-base sm:text-lg font-semibold">Security</h3>
           </div>
@@ -1059,7 +1222,7 @@ export default function ProfilePage() {
             className="w-full flex items-center gap-3 text-left"
           >
             <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500 shrink-0">
-              <span className="material-symbols-outlined text-[20px]">lock_open</span>
+              <span className="material-symbols-outlined text-[20px]">password</span>
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="text-base sm:text-lg font-semibold">Single Sign-On (SSO)</h3>
@@ -1072,7 +1235,7 @@ export default function ProfilePage() {
               </p>
             </div>
             <span className="material-symbols-outlined text-text-muted shrink-0">
-              {oidcExpanded ? "expand_less" : "expand_more"}
+              {oidcExpanded ? "expand_less" : "keyboard_arrow_down"}
             </span>
           </button>
           {oidcExpanded && (
@@ -1084,14 +1247,14 @@ export default function ProfilePage() {
               {/* SSO Protocol Switcher Tabs */}
               <div className="flex flex-col gap-2">
                 <label className="font-medium text-sm sm:text-base">SSO Protocol</label>
-                <div className="flex p-1 rounded-lg bg-black/5 dark:bg-white/5 border border-border">
+                <div className="flex p-1 rounded-lg bg-surface-2 border border-border-subtle">
                   <button
                     type="button"
                     onClick={() => setSsoTypeTab("saml")}
                     className={cn(
                       "flex-1 py-1.5 px-3 rounded-md font-medium text-xs sm:text-sm transition-all text-center",
                       ssoTypeTab === "saml"
-                        ? "bg-white dark:bg-white/10 text-text-main shadow-sm"
+                        ? "bg-surface text-text-main shadow-sm border border-border-subtle"
                         : "text-text-muted hover:text-text-main"
                     )}
                   >
@@ -1103,7 +1266,7 @@ export default function ProfilePage() {
                     className={cn(
                       "flex-1 py-1.5 px-3 rounded-md font-medium text-xs sm:text-sm transition-all text-center",
                       ssoTypeTab === "oidc"
-                        ? "bg-white dark:bg-white/10 text-text-main shadow-sm"
+                        ? "bg-surface text-text-main shadow-sm border border-border-subtle"
                         : "text-text-muted hover:text-text-main"
                     )}
                   >
@@ -1149,7 +1312,7 @@ export default function ProfilePage() {
                           "text-left rounded-lg border p-3 transition-colors",
                           active
                             ? "border-primary bg-primary/5"
-                            : "border-border bg-bg hover:bg-black/5 dark:hover:bg-white/5"
+                            : "border-border bg-surface hover:bg-surface-2"
                         )}
                         disabled={loading || oidcLoading || samlLoading}
                       >
@@ -1172,7 +1335,7 @@ export default function ProfilePage() {
                       className="w-full p-3 flex items-center justify-between gap-2 text-left hover:bg-surface/50 transition-colors"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-primary text-lg">menu_book</span>
+                        <span className="material-symbols-outlined text-primary text-lg">help</span>
                         <div>
                           <p className="font-semibold text-xs sm:text-sm text-text-main">
                             IdP Setup Guidelines & Provider Configuration Instructions
@@ -1186,14 +1349,14 @@ export default function ProfilePage() {
                         className="material-symbols-outlined text-text-muted transition-transform text-lg"
                         style={{ transform: showSamlGuide ? "rotate(180deg)" : "none" }}
                       >
-                        expand_more
+                        keyboard_arrow_down
                       </span>
                     </button>
 
                     {showSamlGuide && (
                       <div className="p-4 border-t border-border bg-surface/30 text-xs text-text-main flex flex-col gap-3">
                         <div className="p-2.5 rounded border border-primary/20 bg-primary/5 text-primary text-xs">
-                          <p className="font-semibold mb-1">🔑 Required Service Provider (SP) Values for your IdP Setup:</p>
+                          <p className="mb-1 flex items-center gap-1.5 font-semibold"><span className="material-symbols-outlined text-[14px] leading-none">vpn_key</span>Required Service Provider (SP) Values for your IdP Setup:</p>
                           <ul className="list-disc pl-4 space-y-1 font-mono text-[11px]">
                             <li>
                               <b>Assertion Consumer Service (ACS) URL:</b>{" "}
@@ -1213,7 +1376,7 @@ export default function ProfilePage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                           <div className="p-3 rounded border border-border bg-bg/50 flex flex-col gap-1.5">
                             <p className="font-semibold text-text-main flex items-center gap-1.5">
-                              <span>☁️</span> AWS IAM Identity Center
+                              <span className="material-symbols-outlined text-[15px] leading-none text-text-muted">cloud_queue</span> AWS IAM Identity Center
                             </p>
                             <ol className="list-decimal pl-4 text-text-muted space-y-1">
                               <li>Applications → <b>Add application</b> → Select <b>Add custom SAML 2.0 application</b>.</li>
@@ -1226,7 +1389,7 @@ export default function ProfilePage() {
 
                           <div className="p-3 rounded border border-border bg-bg/50 flex flex-col gap-1.5">
                             <p className="font-semibold text-text-main flex items-center gap-1.5">
-                              <span>🔷</span> Microsoft Entra ID (Azure AD)
+                              <span className="material-symbols-outlined text-[15px] leading-none text-text-muted">admin_panel_settings</span> Microsoft Entra ID (Azure AD)
                             </p>
                             <ol className="list-decimal pl-4 text-text-muted space-y-1">
                               <li>Enterprise Applications → <b>New application</b> → <b>Create your own application</b>.</li>
@@ -1239,7 +1402,7 @@ export default function ProfilePage() {
 
                           <div className="p-3 rounded border border-border bg-bg/50 flex flex-col gap-1.5">
                             <p className="font-semibold text-text-main flex items-center gap-1.5">
-                              <span>🟢</span> Okta / Auth0
+                              <span className="material-symbols-outlined text-[15px] leading-none text-text-muted">verified</span> Okta / Auth0
                             </p>
                             <ol className="list-decimal pl-4 text-text-muted space-y-1">
                               <li>Applications → <b>Create App Integration</b> → Select <b>SAML 2.0</b>.</li>
@@ -1252,7 +1415,7 @@ export default function ProfilePage() {
 
                           <div className="p-3 rounded border border-border bg-bg/50 flex flex-col gap-1.5">
                             <p className="font-semibold text-text-main flex items-center gap-1.5">
-                              <span>🛡️</span> Keycloak / Authentik
+                              <span className="material-symbols-outlined text-[15px] leading-none text-text-muted">lock</span> Keycloak / Authentik
                             </p>
                             <ol className="list-decimal pl-4 text-text-muted space-y-1">
                               <li>Clients → <b>Create client</b> → Select <b>SAML</b>.</li>
@@ -1276,7 +1439,7 @@ export default function ProfilePage() {
                       type="button"
                       variant="outline"
                       size="sm"
-                      icon="upload_file"
+                      icon="drive_folder_upload"
                       onClick={() => idpMetadataFileRef.current?.click()}
                     >
                       Upload Metadata XML
@@ -1318,7 +1481,7 @@ export default function ProfilePage() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          icon="file_upload"
+                          icon="drive_file_move"
                           onClick={() => certFileRef.current?.click()}
                         >
                           Upload Certificate
@@ -1385,7 +1548,7 @@ export default function ProfilePage() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        icon="content_copy"
+                        icon="file_copy"
                         onClick={() => {
                           navigator.clipboard.writeText(samlAcsUrl);
                           setSamlStatus({ type: "success", message: "ACS URL copied to clipboard!" });
@@ -1406,7 +1569,7 @@ export default function ProfilePage() {
                         download="9router-sp-metadata.xml"
                         className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                       >
-                        <span className="material-symbols-outlined text-[16px]">download</span>
+                        <span className="material-symbols-outlined text-[16px]">file_download</span>
                         Download XML
                       </a>
                     </div>
@@ -1531,13 +1694,13 @@ export default function ProfilePage() {
               )}
 
               {settings.authMode === "oidc" || settings.authMode === "saml" || settings.authMode === "sso" ? (
-                <p className="text-xs sm:text-sm text-amber-600 dark:text-amber-400">
+                <p className="text-xs sm:text-sm text-warning">
                   SSO login ({settings.ssoType === "saml" ? "SAML 2.0" : "OIDC"}) is currently active. Password login is disabled until you switch back.
                 </p>
               ) : null}
 
               {settings.authMode === "both" && (
-                <p className="text-xs sm:text-sm text-amber-600 dark:text-amber-400">
+                <p className="text-xs sm:text-sm text-warning">
                   Password and SSO login ({settings.ssoType === "saml" ? "SAML 2.0" : "OIDC"}) are both active.
                 </p>
               )}
@@ -1549,7 +1712,7 @@ export default function ProfilePage() {
         <Card>
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500 shrink-0">
-              <span className="material-symbols-outlined text-[20px]">route</span>
+              <span className="material-symbols-outlined text-[20px]">alt_route</span>
             </div>
             <h3 className="text-base sm:text-lg font-semibold">Routing Strategy</h3>
           </div>
@@ -1640,7 +1803,7 @@ export default function ProfilePage() {
         <Card>
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500 shrink-0">
-              <span className="material-symbols-outlined text-[20px]">wifi</span>
+              <span className="material-symbols-outlined text-[20px]">router</span>
             </div>
             <h3 className="text-base sm:text-lg font-semibold">Network</h3>
           </div>
@@ -1712,7 +1875,7 @@ export default function ProfilePage() {
         <Card>
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500 shrink-0">
-              <span className="material-symbols-outlined text-[20px]">monitoring</span>
+              <span className="material-symbols-outlined text-[20px]">analytics</span>
             </div>
             <h3 className="text-base sm:text-lg font-semibold">Observability</h3>
           </div>
@@ -1731,21 +1894,32 @@ export default function ProfilePage() {
           </div>
         </Card>
 
-        {/* Account actions */}
+        {/* Settings history: who changed what, with revert. */}
+        <SettingsHistory
+          onReverted={() => {
+            // Settings may have been replaced wholesale; re-read the form.
+            if (typeof window !== "undefined") window.location.reload();
+          }}
+        />
+
+        {/* Account actions. Shutdown is administrator-only: a key session can
+            open this page by URL, so the button follows the role, not the route. */}
         <div className="flex flex-col sm:flex-row gap-2">
+          {sessionRole !== "apikey" && (
+            <Button
+              variant="outline"
+              fullWidth
+              icon="power_off"
+              onClick={() => setShutdownOpen(true)}
+              className="text-danger border-danger/30 hover:bg-danger/10 hover:border-danger/40"
+            >
+              Shutdown
+            </Button>
+          )}
           <Button
             variant="outline"
             fullWidth
-            icon="power_settings_new"
-            onClick={() => setShutdownOpen(true)}
-            className="text-red-500 border-red-200 hover:bg-red-50 hover:border-red-300"
-          >
-            Shutdown
-          </Button>
-          <Button
-            variant="outline"
-            fullWidth
-            icon="logout"
+            icon="exit_to_app"
             onClick={handleLogout}
           >
             Logout
@@ -1833,7 +2007,7 @@ export default function ProfilePage() {
         label="Repository (owner/repo)"
         value={tgForm.ghRepo}
         onChange={(e) => updateTgForm({ ghRepo: e.target.value })}
-        placeholder="e.g. serenhope/9router-backups"
+        placeholder="e.g. alvin-revoers/9router-backups"
         />
         </div>
         )}
@@ -1860,7 +2034,7 @@ export default function ProfilePage() {
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-4 border-t border-border/50">
         <Button
         variant="secondary"
-        icon="send"
+        icon="outgoing_mail"
         onClick={() => setDbAuth({ open: true, mode: "tgtest", password: "" })}
         loading={tgLoading}
         disabled={!tgHasTgToken && !tgHasGhToken}
@@ -1880,7 +2054,7 @@ export default function ProfilePage() {
         </div>
         </div>
         {tgStatus.message && (
-        <p className={`text-sm ${tgStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
+        <p className={`text-sm ${tgStatus.type === "error" ? "text-danger" : "text-success"}`}>
         {tgStatus.message}
         </p>
         )}
@@ -1893,6 +2067,7 @@ export default function ProfilePage() {
         onDownload={(password, sections) => handleExportDatabase(password, sections)}
         loading={dbLoading}
       />
+
 
       <Modal
         isOpen={dbAuth.open}

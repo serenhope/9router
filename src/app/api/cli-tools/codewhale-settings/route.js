@@ -1,4 +1,3 @@
-"use server";
 
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
@@ -7,6 +6,8 @@ import os from "os";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { parseTOML, stringifyTOML } from "confbox";
+
+export const dynamic = "force-dynamic";
 
 const execAsync = promisify(exec);
 
@@ -101,7 +102,7 @@ export async function POST(request) {
       model: model || "provider/model-id",
     };
 
-    const header = "# CodeWhale config — managed by 9Router\n\n";
+    const header = "# CodeWhale config - managed by 9Router\n\n";
     const content = header + stringifyTOML(existing);
 
     await fs.writeFile(configPath, content, "utf-8");

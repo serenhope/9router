@@ -1,10 +1,17 @@
 "use client";
 
 import { useState, useRef } from "react";
+import PropTypes from "prop-types";
 import { Modal, Button } from "@/shared/components";
 import { translate } from "@/i18n/runtime";
+import { useTaskStore } from "@/store/taskStore";
 
-const PLACEHOLDER = `[
+// Server-side bulk insert runs serially, so very large payloads are split
+// client-side into batches. Keeps each request small and lets the overlay
+// report real per-account progress.
+const BULK_BATCH_SIZE = 20;
+
+const PLACEHOLDER = `]
   {
     "access_token": "eyJ0eXAiOiJhdCtqd3Qi...",
     "refresh_token": "LZhriF9bf88pPykpXCuZ9...",
@@ -57,12 +64,12 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
   const [submitting, setSubmitting] = useState(false);
   const [parseError, setParseError] = useState("");
   const [result, setResult] = useState(null);
+  const [importProgress, setImportProgress] = useState(null); // { done, total }
   const [isDragging, setIsDragging] = useState(false);
   const [fileCountInfo, setFileCountInfo] = useState(null);
   const fileInputRef = useRef(null);
 
   const handleClose = () => {
-    if (submitting) return;
     setJsonText("");
     setParseError("");
     setResult(null);
@@ -151,19 +158,48 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
     }
 
     setSubmitting(true);
+    setImportProgress({ done: 0, total: accounts.length });
+    const taskId = "bulk-import-grok";
+    useTaskStore.getState().start({
+      id: taskId,
+      title: translate("Importing accounts"),
+      message: `0/${accounts.length} accounts`,
+      progress: 0,
+      href: typeof window !== "undefined" ? window.location.pathname : null,
+    });
+    // Close modal immediately so user can navigate or switch tabs
+    onClose();
     try {
-      const res = await fetch("/api/oauth/grok-cli/bulk-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accounts }),
-      });
-      const data = await res.json();
+      let success = 0;
+      let failed = 0;
+      const results = [];
+      for (let offset = 0; offset < accounts.length; offset += BULK_BATCH_SIZE) {
+        const batch = accounts.slice(offset, offset + BULK_BATCH_SIZE);
+        const res = await fetch("/api/oauth/grok-cli/bulk-import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accounts: batch }),
+        });
+        const data = await res.json();
 
-      if (!res.ok) {
-        setParseError(data?.error || `Request failed: ${res.status}`);
-        return;
+        if (!res.ok) {
+          setParseError(data?.error || `Request failed: ${res.status}`);
+          return;
+        }
+
+        success += data.success || 0;
+        failed += data.failed || 0;
+        for (const item of data.results || []) {
+          results.push({ ...item, index: (item.index ?? 0) + offset });
+        }
+        const currentDone = Math.min(accounts.length, offset + batch.length);
+        setImportProgress({ done: currentDone, total: accounts.length });
+        useTaskStore.getState().update(taskId, {
+          message: `${currentDone}/${accounts.length} accounts`,
+          progress: Math.round((currentDone / accounts.length) * 100),
+        });
       }
-
+      const data = { success, failed, results };
       setResult(data);
       if (data.success > 0 && typeof onSuccess === "function") {
         onSuccess();
@@ -171,11 +207,16 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
     } catch (err) {
       setParseError(err.message || translate("Request failed"));
     } finally {
+      useTaskStore.getState().finish(taskId);
       setSubmitting(false);
+      setImportProgress(null);
     }
   };
 
   const failedItems = result?.results?.filter((r) => !r.ok) || [];
+  const importPct = importProgress && importProgress.total > 0
+    ? Math.round((importProgress.done / importProgress.total) * 100)
+    : null;
 
   return (
     <Modal isOpen={isOpen} title={translate("Bulk Add Grok CLI Accounts")} onClose={handleClose}>
@@ -196,7 +237,7 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
             type="button"
             size="sm"
             variant="secondary"
-            icon="upload_file"
+            icon="drive_folder_upload"
             onClick={() => fileInputRef.current?.click()}
             disabled={submitting}
           >
@@ -226,8 +267,8 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
           />
 
           {isDragging && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-sidebar/90 rounded pointer-events-none backdrop-blur-xs">
-              <span className="material-symbols-outlined text-3xl text-primary mb-1">upload_file</span>
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-sidebar/90 rounded pointer-events-none ">
+              <span className="material-symbols-outlined text-3xl text-primary mb-1">drive_folder_upload</span>
               <span className="text-sm font-medium text-primary">
                 {translate("Drop .json files here")}
               </span>
@@ -237,7 +278,7 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
 
         {fileCountInfo && (
           <div className="flex items-center gap-1.5 text-xs text-green-400 font-medium bg-green-500/10 border border-green-500/20 px-2.5 py-1.5 rounded">
-            <span className="material-symbols-outlined text-sm">check_circle</span>
+            <span className="material-symbols-outlined text-sm">task_alt</span>
             <span>
               {translate("Loaded")} {fileCountInfo.accountsCount} {translate("account(s) from")}{" "}
               {fileCountInfo.filesCount} {translate("file(s)")}
@@ -252,7 +293,7 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
         {result && result.failed > 0 && (
           <div className="flex flex-col gap-2">
             <div className="text-sm font-medium text-yellow-400">
-              ✗ {result.failed} {translate("failed")}
+              {result.failed} {translate("failed")}
             </div>
             {failedItems.length > 0 && (
               <ul className="rounded border border-accent/20 bg-sidebar/50 p-2 text-xs font-mono max-h-40 overflow-y-auto">
@@ -274,7 +315,7 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
           >
             {submitting ? translate("Importing...") : translate("Import All")}
           </Button>
-          <Button onClick={handleClose} variant="ghost" fullWidth disabled={submitting}>
+          <Button onClick={handleClose} variant="ghost" fullWidth>
             {translate("Close")}
           </Button>
         </div>
@@ -282,3 +323,9 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
     </Modal>
   );
 }
+
+BulkImportGrokCliModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onSuccess: PropTypes.func,
+};

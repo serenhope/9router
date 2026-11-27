@@ -5,10 +5,82 @@ import PropTypes from "prop-types";
 import Modal from "./Modal";
 import ProviderIcon from "./ProviderIcon";
 import CapacityBadges from "./CapacityBadges";
+import ModelTierBadge from "./ModelTierBadge";
+import { Spinner } from "./Loading";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
-import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
+import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
 import { buildStudioTargetIndex } from "@/shared/utils/studioModelVisibility";
+import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
+import { resolveProviderName, findOwningGroupId, humanizeCompatId } from "@/shared/utils/providerDisplay";
+import { formatContextWindow } from "@/shared/utils/contextWindow";
+
+// Same matching rules the server applies to allowedModels: exact name, `prefix*`
+// and `*suffix`, case-insensitive. Mirrored here so a scoped session only ever sees
+// the models it may hand out.
+function matchesModelScope(patterns, value, id) {
+  if (!patterns || patterns.length === 0) return true;
+  const candidates = [value, id]
+    .filter(Boolean)
+    .map((v) => String(v).trim().toLowerCase());
+  if (candidates.length === 0) return false;
+  return candidates.some((req) =>
+    patterns.some((allowed) => {
+      if (allowed === "*" || allowed === req) return true;
+      if (allowed.endsWith("*")) return req.startsWith(allowed.slice(0, -1));
+      if (allowed.startsWith("*")) return req.endsWith(allowed.slice(1));
+      return false;
+    })
+  );
+}
+
+// A custom model whose providerAlias is a deleted compat node id must not open
+// a ghost group in the picker. isOrphanCompatAlias is true only when the alias
+// looks like a generated compat node id and no live node claims it.
+function isOrphanCompatAlias(alias, providerNodes) {
+  if (typeof alias !== "string" || !alias) return false;
+  if (humanizeCompatId(alias) === "") return false;
+  return !(providerNodes || []).some((n) => n?.id === alias);
+}
+
+// The window every client needs before it starts compacting, shown next to the
+// model name so a 1M model is never picked as if it were a 256k one.
+function ContextTag({ caps }) {
+  const ctx = caps?.contextWindow;
+  if (!Number.isFinite(ctx) || ctx <= 0) return null;
+  return (
+    <span className="text-[9px] opacity-60 font-normal" title={`${Number(ctx).toLocaleString()} tokens`}>
+      {formatContextWindow(ctx)}
+    </span>
+  );
+}
+
+function ModelChoiceRow({ checked, onClick, title, children }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={checked}
+      title={title}
+      onClick={onClick}
+      className={`group flex min-h-11 w-full min-w-0 items-center gap-2 border-2 px-3 py-2 text-left text-xs font-semibold transition-[transform,box-shadow,background-color] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#191817] ${
+        checked
+          ? "border-[#191817] bg-[#c8ee68] text-[#191817] shadow-[3px_3px_0_#191817]"
+          : "border-[#191817] bg-[#fffdf8] text-[#191817] shadow-[2px_2px_0_#191817] hover:-translate-y-px hover:bg-[#fff1bf] hover:shadow-[3px_3px_0_#191817]"
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`flex size-5 shrink-0 items-center justify-center border-2 border-[#191817] ${checked ? "bg-[#191817] text-[#c8ee68]" : "bg-[#fffdf8] text-transparent"}`}
+      >
+        <span className="material-symbols-outlined text-[15px] leading-none">check</span>
+      </span>
+      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1 break-words leading-snug">{children}</span>
+    </button>
+  );
+}
+
+import { parseSearchQuery, matchesSearch } from "@/shared/utils/modelSearchFilter";
+import { getDeactivatedProviderIds } from "@/shared/utils/connectionStatus";
 
 // Provider order: OAuth first, then Free Tier, then API Key (matches dashboard/providers)
 const PROVIDER_ORDER = [
@@ -18,8 +90,12 @@ const PROVIDER_ORDER = [
   ...Object.keys(APIKEY_PROVIDERS),
 ];
 
-// Providers that need no auth — always show in model selector
-const NO_AUTH_PROVIDER_IDS = Object.keys(FREE_PROVIDERS).filter(id => FREE_PROVIDERS[id].noAuth);
+// Providers that need no auth - always show in model selector.
+// Hidden entries stay out: their upstream channel is gone, but they keep
+// `noAuth` so the request path still resolves if an old model id is replayed.
+const NO_AUTH_PROVIDER_IDS = Object.keys(FREE_PROVIDERS).filter(
+  id => FREE_PROVIDERS[id].noAuth && !FREE_PROVIDERS[id].hidden
+);
 
 // Providers with per-account live catalogs via /api/providers/[id]/models.
 // Static registry stays as fallback when live fetch fails or is empty.
@@ -74,26 +150,68 @@ export default function ModelSelectModal({
   onClose,
   onSelect,
   onDeselect,
+  onSelectBatch,
+  onDeselectBatch,
   selectedModel,
   activeProviders = [],
   title = "Select Model",
+  size = "lg",
   modelAliases = {},
   kindFilter = null,
   capFilter = null,
   addedModelValues = [],
   closeOnSelect = true,
   showStudioTargets = false,
+  allowedModelPatterns = null,
+  allowProviderWildcard = false,
 }) {
-  // Filter activeProviders by serviceKinds when kindFilter set (e.g. "webSearch", "webFetch")
+  // Live-fetched connections on modal open, fallback to activeProviders prop
+  const [fetchedConnections, setFetchedConnections] = useState(null);
+  const [connectionsLoading, setConnectionsLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
+
+  const fetchConnections = async () => {
+    setConnectionsLoading(true);
+    setCatalogError("");
+    try {
+      const res = await fetch("/api/providers", { cache: "no-store" });
+      if (!res.ok) throw new Error(`Failed to fetch providers: ${res.status}`);
+      const data = await res.json();
+      setFetchedConnections(data.connections || []);
+    } catch (error) {
+      console.error("Error fetching providers in ModelSelectModal:", error);
+      setFetchedConnections(activeProviders || []);
+      setCatalogError("Connected providers could not be refreshed. Showing the available fallback list.");
+    } finally {
+      setConnectionsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) fetchConnections();
+  }, [isOpen]);
+
+  const effectiveConnections = useMemo(() => {
+    return fetchedConnections !== null ? fetchedConnections : (activeProviders || []);
+  }, [fetchedConnections, activeProviders]);
+
+  // Filter effectiveConnections by active state and serviceKinds when kindFilter set (e.g. "webSearch", "webFetch")
   const filteredActiveProviders = useMemo(() => {
-    if (!kindFilter) return activeProviders;
-    return activeProviders.filter((p) => {
+    const activeOnly = effectiveConnections.filter((p) => p && p.isActive !== false);
+    if (!kindFilter) return activeOnly;
+    return activeOnly.filter((p) => {
       const info = AI_PROVIDERS[p.provider];
       const kinds = info?.serviceKinds || ["llm"];
       return kinds.includes(kindFilter);
     });
-  }, [activeProviders, kindFilter]);
-  const { getCaps } = useModelCaps();
+  }, [effectiveConnections, kindFilter]);
+
+  // Set of provider IDs that have connections configured, but ALL of them are deactivated (isActive === false)
+  const deactivatedProviderIds = useMemo(() => {
+    return getDeactivatedProviderIds(effectiveConnections);
+  }, [effectiveConnections]);
+
+  const { getCaps, getComboCaps } = useModelCaps();
   const [searchQuery, setSearchQuery] = useState("");
   const [combos, setCombos] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
@@ -107,14 +225,45 @@ export default function ModelSelectModal({
   // activeProviders itself changes.
   const liveConnectionIdsByProvider = useMemo(() => {
     const map = Object.fromEntries(LIVE_CATALOG_PROVIDERS.map((id) => [id, []]));
-    for (const p of activeProviders) {
+    for (const p of filteredActiveProviders) {
       if (p?.id && Object.prototype.hasOwnProperty.call(map, p.provider)) map[p.provider].push(p.id);
     }
     return map;
-  }, [activeProviders]);
+  }, [filteredActiveProviders]);
   const cursorConnectionIds = liveConnectionIdsByProvider.cursor;
   const clineConnectionIds = liveConnectionIdsByProvider.cline;
   const clinepassConnectionIds = liveConnectionIdsByProvider.clinepass;
+
+  // Free no-auth providers publish a moving public catalogue (OpenCode Free
+  // changes weekly). The registry table is curated, so live entries are merged
+  // in when the picker opens; a failed fetch leaves this empty and the registry
+  // rows alone keep the list usable.
+  const [freeCatalogModels, setFreeCatalogModels] = useState({});
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const targets = NO_AUTH_PROVIDER_IDS
+      .map((id) => [id, FREE_PROVIDERS[id]?.modelsFetcher])
+      .filter(([, fetcher]) => fetcher);
+    if (targets.length === 0) return undefined;
+    let cancelled = false;
+    Promise.all(
+      targets.map(async ([id, fetcher]) => {
+        const { data } = await fetchSuggestedModels(fetcher);
+        // The provider panel needs the whole catalogue, but this picker only
+        // offers free-tier ids: the paid ones answer 401 without a key.
+        // Jev ids are free-tier but have no chat route (upstream answers
+        // ModelProtocolUnsupported on /chat/completions for them), so they are
+        // dropped here the same way the panel filter drops them.
+        return [id, Array.isArray(data) ? data.filter((m) => (m?.isFree === true || m?.id?.endsWith("-free")) && m?.id !== "jev-1.13" && m?.id !== "jev-1.13-free" && m?.id !== "minimax-m3.1-flash-free") : []];
+      })
+    ).then((lists) => {
+      if (cancelled) return;
+      setFreeCatalogModels(Object.fromEntries(lists.filter(([, list]) => list.length)));
+    }).catch(() => {
+      if (!cancelled) setFreeCatalogModels({});
+    });
+    return () => { cancelled = true; };
+  }, [isOpen]);
 
   const cursorModels = useLiveProviderModels(isOpen, cursorConnectionIds, "Cursor");
   const clineModels = useLiveProviderModels(isOpen, clineConnectionIds, "Cline");
@@ -203,6 +352,14 @@ export default function ModelSelectModal({
   const allProviders = useMemo(() => ({ ...OAUTH_PROVIDERS, ...FREE_PROVIDERS, ...FREE_TIER_PROVIDERS, ...APIKEY_PROVIDERS }), []);
 
   // Group models by provider with priority order
+  // Component scope, not inside the memo below: the count is printed in the group
+  // header at render time, and a helper closed over only the memo's locals throws a
+  // ReferenceError there - which unmounts the page through the error boundary.
+  const disabledCountFor = (providerId, alias) => {
+    const ids = new Set([...(disabledModels[alias] || []), ...(disabledModels[providerId] || [])]);
+    return ids.size;
+  };
+
   const groupedModels = useMemo(() => {
     const groups = {};
 
@@ -227,15 +384,49 @@ export default function ModelSelectModal({
     const activeConnectionIds = filteredActiveProviders.map(p => p.provider);
 
     // No-auth providers: filter by kindFilter as well
-    const noAuthIds = kindFilter
+    const noAuthIds = (kindFilter
       ? NO_AUTH_PROVIDER_IDS.filter((id) => (AI_PROVIDERS[id]?.serviceKinds || ["llm"]).includes(kindFilter))
-      : NO_AUTH_PROVIDER_IDS;
+      : NO_AUTH_PROVIDER_IDS).filter((id) => !deactivatedProviderIds.has(id));
+
+    // Compatible nodes (OpenAI/Anthropic Compatible) that already have user-added
+    // custom models should be selectable even without an API-key connection. Local /
+    // self-hosted endpoints (Ollama, internal relays, etc.) don't always need a stored
+    // key, so gating on connections hides models the user already added. These nodes
+    // are LLM-only, so only surface them when no kind filter is active.
+    //
+    // The node itself must still exist. A custom model outlives the node it was
+    // registered against, and without the node record there is no prefix, key or
+    // endpoint left to route it: the group opens as a raw "OpenAI Compatible
+    // (xxxxxxxx)" heading holding only dead rows. This rule mirrors
+    // isOrphanCompatAlias for the ungrouped custom models below.
+    // See #4177, #2113, #2119, #1988.
+    const existingNodeIds = new Set((providerNodes || []).map((n) => n?.id).filter(Boolean));
+    const compatibleNodeIds = kindFilter
+      ? []
+      : customModels
+          .map((m) => m.providerAlias)
+          .filter((alias) =>
+            (isOpenAICompatibleProvider(alias) || isAnthropicCompatibleProvider(alias)) &&
+            existingNodeIds.has(alias) &&
+            !deactivatedProviderIds.has(alias)
+          );
 
     // Only show connected providers (including both standard and custom)
     const providerIdsToShow = new Set([
       ...activeConnectionIds,  // Only connected providers
       ...noAuthIds,            // No-auth providers (kind-filtered)
-    ]);
+      ...compatibleNodeIds,    // Compatible nodes with user-added models
+    ].filter((id) => !deactivatedProviderIds.has(id)));
+
+    // Built-in providers keyed by every alias they answer to, so a custom
+    // model can be traced back to the provider that owns it.
+    const registryIdByAlias = new Map();
+    for (const providerId of [...Object.keys(allProviders), ...Object.keys(WEB_COOKIE_PROVIDERS)]) {
+      for (const alias of [providerId, getProviderAlias(providerId)]) {
+        if (alias) registryIdByAlias.set(String(alias).toLowerCase(), providerId);
+      }
+    }
+    const registryIdForAlias = (alias) => (alias ? registryIdByAlias.get(String(alias).toLowerCase()) || null : null);
 
     // Sort by PROVIDER_ORDER
     const sortedProviderIds = [...providerIdsToShow].sort((a, b) => {
@@ -246,7 +437,12 @@ export default function ModelSelectModal({
 
     sortedProviderIds.forEach((providerId) => {
       const alias = getProviderAlias(providerId);
-      const providerInfo = allProviders[providerId] || { name: providerId, color: "#666" };
+      // Web-cookie providers live in their own registry bucket; without it the
+      // heading fell back to the storage alias ("gemini-web") and their real
+      // model list never reached the picker.
+      const registryInfo = allProviders[providerId] || WEB_COOKIE_PROVIDERS[providerId];
+      // An unregistered compatible node used to head its group with the raw id.
+      const providerInfo = registryInfo || { name: resolveProviderName(providerId) || providerId, color: "#666" };
       const isCustomProvider = isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
 
       // For provider-as-model kinds (webSearch/webFetch): emit a single entry where value === providerId
@@ -269,7 +465,7 @@ export default function ModelSelectModal({
             value: fullModel,
           }));
         const customRegisteredModels = customModels
-          .filter((m) => m.providerAlias === alias)
+          .filter((m) => m.providerAlias === alias || m.providerAlias?.toLowerCase() === alias?.toLowerCase())
           .map((m) => ({
             id: m.id,
             name: m.name || m.id,
@@ -278,37 +474,26 @@ export default function ModelSelectModal({
             isCustom: true,
           }));
 
-        // For typed kinds, only include hardcoded typed models (aliases are typically LLM-only and lack type info)
+        // For typed kinds, only include user-added typed models (aliases are typically LLM-only and lack type info)
         let combined = aliasModels;
         if (kindFilter && TYPED_KINDS.has(kindFilter)) {
           const registeredTyped = customRegisteredModels.filter((m) => getModelKind(m) === kindFilter);
-          combined = [
-            ...registeredTyped,
-            ...getModelsByProviderId(providerId)
-            .filter((m) => getModelKind(m) === kindFilter)
-            .map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) }))
-            .filter((m) => !registeredTyped.some((registered) => registered.value === m.value)),
-          ];
-          // Fallback: provider-as-model when no hardcoded models match (tts/image/webFetch only)
+          combined = [...registeredTyped];
+          // Fallback: provider-as-model when no user-added models match (tts/image/webFetch only)
           if (combined.length === 0 && ALLOW_PROVIDER_FALLBACK_KINDS.has(kindFilter)) {
             const supports = (providerInfo.serviceKinds || ["llm"]).includes(kindFilter);
             if (supports) combined = [{ id: providerId, name: providerInfo.name, value: alias }];
           }
         } else {
-          // LLM/null kind: merge hardcoded models (e.g. mimo-free → mimo-auto) with user-added models
+          // LLM/null kind: only show user-added models (registered + aliases)
           const registeredLlms = customRegisteredModels.filter((m) => !getModelKind(m) || getModelKind(m) === "llm");
-          const seen = new Set([...aliasModels, ...registeredLlms].map((m) => m.value));
-          const hardcoded = getModelsByProviderId(providerId)
-            .filter((m) => !getModelKind(m) || getModelKind(m) === "llm")
-            .map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) }))
-            .filter((m) => !seen.has(m.value));
-          combined = [...registeredLlms, ...aliasModels.filter((m) => !registeredLlms.some((registered) => registered.value === m.value)), ...hardcoded];
+          combined = [...registeredLlms, ...aliasModels.filter((m) => !registeredLlms.some((registered) => registered.value === m.value))];
         }
 
         if (combined.length > 0) {
           // Check for custom name from providerNodes (for compatible providers)
           const matchedNode = providerNodes.find(node => node.id === providerId);
-          const displayName = matchedNode?.name || providerInfo.name;
+          const displayName = resolveProviderName(providerId, { node: matchedNode, registry: providerInfo });
 
           groups[providerId] = {
             name: displayName,
@@ -318,12 +503,12 @@ export default function ModelSelectModal({
           };
         }
       } else if (isCustomProvider) {
-        // Custom (openai/anthropic-compatible) providers are LLM-only — skip for typed media kinds
+        // Custom (openai/anthropic-compatible) providers are LLM-only - skip for typed media kinds
         if (kindFilter && TYPED_KINDS.has(kindFilter)) return;
         // Find connection object to get prefix synchronously without waiting for providerNodes fetch
-        const connection = activeProviders.find(p => p.provider === providerId);
+        const connection = filteredActiveProviders.find(p => p.provider === providerId) || effectiveConnections.find(p => p.provider === providerId);
         const matchedNode = providerNodes.find(node => node.id === providerId);
-        const displayName = matchedNode?.name || connection?.name || providerInfo.name;
+        const displayName = resolveProviderName(providerId, { node: matchedNode, connection, registry: providerInfo });
         const nodePrefix = connection?.providerSpecificData?.prefix || matchedNode?.prefix || providerId;
 
         // Aliases are stored using the raw providerId as key (e.g. "openai-compatible-chat-<uuid>/glm-4.7"),
@@ -339,7 +524,7 @@ export default function ModelSelectModal({
         // Merge custom models registered via /api/models/custom for this provider
         // providerAlias in DB uses the raw providerId, not the display prefix
         const registeredCustom = customModels
-          .filter((m) => m.providerAlias === providerId)
+          .filter((m) => m.providerAlias === providerId || m.providerAlias?.toLowerCase() === providerId?.toLowerCase())
           .map((m) => ({
             id: m.id,
             name: m.name || m.id,
@@ -368,9 +553,21 @@ export default function ModelSelectModal({
         };
       } else {
         const liveModels = providerId === "cursor" ? cursorModels : providerId === "cline" ? clineModels : providerId === "clinepass" ? clinepassModels : [];
-        const hardcodedModels = liveModels.length > 0
-          ? liveModels
-          : getModelsByProviderId(providerId);
+        // Cursor/Cline account catalogs are the actual selectable models. Keep a
+        // registry fallback so a slow or unavailable live endpoint never empties
+        // the group; custom aliases are still merged below.
+        const providerCatalog = LIVE_CATALOG_PROVIDERS.includes(providerId)
+          ? (liveModels.length > 0 ? liveModels : getModelsByProviderId(providerId))
+          : [];
+        const hardcodedModels = providerCatalog
+          .filter((m) => m?.id)
+          .map((m) => ({
+            id: m.id,
+            name: m.name || m.id,
+            value: `${alias}/${m.id}`,
+            kind: getModelKind(m),
+            isFree: m.isFree,
+          }));
         const hardcodedIds = new Set(hardcodedModels.map((m) => m.id));
 
         // Custom models: if no hardcoded models (e.g. openrouter), show all aliases for this provider
@@ -390,11 +587,11 @@ export default function ModelSelectModal({
         // Custom models registered via /api/models/custom (provider "Add Model" button)
         const customAliasIds = new Set(customAliasModels.map((m) => m.id));
         const customRegisteredModels = customModels
-          .filter((m) => m.providerAlias === alias && !hardcodedIds.has(m.id) && !customAliasIds.has(m.id))
-          .map((m) => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, isCustom: true }));
+          .filter((m) => (m.providerAlias === alias || m.providerAlias?.toLowerCase() === alias?.toLowerCase()) && !hardcodedIds.has(m.id) && !customAliasIds.has(m.id))
+          .map((m) => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, isCustom: true, isFree: m.isFree }));
 
         const merged = [
-          ...hardcodedModels.map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })),
+          ...hardcodedModels,
           ...customAliasModels,
           ...customRegisteredModels,
         ];
@@ -426,6 +623,91 @@ export default function ModelSelectModal({
       }
     });
 
+    // Fallback: custom models that did not land in any provider group yet.
+    // This happens when the provider alias stored in DB does not match any
+    // active provider shown above (e.g. scoped API key sessions). They are
+    // grouped under the alias each model actually belongs to, which is what the
+    // value has to point at anyway. The allowedModelPatterns filter still applies.
+    //
+    // They used to be pushed into the first provider with passthroughModels, which
+    // merged unrelated models under that provider's heading and rewrote their
+    // value to that provider's prefix - so picking one silently retargeted the
+    // request at a provider the model never belonged to.
+    const groupedModelIds = new Set(
+      Object.values(groups).flatMap((g) => (g.models || []).map((m) => m.id))
+    );
+    const ungroupedCustom = customModels.filter((m) => {
+      if (groupedModelIds.has(m.id)) return false;
+      // Only surface models that pass the scope filter when it is active.
+      if (allowedModelPatterns) {
+        return matchesModelScope(allowedModelPatterns, `${m.providerAlias}/${m.id}`, m.id)
+          || matchesModelScope(allowedModelPatterns, m.name, m.id);
+      }
+      return true;
+    });
+    if (ungroupedCustom.length > 0) {
+      const CUSTOM_GROUP_COLOR = "#8b5cf6";
+      const aliasToGroupId = new Map(
+        Object.entries(groups).map(([id, g]) => [String(g.alias).toLowerCase(), id])
+      );
+      const seenAlias = new Set();
+
+      for (const m of ungroupedCustom) {
+        if (groupedModelIds.has(m.id)) continue;
+        const modelAlias = m.providerAlias || "";
+        // An orphaned compat node id would resolve to a ghost
+        // "OpenAI Compatible (xxxx)" heading via humanizeCompatId, so the
+        // model is hidden instead of opening that group.
+        if (isOrphanCompatAlias(modelAlias, providerNodes)) continue;
+        // A custom model whose built-in provider is not connected would open a
+        // group for a provider the user cannot route to: the heading names a
+        // provider that is absent from the dashboard, and the rows are dead.
+        // Compatible nodes are exempt - they legitimately live without a key.
+        const ownerProviderId = registryIdForAlias(modelAlias);
+        if (ownerProviderId && !providerIdsToShow.has(ownerProviderId)) continue;
+        const entry = {
+          id: m.id,
+          name: m.name || m.id,
+          value: modelAlias ? `${modelAlias}/${m.id}` : m.id,
+          kind: getModelKind(m),
+          isCustom: true,
+          isFree: m.isFree,
+        };
+
+        // A group already standing in for this alias keeps ownership of the model.
+        const ownerId = findOwningGroupId(groups, aliasToGroupId, modelAlias);
+        if (ownerId) {
+          groups[ownerId].models.push(entry);
+          groupedModelIds.add(m.id);
+          continue;
+        }
+
+        const groupId = modelAlias || "__custom";
+        if (!groups[groupId]) {
+          const node = providerNodes.find((n) => n.id === modelAlias);
+          const registryEntry = ownerProviderId ? allProviders[ownerProviderId] || WEB_COOKIE_PROVIDERS[ownerProviderId] : null;
+          groups[groupId] = {
+            name: resolveProviderName(modelAlias, { node, registry: registryEntry }) || "Custom Models",
+            alias: modelAlias || "custom",
+            color: node?.color || registryEntry?.color || CUSTOM_GROUP_COLOR,
+            models: [],
+            isCustom: true,
+          };
+          if (!seenAlias.has(modelAlias.toLowerCase())) {
+            aliasToGroupId.set(modelAlias.toLowerCase(), groupId);
+            seenAlias.add(modelAlias.toLowerCase());
+          }
+        }
+        groups[groupId].models.push(entry);
+        groupedModelIds.add(m.id);
+      }
+
+      // A group created purely as a bucket should not keep an empty shape around.
+      for (const [id, group] of Object.entries(groups)) {
+        if (group.isCustom && group.models.length === 0) delete groups[id];
+      }
+    }
+
     // Filter out disabled models per provider (disabled keyed by storage alias OR providerId)
     Object.entries(groups).forEach(([providerId, group]) => {
       const aliasKey = getProviderAlias(providerId);
@@ -438,8 +720,31 @@ export default function ModelSelectModal({
       if (group.models.length === 0) delete groups[providerId];
     });
 
+    // Filter by enabledModels if explicitly configured on any active connection for this provider
+    Object.entries(groups).forEach(([providerId, group]) => {
+      const providerConns = filteredActiveProviders.filter((p) => p.provider === providerId);
+      const explicitEnabled = [];
+      for (const conn of providerConns) {
+        if (Array.isArray(conn.providerSpecificData?.enabledModels) && conn.providerSpecificData.enabledModels.length > 0) {
+          explicitEnabled.push(...conn.providerSpecificData.enabledModels);
+        }
+      }
+      if (explicitEnabled.length > 0) {
+        const enabledSet = new Set(explicitEnabled);
+        const alias = group.alias || getProviderAlias(providerId) || providerId;
+        group.models = group.models.filter((m) =>
+          enabledSet.has(m.id) ||
+          enabledSet.has(m.value) ||
+          enabledSet.has(`${alias}/${m.id}`) ||
+          (m.value && enabledSet.has(m.value.replace(`${alias}/`, "")))
+        );
+        if (group.models.length === 0) delete groups[providerId];
+      }
+    });
 
-    // Models a studio name stands in for stay out of the picker: the studio name
+
+  
+  // Models a studio name stands in for stay out of the picker: the studio name
     // is the one clients should use. The model editor opts out with showStudioTargets.
     if (!showStudioTargets) {
       const studioTargets = buildStudioTargetIndex(studioModels);
@@ -470,27 +775,32 @@ export default function ModelSelectModal({
       });
     }
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, cursorModels, clineModels, clinepassModels, studioModels, showStudioTargets]);
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, cursorModels, clineModels, clinepassModels, studioModels, showStudioTargets, allowedModelPatterns]);
 
-  // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
+  // Parse search query into structured query (regex, positive tokens, negative tokens)
+  const parsedQuery = useMemo(() => parseSearchQuery(searchQuery), [searchQuery]);
+
+  // Filter combos by search query (and hide combos when kindFilter is set - combos are LLM-only by design)
   const filteredCombos = useMemo(() => {
     if (kindFilter || capFilter) return [];
-    if (!searchQuery.trim()) return combos;
-    const query = searchQuery.toLowerCase();
-    return combos.filter(c => c.name.toLowerCase().includes(query));
-  }, [combos, searchQuery, kindFilter]);
+    let list = combos;
+    if (allowedModelPatterns) list = list.filter((c) => matchesModelScope(allowedModelPatterns, c.id || c.name, c.name));
+    if (parsedQuery.isEmpty) return list;
+    return list.filter((c) => matchesSearch(c.name, parsedQuery));
+  }, [combos, parsedQuery, kindFilter, capFilter, allowedModelPatterns]);
 
   // Studio models are LLM-only user-defined names, so they hide for typed kinds.
   const filteredStudioModels = useMemo(() => {
     if (kindFilter || capFilter) return [];
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return studioModels;
-    return studioModels.filter((m) =>
-      m.callName.toLowerCase().includes(query) ||
-      (m.displayName || "").toLowerCase().includes(query) ||
-      m.targetModel.toLowerCase().includes(query)
+    let list = studioModels;
+    if (allowedModelPatterns) list = list.filter((m) => matchesModelScope(allowedModelPatterns, m.callName, m.callName));
+    if (parsedQuery.isEmpty) return list;
+    return list.filter((m) =>
+      matchesSearch(m.callName, parsedQuery) ||
+      (matchesSearch(m.displayName || "", parsedQuery)) ||
+      matchesSearch(m.targetModel || "", parsedQuery)
     );
-  }, [studioModels, searchQuery, kindFilter, capFilter]);
+  }, [studioModels, parsedQuery, kindFilter, capFilter, allowedModelPatterns]);
 
   // Sort models alphabetically, with added models floated to top
   const sortModels = (models) => {
@@ -499,26 +809,41 @@ export default function ModelSelectModal({
     return [...added, ...rest];
   };
 
-  // Filter models by search query
+  // Filter models by search query (supports substring, regex, and negation !token / -token)
   const filteredGroups = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-
     const filtered = {};
     Object.entries(groupedModels).forEach(([providerId, group]) => {
       let models = group.models;
+      if (allowedModelPatterns) {
+        models = models.filter((m) => matchesModelScope(allowedModelPatterns, m.value, m.id));
+        if (models.length === 0) return;
+      }
       // Filter by input-modality capability (vision/pdf/audioInput/videoInput).
       if (capFilter) {
         models = models.filter((m) => getCaps(m.value)?.[capFilter] === true);
         if (models.length === 0) return;
       }
-      if (query) {
-        const providerNameMatches = group.name.toLowerCase().includes(query);
-        models = models.filter(
-          (m) =>
-            m.name.toLowerCase().includes(query) ||
-            m.id.toLowerCase().includes(query)
+      if (!parsedQuery.isEmpty) {
+        const providerNameMatches = matchesSearch(group.name, parsedQuery);
+        const aliasMatches = allowProviderWildcard && (
+          (group.alias && matchesSearch(group.alias, parsedQuery)) ||
+          (providerId && matchesSearch(providerId, parsedQuery)) ||
+          matchesSearch(`${group.alias}/*`, parsedQuery)
         );
-        if (models.length === 0 && !providerNameMatches) return;
+
+        models = models.filter((m) => {
+          if (matchesSearch(m, parsedQuery)) return true;
+          // If provider or alias matches, but model doesn't violate negative exclusion terms
+          if (providerNameMatches || aliasMatches) {
+            if (parsedQuery.negativeTerms.length > 0) {
+              return matchesSearch(m, { ...parsedQuery, positiveTerms: [] });
+            }
+            return true;
+          }
+          return false;
+        });
+
+        if (models.length === 0) return;
       }
       filtered[providerId] = {
         ...group,
@@ -526,8 +851,62 @@ export default function ModelSelectModal({
       };
     });
 
+    // A studio callName already rendered under "Custom Models" must not
+    // also appear inside a provider group. Dedupe against the raw studio
+    // list so the check holds even while search or other filters narrow it.
+    const studioIds = new Set(studioModels.map((s) => (s.callName || "").toLowerCase()));
+    if (studioIds.size > 0) {
+      Object.entries(filtered).forEach(([id, group]) => {
+        const models = group.models.filter((m) => !studioIds.has((m.id || "").toLowerCase()));
+        if (models.length === 0) {
+          delete filtered[id];
+        } else {
+          filtered[id] = { ...group, models };
+        }
+      });
+    }
+
     return filtered;
-  }, [groupedModels, searchQuery, addedModelValues]);
+  }, [groupedModels, parsedQuery, addedModelValues, allowProviderWildcard, allowedModelPatterns, capFilter, getCaps, studioModels]);
+
+  // Visible models available for batch actions (excluding placeholders)
+  const visibleModels = useMemo(() => {
+    const list = [];
+    Object.values(filteredGroups).forEach((group) => {
+      group.models.forEach((m) => {
+        if (!m.isPlaceholder) {
+          list.push(m);
+        }
+      });
+    });
+    return list;
+  }, [filteredGroups]);
+
+  const visibleUnadded = useMemo(() => {
+    return visibleModels.filter((m) => !addedModelValues.includes(m.value));
+  }, [visibleModels, addedModelValues]);
+
+  const visibleAdded = useMemo(() => {
+    return visibleModels.filter((m) => addedModelValues.includes(m.value));
+  }, [visibleModels, addedModelValues]);
+
+  const handleSelectAllVisible = () => {
+    if (visibleUnadded.length === 0) return;
+    if (onSelectBatch) {
+      onSelectBatch(visibleUnadded);
+    } else {
+      visibleUnadded.forEach((model) => onSelect(model));
+    }
+  };
+
+  const handleDeselectAllVisible = () => {
+    if (visibleAdded.length === 0) return;
+    if (onDeselectBatch) {
+      onDeselectBatch(visibleAdded);
+    } else if (onDeselect) {
+      visibleAdded.forEach((model) => onDeselect(model));
+    }
+  };
 
   const handleSelect = (model) => {
     const value = model?.value || model?.name || model;
@@ -553,65 +932,130 @@ export default function ModelSelectModal({
         setSearchQuery("");
       }}
       title={title}
-      size="md"
+      size={size}
       className="p-4!"
       footer={null}
     >
       {/* Info bar */}
-      <div className="flex items-center gap-2 mb-3 px-2.5 py-2 bg-primary/8 border border-primary/20 rounded-lg text-xs text-text-muted">
-        <span className="material-symbols-outlined text-primary shrink-0" style={{ fontSize: "14px" }}>info</span>
-        <span>Click a model to add it, click again to remove it, and the change is saved automatically.</span>
+      <div className="mb-3 flex items-start gap-2 border-2 border-[#191817] bg-[#fff1bf] px-3 py-2.5 text-xs font-medium leading-relaxed text-[#191817] shadow-[3px_3px_0_#191817]">
+        <span className="material-symbols-outlined text-primary shrink-0" style={{ fontSize: "14px" }}>help_outline</span>
+        <span>Click a model to add it, click again to remove it, and the change is saved automatically.{showStudioTargets ? " Rows marked combo route into a fallback group; rows marked custom call another named model." : ""}{allowProviderWildcard ? " Click a provider name for wildcard (e.g. provider/*)." : ""} Search supports exclusions (e.g. claude -haiku) and RegEx (/pattern/).</span>
       </div>
 
-      {/* Search - compact */}
-      <div className="mb-3">
+      {/* Search & batch actions */}
+      <div className="mb-3 space-y-2">
         <div className="relative">
           <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[16px]">
-            search
+            manage_search
           </span>
           <input
             type="text"
-            placeholder="Search..."
+            placeholder={
+              allowProviderWildcard
+                ? "Search models (e.g. claude -haiku, oc/*, /regex/)..."
+                : "Search models (e.g. claude -haiku, !embed, /regex/)..."
+            }
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-surface border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"
+            className="min-h-11 w-full border-2 border-[#191817] bg-[#fffdf8] py-2 pl-9 pr-20 text-sm text-[#191817] placeholder:text-[#514c43] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#191817]"
           />
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+            {parsedQuery.isRegex && (
+              <span className="text-[10px] px-1 py-0.2 rounded bg-primary/10 text-primary font-mono font-medium">
+                regex
+              </span>
+            )}
+            {parsedQuery.negativeTerms.length > 0 && !parsedQuery.isRegex && (
+              <span className="text-[10px] px-1 py-0.2 rounded bg-amber-500/10 text-amber-500 font-mono font-medium">
+                !exclude
+              </span>
+            )}
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="flex size-8 items-center justify-center border border-[#191817] bg-[#fffdf8] text-[#191817] hover:bg-[#ff7657] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#191817]"
+                title="Clear search"
+              >
+                <span className="material-symbols-outlined text-[14px] leading-none">cancel</span>
+              </button>
+            )}
+          </div>
         </div>
+
+        {!closeOnSelect && visibleModels.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] text-[#191817]">
+            <span className="flex flex-wrap items-center gap-2">
+              <span>{visibleModels.length} models</span>
+              {addedModelValues.length > 0 && (
+                <span className="font-bold">({addedModelValues.includes("*") ? "all selected" : `${addedModelValues.length} selected`})</span>
+              )}
+            </span>
+            <div className="flex items-center gap-1.5">
+              {visibleUnadded.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSelectAllVisible}
+                  className="min-h-11 border-2 border-[#191817] bg-[#c8ee68] px-3 text-[11px] font-bold text-[#191817] shadow-[2px_2px_0_#191817] transition-transform hover:-translate-y-px active:translate-y-px focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#191817]"
+                  title="Select all filtered models"
+                >
+                  Select All ({visibleUnadded.length})
+                </button>
+              )}
+              {visibleAdded.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleDeselectAllVisible}
+                  className="min-h-11 border-2 border-[#191817] bg-[#fffdf8] px-3 text-[11px] font-bold text-[#191817] shadow-[2px_2px_0_#191817] transition-transform hover:-translate-y-px active:translate-y-px focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#191817]"
+                  title="Deselect all filtered models"
+                >
+                  Deselect All ({visibleAdded.length})
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Models grouped by provider - compact */}
-      <div className="max-h-[400px] overflow-y-auto space-y-3">
+      {catalogError && (
+        <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 border-2 border-[#191817] bg-[#fff1bf] px-3 py-2 text-xs font-semibold text-[#191817] shadow-[2px_2px_0_#191817]">
+          <span>{catalogError}</span>
+          <button
+            type="button"
+            onClick={fetchConnections}
+            disabled={connectionsLoading}
+            className="min-h-11 border-2 border-[#191817] bg-[#fffdf8] px-3 font-bold hover:bg-[#ff7657] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#191817]"
+          >
+            {connectionsLoading ? "Refreshing…" : "Retry"}
+          </button>
+        </div>
+      )}
+
+        {/* Model options stay as readable rows so long IDs do not disappear into tiny chips. */}
+        <div className="max-h-[min(62vh,560px)] space-y-4 overflow-y-auto pr-1">
         {/* Combos section - always first */}
         {filteredCombos.length > 0 && (
           <div>
             <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5">
-              <span className="material-symbols-outlined text-primary text-[14px]">layers</span>
+              <span className="material-symbols-outlined text-primary text-[14px]">stacks</span>
               <span className="text-xs font-medium text-primary">Combos</span>
               <span className="text-[10px] text-text-muted">({filteredCombos.length})</span>
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {filteredCombos.map((combo) => {
                 const isSelected = selectedModel === combo.name;
+                const isAdded = addedModelValues.includes(combo.name);
                 return (
-                  <button
+                  <ModelChoiceRow
                     key={combo.id}
+                    checked={isSelected || isAdded}
                     onClick={() => handleSelect({ id: combo.name, name: combo.name, value: combo.name })}
-                    className={`
-                      px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer flex items-center gap-1
-                      ${isSelected
-                        ? "bg-primary text-white border-primary"
-                        : addedModelValues.includes(combo.name)
-                          ? "bg-primary border-primary text-white hover:bg-primary-hover"
-                          : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
-                      }
-                    `}
                   >
-                    {addedModelValues.includes(combo.name) && (
-                      <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
-                    )}
-                    {combo.name}
-                    <CapacityBadges caps={getCaps(combo.name)} />
-                  </button>
+                    <span className="min-w-0 flex-1 break-all">{combo.name}</span>
+                    <span className="border border-[#191817] px-1.5 py-0.5 text-[9px] font-bold">combo</span>
+                    <ContextTag caps={getComboCaps(combo.name)} />
+                    <CapacityBadges caps={getComboCaps(combo.name)} />
+                  </ModelChoiceRow>
                 );
               })}
             </div>
@@ -622,35 +1066,27 @@ export default function ModelSelectModal({
         {filteredStudioModels.length > 0 && (
           <div>
             <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5">
-              <span className="material-symbols-outlined size-[14px] text-[14px] leading-none text-primary">auto_awesome</span>
+              <span className="material-symbols-outlined size-[14px] text-[14px] leading-none text-primary">auto_fix_high</span>
               <span className="text-xs font-medium leading-none text-primary">Custom Models</span>
               <span className="text-[10px] text-text-muted">({filteredStudioModels.length})</span>
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {filteredStudioModels.map((studio) => {
                 const isSelected = selectedModel === studio.callName;
+                const isAdded = addedModelValues.includes(studio.callName);
                 return (
-                  <button
+                  <ModelChoiceRow
                     key={studio.callName}
+                    checked={isSelected || isAdded}
                     onClick={() => handleSelect({ id: studio.callName, name: studio.displayName || studio.callName, value: studio.callName })}
                     title={`Calls ${studio.targetLabel || studio.targetModel}`}
-                    className={`
-                      px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer flex items-center gap-1
-                      ${isSelected
-                        ? "bg-primary text-white border-primary"
-                        : addedModelValues.includes(studio.callName)
-                          ? "bg-primary border-primary text-white hover:bg-primary-hover"
-                          : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
-                      }
-                    `}
                   >
-                    {addedModelValues.includes(studio.callName) && (
-                      <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
-                    )}
-                    {studio.callName}
-                    <span className="text-[9px] opacity-60 font-normal">custom</span>
+                    <span className="min-w-0 flex-1 break-all">{studio.displayName || studio.callName}</span>
+                    <span className="border border-[#191817] px-1.5 py-0.5 text-[9px] font-bold">custom</span>
+                    <ModelTierBadge model={studio.callName} />
+                    <ContextTag caps={getCaps(studio.callName)} />
                     <CapacityBadges caps={getCaps(studio.callName)} />
-                  </button>
+                  </ModelChoiceRow>
                 );
               })}
             </div>
@@ -658,81 +1094,121 @@ export default function ModelSelectModal({
         )}
 
         {/* Provider models */}
-        {Object.entries(filteredGroups).map(([providerId, group]) => (
-          <div key={providerId}>
-            {/* Provider header */}
-            <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5">
-              <ProviderIcon
-                src={`/providers/${providerId}.png`}
-                alt={group.name}
-                size={14}
-                fallbackText={(group.name || providerId).slice(0, 2).toUpperCase()}
-                fallbackColor={group.color}
-              />
-              <span className="text-xs font-medium text-primary">
-                {group.name}
-              </span>
-              <span className="text-[10px] text-text-muted">
-                ({group.models.length})
-              </span>
-            </div>
+        {Object.entries(filteredGroups).map(([providerId, group]) => {
+          const wildcardValue = `${group.alias || providerId}/*`;
+          const isWildcardAdded = allowProviderWildcard && addedModelValues.includes(wildcardValue);
 
-            <div className="flex flex-wrap gap-1.5">
+          return (
+            <div key={providerId}>
+              {/* Provider header */}
+              <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5 z-10">
+                <ProviderIcon
+                  src={`/providers/${providerId}.png`}
+                  alt={group.name}
+                  size={14}
+                  fallbackText={(group.name || providerId).slice(0, 2).toUpperCase()}
+                  fallbackColor={group.color}
+                />
+                {allowProviderWildcard ? (
+                  <button
+                    type="button"
+                    onClick={() => handleSelect({ value: wildcardValue, name: wildcardValue })}
+                    title={isWildcardAdded ? `Click to remove wildcard ${wildcardValue}` : `Click to allow all models from ${group.name} (${wildcardValue})`}
+                    className={`inline-flex min-h-11 items-center gap-2 border-2 border-[#191817] px-3 text-xs font-bold text-[#191817] shadow-[2px_2px_0_#191817] transition-transform hover:-translate-y-px focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#191817] ${
+                      isWildcardAdded
+                        ? "bg-[#c8ee68]"
+                        : "bg-[#fffdf8] hover:bg-[#fff1bf]"
+                    }`}
+                  >
+                    {isWildcardAdded && (
+                      <span className="material-symbols-outlined leading-none text-[12px]">done_all</span>
+                    )}
+                    <span>{group.name}</span>
+                    <span className="border border-[#191817] bg-[#fff1bf] px-1.5 py-0.5 font-mono text-[10px] text-[#191817]">
+                      {wildcardValue}
+                    </span>
+                  </button>
+                ) : (
+                  <span className="text-xs font-medium text-primary">
+                    {group.name}
+                  </span>
+                )}
+                <span className="text-[10px] text-text-muted">
+                  ({group.models.length})
+                </span>
+                {/* Disabled ids are filtered out of every group above, so without this
+                    count the picker silently offers fewer models than the provider
+                    publishes and reads as if the free tier were half-missing. */}
+                {disabledCountFor(providerId, group.alias) > 0 && (
+                  <span
+                    className="text-[10px] text-text-muted/70"
+                    title="Disabled models are hidden here - restore them on the provider page"
+                  >
+                    · {disabledCountFor(providerId, group.alias)} disabled
+                  </span>
+                )}
+              </div>
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {group.models.map((model) => {
                 const isSelected = selectedModel === model.value;
+                const isAdded = addedModelValues.includes(model.value);
                 const isPlaceholder = model.isPlaceholder;
                 return (
-                  <button
+                  <ModelChoiceRow
                     key={model.value}
+                    checked={!isPlaceholder && (isSelected || isAdded)}
                     onClick={() => handleSelect(model)}
                     title={isPlaceholder ? "Select to pre-fill, then edit model ID in the input" : undefined}
-                    className={`
-                      px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer
-                      ${isPlaceholder
-                        ? "border-dashed border-border text-text-muted hover:border-primary/50 hover:text-primary bg-surface italic"
-                        : isSelected
-                          ? "bg-primary text-white border-primary"
-                          : addedModelValues.includes(model.value)
-                            ? "bg-primary border-primary text-white hover:bg-primary-hover"
-                            : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
-                      }
-                    `}
                   >
-                    <span className="flex items-center gap-1">
-                      {addedModelValues.includes(model.value) && !isPlaceholder && (
-                        <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
-                      )}
+                    <span className={`min-w-0 flex-1 break-all ${isPlaceholder ? "italic" : ""}`}>
                       {isPlaceholder ? (
                         <>
-                          <span className="material-symbols-outlined text-[11px]">edit</span>
+                          <span className="material-symbols-outlined mr-1 align-middle text-[14px]">edit_note</span>
                           {model.name}
                         </>
                       ) : model.isCustom ? (
                         <>
                           {model.name}
-                          <span className="text-[9px] opacity-60 font-normal">custom</span>
+                          <ModelTierBadge model={model.id || model.value} providerId={providerId} isFree={model.isFree} />
+                          <ContextTag caps={getCaps(model.value)} />
                           <CapacityBadges caps={getCaps(model.value)} />
                         </>
                       ) : (
                         <>
                           {model.name}
+                          <ModelTierBadge model={model.id || model.value} providerId={providerId} isFree={model.isFree} />
+                          <ContextTag caps={getCaps(model.value)} />
                           <CapacityBadges caps={getCaps(model.value)} />
                         </>
                       )}
                     </span>
-                  </button>
+                    {model.isCustom && <span className="shrink-0 border border-[#191817] px-1.5 py-0.5 text-[9px] font-bold">custom</span>}
+                    {isPlaceholder && <span className="shrink-0 border border-dashed border-[#191817] px-1.5 py-0.5 text-[9px] font-bold">edit ID</span>}
+                  </ModelChoiceRow>
                 );
               })}
             </div>
           </div>
-        ))}
+        );
+      })}
 
-        {Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 && (
-          <div className="text-center py-4 text-text-muted">
-            <span className="material-symbols-outlined text-2xl mb-1 block">
-              search_off
-            </span>
-            <p className="text-xs">No models found</p>
+        {Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 && filteredStudioModels.length === 0 && (
+          <div className="flex min-h-32 flex-col items-center justify-center gap-2 border-2 border-dashed border-[#191817] bg-[#fffdf8] px-4 py-6 text-center text-[#191817]">
+            {connectionsLoading ? (
+              <>
+                <Spinner size="sm" decorative />
+                <p className="text-xs font-semibold">Loading connected models…</p>
+              </>
+            ) : (
+              <>
+                <span aria-hidden="true" className="material-symbols-outlined text-2xl">{catalogError ? "warning" : "manage_search"}</span>
+                <p className="text-sm font-bold">{searchQuery ? "No models match this search." : "No selectable models are available."}</p>
+                {!searchQuery && !catalogError && (
+                  <p className="max-w-md text-xs leading-relaxed text-[#514c43]">Check that a provider is connected and active, then refresh the list.</p>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -745,6 +1221,8 @@ ModelSelectModal.propTypes = {
   onClose: PropTypes.func.isRequired,
   onSelect: PropTypes.func.isRequired,
   onDeselect: PropTypes.func,
+  onSelectBatch: PropTypes.func,
+  onDeselectBatch: PropTypes.func,
   selectedModel: PropTypes.string,
   activeProviders: PropTypes.arrayOf(
     PropTypes.shape({
@@ -752,9 +1230,12 @@ ModelSelectModal.propTypes = {
     })
   ),
   title: PropTypes.string,
+  size: PropTypes.string,
   modelAliases: PropTypes.object,
   kindFilter: PropTypes.string,
   addedModelValues: PropTypes.arrayOf(PropTypes.string),
   closeOnSelect: PropTypes.bool,
   showStudioTargets: PropTypes.bool,
+  allowedModelPatterns: PropTypes.arrayOf(PropTypes.string),
+  allowProviderWildcard: PropTypes.bool,
 };

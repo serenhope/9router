@@ -1,27 +1,52 @@
 import { getUsageStats, statsEmitter, getActiveRequests } from "@/lib/usageDb";
+import { getSessionContext } from "@/lib/auth/dashboardPermissions";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+// Every open tab runs its own stream, and each emitter tick asked the database to
+// re-aggregate the whole period per connection - so three tabs meant three
+// identical scans per burst of traffic. A short shared memo keeps the page live
+// (updates still land within a second) while a burst costs one aggregation.
+const STREAM_STATS_TTL_MS = 750;
+const streamStatsCache = (global._streamStatsCache ||= new Map());
+
+async function getStreamStats(period, apiKeyFilter, allowedModels) {
+  const key = `${period}|${apiKeyFilter || ""}|${allowedModels}`;
+  const hit = streamStatsCache.get(key);
+  if (hit && Date.now() - hit.ts < STREAM_STATS_TTL_MS) return hit.value;
+  const value = await getUsageStats(period, apiKeyFilter, allowedModels);
+  if (streamStatsCache.size > 32) streamStatsCache.clear();
+  streamStatsCache.set(key, { value, ts: Date.now() });
+  return value;
+}
+
+export async function GET(request) {
   const encoder = new TextEncoder();
+  const { searchParams } = new URL(request.url);
+  const period = searchParams.get("period") || "today";
+
+  const ctx = await getSessionContext();
+  const apiKeyFilter = ctx.apiKeyFilter;
+  const allowedModels = ctx.allowedModels || "*";
+
   const state = { closed: false, keepalive: null, send: null, sendPending: null, cachedStats: null };
 
   const stream = new ReadableStream({
     async start(controller) {
-      // Full stats refresh (heavy) + immediate lightweight push
       state.send = async () => {
         if (state.closed) return;
         try {
-          // Push lightweight update immediately so UI reflects changes fast
           if (state.cachedStats) {
-            const { activeRequests, recentRequests, errorProvider } = await getActiveRequests();
-            const quickStats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider };
+            const { activeRequests, recentRequests, errorProvider } = await getActiveRequests(apiKeyFilter, allowedModels);
+            const quickStats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider, _type: "pending" };
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(quickStats)}\n\n`));
           }
-          // Then do full recalc and update cache
-          const stats = await getUsageStats();
+          // allowedModels is not optional here: this stream is the second source the
+          // Usage page merges in, and omitting it silently widens the scope to every
+          // model, which is what let unrelated providers show up under an API-key login.
+          const stats = await getStreamStats(period, apiKeyFilter, allowedModels);
           state.cachedStats = stats;
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ ...stats, _type: "full" })}\n\n`));
         } catch {
           state.closed = true;
           statsEmitter.off("update", state.send);
@@ -30,12 +55,11 @@ export async function GET() {
         }
       };
 
-      // Lightweight push: only refresh activeRequests + recentRequests on pending changes
       state.sendPending = async () => {
         if (state.closed || !state.cachedStats) return;
         try {
-          const { activeRequests, recentRequests, errorProvider } = await getActiveRequests();
-          const stats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider };
+          const { activeRequests, recentRequests, errorProvider } = await getActiveRequests(apiKeyFilter, allowedModels);
+          const stats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider, _type: "pending" };
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
         } catch {
           state.closed = true;

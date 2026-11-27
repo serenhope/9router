@@ -7,11 +7,12 @@ import Image from "next/image";
 import { getProviderIconSrc, markProviderIconMissing } from "@/shared/utils/providerIcon";
 import { getCustomLogo } from "@/shared/utils/providerLogo";
 import { buildStudioTargetIndex } from "@/shared/utils/studioModelVisibility";
-import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, XiaomiMimoAuthModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal } from "@/shared/components";
-import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
+import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ZedAuthModal, XiaomiMimoAuthModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ModelTierBadge } from "@/shared/components";
+import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, resolveProviderId, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { useTaskStore } from "@/store/taskStore";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
@@ -25,8 +26,14 @@ import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
 import BulkImportGrokCliModal from "./BulkImportGrokCliModal";
+import CustomConfigCard from "./CustomConfigCard";
+import AutoPingScheduleModal from "./AutoPingScheduleModal";
+import MinimaxLeaseButton from "../components/MinimaxLeaseButton.js";
+import { getScheduleSlotLabels } from "@/shared/services/quotaPingSchedule";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
+
+const MCODE_LEASE_PROVIDERS = new Set(["minimax-code", "minimax-code-global"]);
 
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
@@ -40,7 +47,8 @@ function sleep(ms) {
 export default function ProviderDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const providerId = params.id;
+  const providerId = resolveProviderId(params.id);
+  const isOpenCode = providerId === "opencode";
   const { getCaps } = useModelCaps();
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +69,14 @@ export default function ProviderDetailPage() {
   const [customModels, setCustomModels] = useState([]);
   const [studioModels, setStudioModels] = useState([]);
   const [headerImgError, setHeaderImgError] = useState(false);
+  const [opencodeInstalled, setOpencodeInstalled] = useState(true);
+  const [zcodeBonuses, setZcodeBonuses] = useState([]);
+  const [zcodeClaiming, setZcodeClaiming] = useState(false);
+  const [zcodeClaimMessage, setZcodeClaimMessage] = useState(null);
+  const [zcodeCaptchaParam, setZcodeCaptchaParam] = useState("");
+  const [zcodeVerifyRequired, setZcodeVerifyRequired] = useState(false);
+  const [zcodeVerifyUrl, setZcodeVerifyUrl] = useState("https://zcode.z.ai");
+  const [zcodeAppDeepLink, setZcodeAppDeepLink] = useState("zcode://");
   const [modelTestResults, setModelTestResults] = useState({});
   const [modelsTestError, setModelsTestError] = useState("");
   const [testingModelIds, setTestingModelIds] = useState(() => new Set());
@@ -69,13 +85,22 @@ export default function ProviderDetailPage() {
   const [bulkProxyPoolId, setBulkProxyPoolId] = useState("__none__");
   const [bulkUpdatingProxy, setBulkUpdatingProxy] = useState(false);
   const [providerStrategy, setProviderStrategy] = useState(null);
+  // OpenCode Free's lane switch: false = direct request, true = local CLI.
+  const [opencodeCliMode, setOpencodeCliMode] = useState(false);
+  const [selectedLaneMode, setSelectedLaneMode] = useState(false);
+  const [switchingLane, setSwitchingLane] = useState(false);
+  const [laneBannerOpen, setLaneBannerOpen] = useState(false);
   const [providerStickyLimit, setProviderStickyLimit] = useState("");
   const [thinkingMode, setThinkingMode] = useState("auto");
-  const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
+  const [autoPing, setAutoPing] = useState({ enabled: false, connections: {}, schedules: {} });
+  const [scheduleConnection, setScheduleConnection] = useState(null);
   const [suggestedModels, setSuggestedModels] = useState([]);
+  const [suggestedModelsError, setSuggestedModelsError] = useState(null);
   const [liveModels, setLiveModels] = useState([]);
   // Live-catalog fetch warning/error (surfaced for zed only; cursor behavior unchanged).
   const [liveModelsError, setLiveModelsError] = useState(null);
+  const [webCookieToolCalling, setWebCookieToolCalling] = useState(true);
+  const [updatingToolCalling, setUpdatingToolCalling] = useState(false);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
@@ -89,6 +114,49 @@ export default function ProviderDetailPage() {
   const [importingQoderModels, setImportingQoderModels] = useState(false);
   const [importingClineModels, setImportingClineModels] = useState(false);
   const { copied, copy } = useCopyToClipboard();
+
+  // The hammer on the OpenCode Free header flips the lane the executor uses.
+  const applyOpencodeCliMode = async (targetMode) => {
+    if (switchingLane) return;
+    setSwitchingLane(true);
+    setOpencodeCliMode(targetMode);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ opencodeCliMode: targetMode }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch {
+      setOpencodeCliMode(!targetMode);
+      setSelectedLaneMode(!targetMode);
+    } finally {
+      setSwitchingLane(false);
+    }
+  };
+
+  // Toggle tool calling for web-cookie providers (e.g. Gemini Web)
+  const handleToggleWebCookieToolCalling = async (enabled) => {
+    if (updatingToolCalling) return;
+    setUpdatingToolCalling(true);
+    setWebCookieToolCalling(enabled);
+    try {
+      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+      const current = settingsRes.ok ? await settingsRes.json() : {};
+      const tc = { ...(current.webCookieToolCalling || {}) };
+      tc[providerId] = enabled;
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ webCookieToolCalling: tc }),
+      });
+    } catch (e) {
+      console.warn("Failed to update tool calling setting:", e.message);
+      setWebCookieToolCalling(!enabled);
+    } finally {
+      setUpdatingToolCalling(false);
+    }
+  };
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
 
@@ -159,6 +227,7 @@ export default function ProviderDetailPage() {
   const isOAuth = !!OAUTH_PROVIDERS[providerId] || !!FREE_PROVIDERS[providerId] || authModes.includes("oauth");
   const supportsApiKeyAuth = !!APIKEY_PROVIDERS[providerId] || authModes.includes("apikey");
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
+  const isWebCookie = !!WEB_COOKIE_PROVIDERS[providerId] || providerInfo?.category === "webCookie" || providerInfo?.authType === "cookie";
   const staticModels = getModelsByProviderId(providerId);
   const models = (providerId === "cursor" || providerId === "zed") && liveModels.length > 0
     ? liveModels
@@ -188,7 +257,7 @@ export default function ProviderDetailPage() {
   const providerStorageAlias = isCompatible ? providerId : providerAlias;
   // Studio names replace the model they point at: those models leave the list below.
   const studioTargetIndex = buildStudioTargetIndex(studioModels);
-  // Union of levels across this provider's reasoning models — drives the level picker options.
+  // Union of levels across this provider's reasoning models - drives the level picker options.
   // Include custom models too (e.g. manually added gpt-5.6-sol → max).
   const providerThinkingLevels = (() => {
     const set = new Set();
@@ -318,6 +387,85 @@ export default function ProviderDetailPage() {
       .catch(() => {});
   }, [providerId]);
 
+  // Check for claimable promotional bonuses for ZCode / GLM
+  useEffect(() => {
+    if (providerId !== "glm" && providerId !== "zcode" && providerId !== "zc") return;
+    fetch("/api/providers/glm/bonus")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.ok && Array.isArray(data.available) && data.available.length > 0) {
+          const list = [];
+          for (const item of data.available) {
+            for (const plan of item.plans || []) {
+              list.push({ ...plan, connectionId: item.connectionId, accountName: item.accountName });
+            }
+          }
+          setZcodeBonuses(list);
+        } else {
+          setZcodeBonuses([]);
+        }
+      })
+      .catch(() => {});
+  }, [providerId, connections]);
+
+  const handleClaimZCodeBonus = async (bonus) => {
+    setZcodeClaiming(true);
+    setZcodeClaimMessage(null);
+    setZcodeVerifyRequired(false);
+    try {
+      const res = await fetch("/api/providers/glm/bonus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          connectionId: bonus.connectionId,
+          planId: bonus.planId,
+          captchaParam: zcodeCaptchaParam || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        setZcodeVerifyRequired(false);
+        setZcodeCaptchaParam("");
+        setZcodeClaimMessage({ type: "success", text: data.message || "Bonus successfully claimed!" });
+        // Refresh bonuses list after 2 seconds
+        setTimeout(() => {
+          fetch("/api/providers/glm/bonus")
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.ok && Array.isArray(d.available)) {
+                const list = [];
+                for (const item of d.available) {
+                  for (const p of item.plans || []) list.push({ ...p, connectionId: item.connectionId });
+                }
+                setZcodeBonuses(list);
+              }
+            })
+            .catch(() => {});
+        }, 2000);
+      } else if (data.verifyRequired) {
+        // Aliyun NoCaptcha can only be completed inside the ZCode app — store
+        // the verify links and show the verify panel. Auto-opening from an
+        // async handler gets blocked by popup blockers, so the panel button
+        // carries the real user gesture.
+        setZcodeVerifyRequired(true);
+        setZcodeVerifyUrl(data.verifyUrl || "https://zcode.z.ai");
+        setZcodeAppDeepLink(data.appDeepLink || "zcode://");
+        setZcodeClaimMessage({
+          type: "error",
+          text:
+            data.message ||
+            "Aliyun verification is required. Open the ZCode app, complete verification, copy the verification parameter, then try claiming again.",
+        });
+      } else {
+        setZcodeClaimMessage({ type: "error", text: data.error || "Failed to claim bonus." });
+      }
+    } catch (e) {
+      setZcodeClaimMessage({ type: "error", text: e.message || "Network error while claiming." });
+    } finally {
+      setZcodeClaiming(false);
+    }
+  };
+
   const fetchConnections = useCallback(async () => {
     try {
       const [connectionsRes, nodesRes, proxyPoolsRes, settingsRes] = await Promise.all([
@@ -333,12 +481,20 @@ export default function ProviderDetailPage() {
       if (connectionsRes.ok) {
         const filtered = (connectionsData.connections || []).filter(c => c.provider === providerId);
         setConnections(filtered);
+        if (connectionsData.opencodeInstalled !== undefined) {
+          setOpencodeInstalled(Boolean(connectionsData.opencodeInstalled));
+        }
       }
       if (proxyPoolsRes.ok) {
         setProxyPools(proxyPoolsData.proxyPools || []);
       }
       // Load per-provider strategy override
       const override = (settingsData.providerStrategies || {})[providerId] || {};
+      const isCli = settingsData.opencodeCliMode === true;
+      setOpencodeCliMode(isCli);
+      setSelectedLaneMode(isCli);
+      const isTcEnabled = settingsData?.webCookieToolCalling?.[providerId] !== false;
+      setWebCookieToolCalling(isTcEnabled);
       setProviderStrategy(override.fallbackStrategy || null);
       setProviderStickyLimit(override.stickyRoundRobinLimit != null ? String(override.stickyRoundRobinLimit) : "1");
       // Load per-provider thinking config
@@ -346,7 +502,7 @@ export default function ProviderDetailPage() {
       setThinkingMode(thinkingCfg.mode || "auto");
       const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
       const apCfg = autoPingSettingsKey ? settingsData[autoPingSettingsKey] || {} : {};
-      setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {} });
+      setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {}, schedules: apCfg.schedules || {} });
       if (nodesRes.ok) {
         let node = (nodesData.nodes || []).find((entry) => entry.id === providerId) || null;
 
@@ -384,9 +540,12 @@ export default function ProviderDetailPage() {
         setProviderNode(data.node);
         await fetchConnections();
         setShowEditNodeModal(false);
+        return { ok: true };
       }
+      return { error: data.error || "Failed to update provider node." };
     } catch (error) {
       console.log("Error updating provider node:", error);
+      return { error: "Unable to update the provider node. Please try again." };
     }
   };
 
@@ -475,8 +634,12 @@ export default function ProviderDetailPage() {
     }
   };
 
-  const handleAutoPingConnection = (connectionId, on) => {
-    saveAutoPing({ ...autoPing, connections: { ...autoPing.connections, [connectionId]: on } });
+  const handleSaveAutoPing = (connectionId, { reactive, schedule }) => {
+    saveAutoPing({
+      ...autoPing,
+      connections: { ...autoPing.connections, [connectionId]: reactive },
+      schedules: { ...autoPing.schedules, [connectionId]: schedule },
+    });
   };
 
   useEffect(() => {
@@ -489,7 +652,7 @@ export default function ProviderDetailPage() {
 
   // Live per-connection catalogs (cursor, zed): the static registry carries
   // no usable list, so resolve from the active connection. Fires only when
-  // the provider id or connection list changes — no polling, no loop.
+  // the provider id or connection list changes - no polling, no loop.
   // Cursor path is statement-identical to before; zed adds error surfacing.
   useEffect(() => {
     const isLiveCatalog = providerId === "cursor" || providerId === "zed";
@@ -531,11 +694,24 @@ export default function ProviderDetailPage() {
     return () => { cancelled = true; };
   }, [providerId, connections]);
 
-  // Fetch suggested models from provider's public API (if configured)
+  // Fetch suggested models from provider's public API (if configured).
+  // Resolve aliases (e.g. "oc") to the registry id so the lookup hits even
+  // when the URL carries an alias instead of the registry key.
   useEffect(() => {
-    const fetcher = (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher;
-    if (!fetcher) return;
-    fetchSuggestedModels(fetcher).then(setSuggestedModels);
+    const resolvedId = resolveProviderId(providerId);
+    const fetcher = (OAUTH_PROVIDERS[resolvedId] || APIKEY_PROVIDERS[resolvedId] || FREE_PROVIDERS[resolvedId] || FREE_TIER_PROVIDERS[resolvedId] || WEB_COOKIE_PROVIDERS[resolvedId])?.modelsFetcher;
+    if (!fetcher) {
+      setSuggestedModels([]);
+      setSuggestedModelsError(null);
+      return;
+    }
+    let cancelled = false;
+    fetchSuggestedModels(fetcher).then(({ data, error }) => {
+      if (cancelled) return;
+      setSuggestedModels(data);
+      setSuggestedModelsError(error);
+    });
+    return () => { cancelled = true; };
   }, [providerId]);
 
   const handleSetAlias = async (modelId, alias, providerAliasOverride = providerAlias) => {
@@ -570,12 +746,24 @@ export default function ProviderDetailPage() {
     }
   };
 
-  const handleAddCustomModel = async (modelId, type = "llm", providerAliasOverride = providerStorageAlias, caps) => {
+  // `transport` pins a realtime STT dispatch marker (shared whitelist
+  // STT_TRANSPORT_META); the API only honours it on type "stt" records.
+  const handleAddCustomModel = async (modelId, type = "llm", providerAliasOverride = providerStorageAlias, caps, transport, ownedBy = "", multipliers = {}) => {
     try {
       const res = await fetch("/api/models/custom", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerAlias: providerAliasOverride, id: modelId, type, ...(caps ? { caps } : {}) }),
+        body: JSON.stringify({
+          providerAlias: providerAliasOverride,
+          id: modelId,
+          type,
+          ...(caps ? { caps } : {}),
+          ...(transport ? { transport } : {}),
+          ...(ownedBy ? { ownedBy } : {}),
+          ...(multipliers.inputMultiplier ? { inputMultiplier: multipliers.inputMultiplier } : {}),
+          ...(multipliers.outputMultiplier ? { outputMultiplier: multipliers.outputMultiplier } : {}),
+          ...(multipliers.antiProbe !== undefined ? { antiProbe: multipliers.antiProbe } : {}),
+        }),
       });
       if (res.ok) {
         await fetchCustomModels();
@@ -602,6 +790,26 @@ export default function ProviderDetailPage() {
     }
   };
 
+  // Long model imports report into the task store so the bell carries -
+  // mirroring how Setup / proxy-pools / token-saver long runs do it.
+  const startImportTask = (taskId, title) => {
+    useTaskStore.getState().start({
+      id: taskId,
+      title,
+      message: "Fetching model list...",
+      progress: 0,
+      href: typeof window !== "undefined" ? window.location.pathname : null,
+    });
+  };
+  const finishImportTask = (taskId, message) => {
+    useTaskStore.getState().update(taskId, {
+      message,
+      progress: 100,
+      state: "done",
+    });
+    useTaskStore.getState().finish(taskId);
+  };
+
   // Fetch Qoder model list and automatically add to available models
   const handleImportQoderModels = async () => {
     if (importingQoderModels) return;
@@ -611,24 +819,33 @@ export default function ProviderDetailPage() {
       return;
     }
 
+    const taskId = `import-qoder-models-${Date.now()}`;
     setImportingQoderModels(true);
+    startImportTask(taskId, "Importing Qoder models");
     try {
       const res = await fetch(`/api/providers/${activeConnection.id}/models`);
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || translate("Failed to fetch models"));
+        finishImportTask(taskId, data.error || "Fetch failed");
         return;
       }
       const models = data.models || [];
       if (models.length === 0) {
         alert(translate("No models returned"));
+        finishImportTask(taskId, "No models returned");
         return;
       }
+      useTaskStore.getState().update(taskId, { message: `Adding ${models.length} models...`, progress: 0 });
 
       let importedCount = 0;
-      for (const model of models) {
+      for (const [index, model] of models.entries()) {
         const modelId = model.id || model.name;
         if (!modelId) continue;
+        useTaskStore.getState().update(taskId, {
+          message: `Checking ${modelId} (${index + 1}/${models.length})...`,
+          progress: Math.round(((index + 1) / models.length) * 100),
+        });
         
         // Qoder model ID format may be "qoder/auto", "qoder-cn/auto" or "auto",
         // need to remove the provider prefix before storing.
@@ -645,13 +862,13 @@ export default function ProviderDetailPage() {
       }
       
       if (importedCount === 0) {
-        alert(translate("All models already exist, no new models added"));
+        finishImportTask(taskId, "All models already exist");
       } else {
-        alert(translate("Successfully added") + ` ${importedCount} ` + translate("models"));
+        finishImportTask(taskId, `Added ${importedCount} models`);
       }
     } catch (error) {
       console.log("Error importing Qoder models:", error);
-      alert(translate("Error fetching models") + ": " + error.message);
+      finishImportTask(taskId, "Fetch failed");
     } finally {
       setImportingQoderModels(false);
     }
@@ -665,23 +882,32 @@ export default function ProviderDetailPage() {
       alert(translate("Please add an active Cline connection first"));
       return;
     }
+    const taskId = `import-cline-models-${Date.now()}`;
     setImportingClineModels(true);
+    startImportTask(taskId, "Importing Cline models");
     try {
       const res = await fetch(`/api/providers/${activeConnection.id}/models`);
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || translate("Failed to fetch models"));
+        finishImportTask(taskId, data.error || "Fetch failed");
         return;
       }
       const models = data.models || [];
       if (models.length === 0) {
         alert(translate("No models returned"));
+        finishImportTask(taskId, "No models returned");
         return;
       }
+      useTaskStore.getState().update(taskId, { message: `Adding ${models.length} models...`, progress: 0 });
       let importedCount = 0;
-      for (const model of models) {
+      for (const [index, model] of models.entries()) {
         const modelId = model.id || model.name;
         if (!modelId) continue;
+        useTaskStore.getState().update(taskId, {
+          message: `Checking ${modelId} (${index + 1}/${models.length})...`,
+          progress: Math.round(((index + 1) / models.length) * 100),
+        });
         const alreadyExists = customModels.some(
           (entry) => entry.providerAlias === providerStorageAlias && entry.id === modelId && (entry.kind || entry.type || "llm") === "llm"
         ) || Object.values(modelAliases).includes(`${providerStorageAlias}/${modelId}`);
@@ -692,13 +918,13 @@ export default function ProviderDetailPage() {
         importedCount += 1;
       }
       if (importedCount === 0) {
-        alert(translate("All models already exist, no new models added"));
+        finishImportTask(taskId, "All models already exist");
       } else {
-        alert(translate("Successfully added") + ` ${importedCount} ` + translate("models"));
+        finishImportTask(taskId, `Added ${importedCount} models`);
       }
     } catch (error) {
       console.log("Error importing Cline models:", error);
-      alert(translate("Error fetching models") + ": " + error.message);
+      finishImportTask(taskId, "Fetch failed");
     } finally {
       setImportingClineModels(false);
     }
@@ -1043,7 +1269,7 @@ export default function ProviderDetailPage() {
                 type="checkbox"
                 checked={isSelected(conn.id)}
                 onChange={() => toggleSelectConnection(conn.id)}
-                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
               />
             </div>
             <div className="flex-1 min-w-0">
@@ -1057,9 +1283,12 @@ export default function ProviderDetailPage() {
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
                 autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" ? {
-                  on: autoPing.connections[conn.id] === true,
-                  onToggle: (on) => handleAutoPingConnection(conn.id, on),
+                  isActive: autoPing.connections[conn.id] === true || autoPing.schedules?.[conn.id]?.enabled === true,
+                  reactiveOn: autoPing.connections[conn.id] === true,
                   provider: providerId,
+                  scheduleOn: autoPing.schedules?.[conn.id]?.enabled === true,
+                  scheduleSummary: getScheduleSlotLabels(autoPing.schedules?.[conn.id]).join(" / "),
+                  onConfigure: () => setScheduleConnection(conn),
                 } : null}
                 onUpdateProxy={async (proxyPoolId) => {
                   try {
@@ -1105,17 +1334,17 @@ export default function ProviderDetailPage() {
           <button
             onClick={handleApplyOneToOne}
             disabled={bulkUpdatingProxy || activePools.length === 0}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <span className="material-symbols-outlined text-text-muted text-[18px]">sync_alt</span>
+            <span className="material-symbols-outlined text-text-muted text-[18px]">sync_saved_locally</span>
             <span className="text-sm text-text-main">One-to-one (rotate)</span>
           </button>
           <button
             onClick={() => handleApplySinglePool(null)}
             disabled={bulkUpdatingProxy}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <span className="material-symbols-outlined text-text-muted text-[18px]">link_off</span>
+            <span className="material-symbols-outlined text-text-muted text-[18px]">do_not_disturb_on</span>
             <span className="text-sm text-text-main">None (unbind all)</span>
           </button>
           {proxyPools.map((pool) => (
@@ -1123,9 +1352,9 @@ export default function ProviderDetailPage() {
               key={pool.id}
               onClick={() => handleApplySinglePool(pool.id)}
               disabled={bulkUpdatingProxy || pool.isActive !== true}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <span className="material-symbols-outlined text-text-muted text-[18px]">lan</span>
+              <span className="material-symbols-outlined text-text-muted text-[18px]">hub</span>
               <span className="truncate text-sm text-text-main">{pool.name}</span>
               {pool.isActive !== true && (
                 <span className="text-[10px] text-text-muted">(inactive)</span>
@@ -1183,52 +1412,59 @@ export default function ProviderDetailPage() {
       );
     }
     // Combine hardcoded models with Kilo free models (deduplicated)
-    // Exclude non-llm models (embedding, tts, etc.) — they have dedicated pages under media-providers
-    const allModels = [
-      ...models,
-      ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
-    ].filter((m) => { const k = getModelKind(m); return !k || k === "llm"; }).filter((m) => !studioTargetIndex.isStudioTarget([providerId, providerStorageAlias, providerDisplayAlias], m.id));
+    // Exclude non-llm models (embedding, tts, etc.) - they have dedicated pages under media-providers.
+    // System One stays: its lane is routable inside normal chat routing, the model
+    // picker lists it, and hiding it here made the two screens disagree.
+    // For all providers, built-in catalog models start in "Suggested models"
+    // and only rise to the active list when explicitly added with (+).
+    // Disabled/removed models return to suggestions.
+    const allModels = [];
     const disabledSet = new Set(disabledModelIds);
-    const displayModels = allModels.filter((m) => !disabledSet.has(m.id));
-    const disabledDisplayModels = allModels.filter((m) => disabledSet.has(m.id));
+    const displayModels = [];
+    const disabledDisplayModels = [];
     const customModelRows = getProviderCustomModelRows({
       customModels,
       modelAliases,
       providerAlias: providerStorageAlias,
-      builtInModels: models,
+      builtInModels: [],
       type: "llm",
     }).filter((row) => !studioTargetIndex.isStudioTarget(providerStorageAlias, row.id));
-
     return (
       <div className="flex flex-wrap gap-3">
         {/* Custom models first */}
-        {customModelRows.map((model) => (
-          <ModelRow
-            key={`${model.source}-${model.fullModel}`}
-            model={{ id: model.id, name: model.name }}
-            fullModel={`${providerDisplayAlias}/${model.id}`}
-            alias={model.alias}
-            copied={copied}
-            onCopy={copy}
-            onSetAlias={() => {}}
-            onDeleteAlias={() => {
-              if (model.source === "custom") {
-                handleDeleteCustomModel(model.id, "llm", providerStorageAlias);
-              } else {
-                handleDeleteAlias(model.alias);
-              }
-            }}
-            testStatus={modelTestResults[model.id]}
-            onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
-            isTesting={testingModelIds.has(model.id)}
-            isCustom
-            isFree={false}
-            caps={getCaps(`${providerId}/${model.id}`)}
-            thinkingSuffix={resolveThinkingSuffix(model.id)}
-          />
-        ))}
+        {customModelRows.map((model) => {
+          const suggested = suggestedModels.find((s) => s.id === model.id);
+          const effectiveIsFree = suggested?.isFree !== undefined ? suggested.isFree : (model.isFree !== undefined ? model.isFree : (isFreeNoAuth || providerId === "deepai" || providerId === "dai"));
+          return (
+            <ModelRow
+              key={`${model.source}-${model.fullModel}`}
+              model={{ id: model.id, name: model.name }}
+              fullModel={`${providerDisplayAlias}/${model.id}`}
+              alias={model.alias}
+              copied={copied}
+              onCopy={copy}
+              onSetAlias={() => {}}
+              onDeleteAlias={() => {
+                if (model.source === "custom") {
+                  handleDeleteCustomModel(model.id, "llm", providerStorageAlias);
+                } else {
+                  handleDeleteAlias(model.alias);
+                }
+              }}
+              testStatus={modelTestResults[model.id]}
+              onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
+              isTesting={testingModelIds.has(model.id)}
+              isCustom
+              isFree={effectiveIsFree}
+              caps={getCaps(`${providerId}/${model.id}`)}
+              thinkingSuffix={resolveThinkingSuffix(model.id)}
+            />
+          );
+        })}
 
         {displayModels.map((model) => {
+          const suggested = suggestedModels.find((s) => s.id === model.id);
+          const effectiveIsFree = suggested?.isFree !== undefined ? suggested.isFree : (model.isFree !== undefined ? model.isFree : (isFreeNoAuth || providerId === "deepai" || providerId === "dai"));
           const fullModel = `${providerStorageAlias}/${model.id}`;
           const oldFormatModel = `${providerId}/${model.id}`;
           const existingAlias = Object.entries(modelAliases).find(
@@ -1247,7 +1483,7 @@ export default function ProviderDetailPage() {
               testStatus={modelTestResults[model.id]}
               onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
               isTesting={testingModelIds.has(model.id)}
-              isFree={model.isFree}
+              isFree={effectiveIsFree}
               onDisable={() => handleDisableModel(model.id)}
               caps={getCaps(`${providerId}/${model.id}`)}
               thinkingSuffix={resolveThinkingSuffix(model.id)}
@@ -1255,16 +1491,16 @@ export default function ProviderDetailPage() {
           );
         })}
 
-        {/* Add model button — inline, same style as model chips */}
+        {/* Add model button - inline, same style as model chips */}
         <button
           onClick={() => setShowAddCustomModel(true)}
           className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 px-3 py-2 text-xs text-primary transition-colors hover:border-primary hover:bg-primary/5 sm:w-auto"
         >
-          <span className="material-symbols-outlined text-sm">add</span>
+          <span className="material-symbols-outlined text-sm">add_circle</span>
           Add Model
         </button>
 
-        {/* Import Qoder models button — only show for qoder/qoder-cn provider */}
+        {/* Import Qoder models button - only show for qoder/qoder-cn provider */}
         {(providerId === "qoder" || providerId === "qoder-cn") && connections.some((conn) => conn.isActive !== false) && (
           <button
             onClick={handleImportQoderModels}
@@ -1278,7 +1514,7 @@ export default function ProviderDetailPage() {
           </button>
         )}
 
-        {/* Import Cline /models catalog button — only show for cline and clinepass providers */}
+        {/* Import Cline /models catalog button - only show for cline and clinepass providers */}
         {(providerId === "cline" || providerId === "clinepass") && connections.some((conn) => conn.isActive !== false) && (
           <button
             onClick={handleImportClineModels}
@@ -1292,41 +1528,93 @@ export default function ProviderDetailPage() {
           </button>
         )}
 
-        {/* Suggested models from provider API — show only models not yet added */}
-        {suggestedModels.length > 0 && (() => {
+        {/* Suggested models from provider API or built-in catalog - show only models not yet added. */}
+        {(() => {
           const addedFullModels = new Set([
             ...Object.values(modelAliases),
             ...customModelRows.map((model) => model.fullModel),
           ]);
-          const hardcodedIds = new Set(models.map((m) => m.id));
-          const notAdded = suggestedModels.filter(
-            (m) => !addedFullModels.has(`${providerStorageAlias}/${m.id}`) && !hardcodedIds.has(m.id)
+          // Combine suggestedModels from API and built-in models
+          const combinedAvailable = [
+            ...suggestedModels,
+            ...models.map((m) => ({ id: m.id, name: m.name || m.id, isFree: m.isFree })),
+            ...kiloFreeModels.map((m) => ({ id: m.id, name: m.name || m.id, isFree: true })),
+          ];
+          // Deduplicate by ID
+          const seenIds = new Set();
+          const uniqueAvailable = [];
+          for (const m of combinedAvailable) {
+            if (!m?.id || seenIds.has(m.id)) continue;
+            seenIds.add(m.id);
+            uniqueAvailable.push(m);
+          }
+
+          const notAdded = uniqueAvailable.filter(
+            (m) => !addedFullModels.has(`${providerStorageAlias}/${m.id}`) && !addedFullModels.has(m.id)
           );
-          if (notAdded.length === 0) return null;
+          const freeSuggested = notAdded.filter((m) => m.isFree === true || m.id.endsWith("-free"));
+          const paidSuggested = notAdded.filter((m) => m.isFree !== true && !m.id.endsWith("-free"));
+
+          if (notAdded.length === 0 && !suggestedModelsError) return null;
           return (
             <div className="w-full mt-2">
-              <p className="text-xs text-text-muted mb-2">Suggested free models (≥200k context):</p>
-              <div className="flex flex-wrap gap-2">
-                {notAdded.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={async () => {
-                      await handleAddCustomModel(m.id, "llm", providerStorageAlias);
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
-                    title={`${m.name} · ${(m.contextLength / 1000).toFixed(0)}k ctx`}
-                  >
-                    <span className="material-symbols-outlined text-[13px]">add</span>
-                    {m.id.split("/").pop()}
-                  </button>
-                ))}
-              </div>
+              {freeSuggested.length > 0 && (
+                <>
+                  <p className="text-xs text-text-muted mb-2">Suggested free models ({freeSuggested.length}):</p>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {freeSuggested.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={async () => {
+                          await handleAddCustomModel(m.id, "llm", providerStorageAlias);
+                          if (disabledSet.has(m.id)) {
+                            await handleEnableModel(m.id);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-green-500/30 dark:border-green-500/25 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                        title={m.contextLength != null ? `${m.name} · ${(m.contextLength / 1000).toFixed(0)}k ctx` : m.name}
+                      >
+                        <span className="material-symbols-outlined text-[13px] leading-none">add_circle</span>
+                        <span>{m.id.split("/").pop()}</span>
+                        <ModelTierBadge model={m.id} providerId={providerStorageAlias} isFree={m.isFree} />
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {suggestedModelsError && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-2">{suggestedModelsError}</p>
+              )}
+              {paidSuggested.length > 0 && (
+                <>
+                  <p className="text-xs text-text-muted mb-2">Other models ({paidSuggested.length}):</p>
+                  <div className="flex flex-wrap gap-2">
+                    {paidSuggested.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={async () => {
+                          await handleAddCustomModel(m.id, "llm", providerStorageAlias);
+                          if (disabledSet.has(m.id)) {
+                            await handleEnableModel(m.id);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                        title={m.contextLength != null ? `${m.name} · ${(m.contextLength / 1000).toFixed(0)}k ctx` : m.name}
+                      >
+                        <span className="material-symbols-outlined text-[13px] leading-none">add_circle</span>
+                        <span>{m.id.split("/").pop()}</span>
+                        <ModelTierBadge model={m.id} providerId={providerStorageAlias} isFree={m.isFree} />
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           );
         })()}
 
-        {/* Disabled models — restorable */}
-        {disabledDisplayModels.length > 0 && (
+        {/* Disabled models - restorable (not shown for OpenCode V1 and V2 since models return to suggestions) */}
+        {disabledDisplayModels.length > 0 && !isOpenCode && (
           <div className="w-full mt-2">
             <p className="text-xs text-text-muted mb-2">Disabled models ({disabledDisplayModels.length}):</p>
             <div className="flex flex-wrap gap-2">
@@ -1337,7 +1625,7 @@ export default function ProviderDetailPage() {
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dashed border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
                   title="Restore model"
                 >
-                  <span className="material-symbols-outlined text-[13px]">add</span>
+                  <span className="material-symbols-outlined text-[13px]">add_circle</span>
                   {m.id}
                 </button>
               ))}
@@ -1375,30 +1663,27 @@ export default function ProviderDetailPage() {
       return "/providers/moonshot-ai.png";
     }
     if (isOpenAICompatible && providerInfo.apiType) {
-      return providerInfo.apiType === "responses" ? "/providers/oai-r.png" : "/providers/oai-cc.png";
+      return "/providers/openai.png";
     }
     if (isAnthropicCompatible) {
-      return "/providers/anthropic-m.png";
+      return "/providers/claude.png";
     }
     return getProviderIconSrc(providerInfo.id);
   };
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-1 sm:gap-8 sm:px-0">
+    <div className="grid min-w-0 grid-cols-1 items-start gap-6 px-1 sm:gap-8 sm:px-0 xl:grid-cols-2">
       {/* Header */}
-      <div className="min-w-0">
+      <div className="min-w-0 xl:col-span-2">
         <Link
           href="/dashboard/providers"
           className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4"
         >
-          <span className="material-symbols-outlined text-lg">arrow_back</span>
+          <span className="material-symbols-outlined text-lg">arrow_back_ios_new</span>
           Back to Providers
         </Link>
         <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-          <div
-            className="flex size-12 shrink-0 items-center justify-center rounded-lg"
-            style={{ backgroundColor: `${providerInfo.color}15` }}
-          >
+          <div className="flex size-12 shrink-0 items-center justify-center bg-transparent">
             {headerImgError || !getHeaderIconPath() ? (
               <span className="text-sm font-bold" style={{ color: providerInfo.color }}>
                 {providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
@@ -1409,7 +1694,7 @@ export default function ProviderDetailPage() {
                 alt={providerInfo.name}
                 width={48}
                 height={48}
-                className="max-h-12 max-w-12 rounded-lg object-contain"
+                className="max-h-12 max-w-12 object-contain rounded-2xl"
                 sizes="48px"
                 onError={() => {
                   markProviderIconMissing(providerInfo.id);
@@ -1423,6 +1708,28 @@ export default function ProviderDetailPage() {
           <div className="min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl">{providerInfo.name}</h1>
+              {providerId === "opencode" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedLaneMode(opencodeCliMode);
+                    setLaneBannerOpen(true);
+                  }}
+                  disabled={switchingLane}
+                  title={
+                    opencodeCliMode
+                      ? "Lane: CLI — click to switch"
+                      : "Lane: Direct — click to switch"
+                  }
+                  className={`flex size-7 shrink-0 items-center justify-center rounded-lg border transition-all ${
+                    opencodeCliMode
+                      ? "border-brand-500/50 bg-brand-500/15 text-brand-500 hover:bg-brand-500/25"
+                      : "border-border/60 bg-surface text-text-muted hover:text-text-main hover:border-border"
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">build_circle</span>
+                </button>
+              )}
               {(providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website) && (
                 <a
                   href={providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website}
@@ -1430,8 +1737,8 @@ export default function ProviderDetailPage() {
                   rel="noopener noreferrer"
                   className="text-xs text-primary hover:underline inline-flex items-center gap-1"
                 >
-                  <span className="material-symbols-outlined text-sm">open_in_new</span>
-                  {providerInfo.notice?.apiKeyUrl ? "Get API Key" : "Sign up / Learn more"}
+                  <span className="material-symbols-outlined text-sm">launch</span>
+                  {isWebCookie ? "Open Web" : providerInfo.notice?.apiKeyUrl ? "Get API Key" : "Sign up / Learn more"}
                 </a>
               )}
             </div>
@@ -1443,15 +1750,15 @@ export default function ProviderDetailPage() {
       </div>
 
       {providerInfo.deprecated && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-          <span className="material-symbols-outlined text-[16px] text-yellow-500 mt-0.5 shrink-0">warning</span>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30 xl:col-span-2">
+          <span className="material-symbols-outlined text-[16px] text-yellow-500 mt-0.5 shrink-0">warning_amber</span>
           <p className="text-xs text-red-600 dark:text-yellow-400 leading-relaxed">{providerInfo.deprecationNotice}</p>
         </div>
       )}
 
       {providerInfo.notice?.text && !providerInfo.deprecated && (
-        <div className="flex flex-col gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 sm:flex-row sm:items-center">
-          <span className="material-symbols-outlined text-[16px] text-blue-500 shrink-0">info</span>
+        <div className="flex flex-col gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 sm:flex-row sm:items-center xl:col-span-2">
+          <span className="material-symbols-outlined text-[16px] text-blue-500 shrink-0">help_outline</span>
           <p className="min-w-0 flex-1 text-xs leading-relaxed text-blue-600 dark:text-blue-400">{providerInfo.notice.text}</p>
           {providerInfo.notice.apiKeyUrl && (
             <a
@@ -1460,14 +1767,146 @@ export default function ProviderDetailPage() {
               rel="noopener noreferrer"
               className="inline-flex justify-center rounded bg-blue-500 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-600 sm:py-0.5"
             >
-              Get API Key →
+              {isWebCookie ? "Open Web →" : "Get API Key →"}
             </a>
           )}
         </div>
       )}
 
+      {/* ZCode Claimable Bonus Banner */}
+      {(providerId === "glm" || providerId === "zcode" || providerId === "zc") && (zcodeBonuses.length > 0 || zcodeClaimMessage) && (
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 xl:col-span-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[20px] text-amber-500">redeem</span>
+              <h3 className="text-sm font-semibold text-text-main">ZCode Promotional Plan Available</h3>
+            </div>
+            <Badge variant="warning" size="sm">Bonus</Badge>
+          </div>
+
+          {zcodeClaimMessage && (
+            <div className={`text-xs px-3 py-2 rounded-lg ${zcodeClaimMessage.type === "success" ? "bg-success/15 text-success border border-success/30" : "bg-danger/15 text-danger border border-danger/30"}`}>
+              {zcodeClaimMessage.text}
+            </div>
+          )}
+
+          {zcodeVerifyRequired && (
+            <div className="flex flex-col gap-2 rounded-lg bg-surface/60 border border-border-subtle p-3">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px] text-amber-500">verified</span>
+                <span className="text-xs font-medium text-text-main">Aliyun Verification (X-Aliyun-Captcha-Verify-Param)</span>
+              </div>
+              <p className="text-xs text-text-muted">
+                Complete the Aliyun CAPTCHA in the ZCode app, copy the header value{" "}
+                <code className="text-amber-400">X-Aliyun-Captcha-Verify-Param</code> from the app request or DevTools into the field below, then select Claim again.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <a
+                  href={zcodeAppDeepLink}
+                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-amber-500/20 border border-amber-500/40 px-3 py-2 text-xs font-medium text-amber-400 hover:bg-amber-500/30 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[16px]">launch</span>
+                  Buka Aplikasi ZCode
+                </a>
+                <a
+                  href={zcodeVerifyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-surface border border-border-subtle px-3 py-2 text-xs font-medium text-text-muted hover:text-text-main hover:border-border transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[16px]">translate</span>
+                  Buka zcode.z.ai
+                </a>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={zcodeCaptchaParam}
+                  onChange={(e) => setZcodeCaptchaParam(e.target.value)}
+                  placeholder="Paste X-Aliyun-Captcha-Verify-Param here..."
+                  className="flex-1 min-w-0 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-xs text-text-main placeholder:text-text-subtle outline-none focus:border-amber-500/50"
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    if (zcodeCaptchaParam.trim()) {
+                      // Re-run claim for the first bonus with the pasted param
+                      if (zcodeBonuses[0]) handleClaimZCodeBonus(zcodeBonuses[0]);
+                    }
+                  }}
+                  disabled={zcodeClaiming || !zcodeCaptchaParam.trim()}
+                  className="shrink-0"
+                >
+                  {zcodeClaiming ? "Claiming..." : "Claim with Verification"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {zcodeBonuses.map((bonus) => (
+            <div key={bonus.planId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface/80 rounded-lg p-3 border border-border-subtle">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-text-main">{bonus.name}</span>
+                  {bonus.grants ? (
+                    <span className="text-xs text-amber-400 font-mono bg-amber-500/15 px-2 py-0.5 rounded">
+                      {typeof bonus.grants === "number" ? `${(bonus.grants / 1000000).toFixed(0)}M Tokens` : bonus.grants}
+                    </span>
+                  ) : null}
+                </div>
+                {bonus.description && (
+                  <p className="text-xs text-text-muted mt-0.5">{bonus.description}</p>
+                )}
+                {bonus.accountName && (
+                  <p className="text-xs text-text-subtle mt-0.5">Account: {bonus.accountName}</p>
+                )}
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={zcodeClaiming}
+                onClick={() => handleClaimZCodeBonus(bonus)}
+                className="shrink-0"
+              >
+                {zcodeClaiming ? "Claiming..." : "Claim Bonus"}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Web Cookie Provider Tool Calling Banner */}
+      {isWebCookie && (
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-border-subtle bg-surface-2/60 p-4 xl:col-span-2">
+          <div className="flex items-start gap-3 min-w-0 flex-1">
+            <div className="size-9 rounded-lg bg-brand-500/10 flex items-center justify-center shrink-0 mt-0.5">
+              <span className="material-symbols-outlined text-[20px] text-brand-500">engineering</span>
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-text-main truncate">Support Tool Calling</h3>
+                <Badge variant={webCookieToolCalling ? "success" : "default"} size="sm" dot>
+                  {webCookieToolCalling ? "Enabled" : "Disabled"}
+                </Badge>
+              </div>
+              <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                Enable OpenAI-compatible function calling bridge for web session models. Encodes schemas into system prompt and reconstructs returned structured output into valid tool calls.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center shrink-0">
+            <Toggle
+              checked={webCookieToolCalling}
+              disabled={updatingToolCalling}
+              onChange={handleToggleWebCookieToolCalling}
+            />
+          </div>
+        </div>
+      )}
+
       {isCompatible && providerNode && (
-        <Card>
+        <Card className="xl:col-span-2">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <h2 className="text-lg font-semibold">{isAnthropicCompatible ? "Anthropic Compatible Details" : (providerNode?.brand === "moonshot" || /(moonshot|kimi)/i.test(providerNode?.name || "")) ? "MoonshotAI Compatible Details" : "OpenAI Compatible Details"}</h2>
@@ -1479,7 +1918,7 @@ export default function ProviderDetailPage() {
             <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center">
               <Button
                 size="sm"
-                icon="add"
+                icon="add_circle"
                 onClick={() => {
                   setAddConnectionError("");
                   setShowAddApiKeyModal(true);
@@ -1491,7 +1930,7 @@ export default function ProviderDetailPage() {
               <Button
                 size="sm"
                 variant="secondary"
-                icon="edit"
+                icon="edit_square"
                 onClick={() => setShowEditNodeModal(true)}
                 className="w-full sm:w-auto"
               >
@@ -1500,7 +1939,7 @@ export default function ProviderDetailPage() {
               <Button
                 size="sm"
                 variant="secondary"
-                icon="delete"
+                icon="delete_sweep"
                 onClick={async () => {
                   setConfirmState({
                     title: "Delete Compatible Node",
@@ -1531,7 +1970,7 @@ export default function ProviderDetailPage() {
       {isFreeNoAuth ? (
         <NoAuthProxyCard providerId={providerId} />
       ) : (
-        <Card>
+        <Card className="xl:col-span-2">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold">Connections</h2>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
@@ -1539,7 +1978,7 @@ export default function ProviderDetailPage() {
                 <Button
                   size="sm"
                   variant="secondary"
-                  icon="lan"
+                  icon="hub"
                   onClick={() => setShowBulkProxyModal(true)}
                 >
                   Apply Proxy
@@ -1551,7 +1990,7 @@ export default function ProviderDetailPage() {
                     <Button
                       size="sm"
                       variant="danger"
-                      icon="delete"
+                      icon="delete_sweep"
                       onClick={handleBulkDelete}
                     >
                       Delete Selected ({selectedConnectionIds.length})
@@ -1560,7 +1999,7 @@ export default function ProviderDetailPage() {
                   <Button
                     size="sm"
                     variant="secondary"
-                    icon="sync"
+                    icon="sync_saved_locally"
                     onClick={handleRunOneByOneTest}
                     disabled={oneByOneRunning}
                   >
@@ -1570,7 +2009,7 @@ export default function ProviderDetailPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      icon="stop"
+                      icon="stop_circle"
                       onClick={handleStopOneByOneTest}
                       disabled={oneByOneStopping}
                     >
@@ -1621,33 +2060,36 @@ export default function ProviderDetailPage() {
               <div className="flex gap-2">
                 {hasDualAuthModes ? (
                   <>
-                    <Button size="sm" icon="lock" variant="secondary" onClick={triggerOAuthConnection}>
+                    <Button size="sm" icon="lock_person" variant="secondary" onClick={triggerOAuthConnection}>
                       {oauthConnectionLabel}
                     </Button>
-                    <Button size="sm" icon="key" onClick={triggerApiKeyConnection}>
+                    <Button size="sm" icon="key_vertical" onClick={triggerApiKeyConnection}>
                       {apiKeyConnectionLabel}
                     </Button>
                   </>
                 ) : (
                   <>
+                    {!isCompatible && MCODE_LEASE_PROVIDERS.has(providerId) && (
+                      <MinimaxLeaseButton providerId={providerId} onConnected={fetchConnections} />
+                    )}
                     {!isCompatible && providerId === "iflow" && (
-                      <Button size="sm" icon="cookie" variant="secondary" onClick={() => setShowIFlowCookieModal(true)}>
+                      <Button size="sm" icon="database" variant="secondary" onClick={() => setShowIFlowCookieModal(true)}>
                         Cookie
                       </Button>
                     )}
                     {providerId === "codex" && (
-                      <Button size="sm" icon="playlist_add" variant="secondary" onClick={() => setShowBulkImportCodex(true)}>
+                      <Button size="sm" icon="playlist_add_check" variant="secondary" onClick={() => setShowBulkImportCodex(true)}>
                         {translate("Bulk Add")}
                       </Button>
                     )}
                     {providerId === "grok-cli" && (
-                      <Button size="sm" icon="playlist_add" variant="secondary" onClick={() => setShowBulkImportGrokCli(true)}>
+                      <Button size="sm" icon="playlist_add_check" variant="secondary" onClick={() => setShowBulkImportGrokCli(true)}>
                         {translate("Bulk Add")}
                       </Button>
                     )}
                     <Button
                       size="sm"
-                      icon="add"
+                      icon="add_circle"
                       onClick={triggerAddConnection}
                     >
                       {isCompatible ? "Add API Key" : (providerId === "iflow" ? "OAuth" : "Add Connection")}
@@ -1659,14 +2101,14 @@ export default function ProviderDetailPage() {
           ) : (
             <>
               {oneByOneSummary && (
-                <div className="mb-4 rounded-lg border border-black/10 bg-black/[0.02] px-3 py-2 text-xs text-text-muted dark:border-white/10 dark:bg-white/[0.03]">
+                <div className="mb-4 rounded-lg border border-border-subtle bg-surface-2 px-3 py-2 text-xs text-text-muted">
                   <div className="flex flex-wrap items-center gap-3">
                     <span>Total: {oneByOneSummary.total}</span>
                     <span>Completed: {oneByOneSummary.completed}</span>
                     <span>Passed: {oneByOneSummary.passed}</span>
                     <span>Failed: {oneByOneSummary.failed}</span>
                     {oneByOneSummary.stopped && (
-                      <span className="text-amber-600 dark:text-amber-400">Stopped</span>
+                      <span className="text-warning">Stopped</span>
                     )}
                     {oneByOneRunning && oneByOneCurrentConnectionId && (
                       <span>Running: {connections.find((conn) => conn.id === oneByOneCurrentConnectionId)?.name || oneByOneCurrentConnectionId}</span>
@@ -1681,7 +2123,7 @@ export default function ProviderDetailPage() {
                       type="checkbox"
                       checked={allSelected}
                       onChange={toggleSelectAllConnections}
-                      className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary"
+                      className="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary"
                     />
                     Select All
                   </label>
@@ -1690,10 +2132,13 @@ export default function ProviderDetailPage() {
               {connectionsList}
               {!isCompatible && (
                 <div className="mt-4 grid grid-cols-1 gap-2 sm:flex">
+                  {MCODE_LEASE_PROVIDERS.has(providerId) && (
+                    <MinimaxLeaseButton providerId={providerId} onConnected={fetchConnections} />
+                  )}
                   {providerId === "iflow" && (
                     <Button
                       size="sm"
-                      icon="cookie"
+                      icon="database"
                       variant="secondary"
                       onClick={() => setShowIFlowCookieModal(true)}
                       title="Add connection using browser cookie"
@@ -1705,7 +2150,7 @@ export default function ProviderDetailPage() {
                   {providerId === "codex" && (
                     <Button
                       size="sm"
-                      icon="playlist_add"
+                      icon="playlist_add_check"
                       variant="secondary"
                       onClick={() => setShowBulkImportCodex(true)}
                       title={translate("Bulk import codex accounts from JSON")}
@@ -1717,7 +2162,7 @@ export default function ProviderDetailPage() {
                   {providerId === "grok-cli" && (
                     <Button
                       size="sm"
-                      icon="playlist_add"
+                      icon="playlist_add_check"
                       variant="secondary"
                       onClick={() => setShowBulkImportGrokCli(true)}
                       title={translate("Bulk import Grok CLI accounts from JSON")}
@@ -1730,7 +2175,7 @@ export default function ProviderDetailPage() {
                     <>
                       <Button
                         size="sm"
-                        icon="lock"
+                        icon="lock_person"
                         variant="secondary"
                         onClick={triggerOAuthConnection}
                         className="w-full sm:w-auto"
@@ -1739,7 +2184,7 @@ export default function ProviderDetailPage() {
                       </Button>
                       <Button
                         size="sm"
-                        icon="key"
+                        icon="key_vertical"
                         onClick={triggerApiKeyConnection}
                         className="w-full sm:w-auto"
                       >
@@ -1749,7 +2194,7 @@ export default function ProviderDetailPage() {
                   ) : (
                     <Button
                       size="sm"
-                      icon="add"
+                      icon="add_circle"
                       onClick={triggerAddConnection}
                       className="w-full sm:w-auto"
                     >
@@ -1763,8 +2208,11 @@ export default function ProviderDetailPage() {
         </Card>
       )}
 
+      {/* Per-provider user overrides (custom headers / connect timeout) */}
+      <CustomConfigCard providerId={providerId} />
+
       {/* Models */}
-      <Card>
+      <Card className="xl:col-span-2">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold">
@@ -1783,7 +2231,7 @@ export default function ProviderDetailPage() {
               </select>
             )}
           </div>
-          {!isCompatible && (() => {
+          {!isCompatible && !isOpenCode && (() => {
             const allIds = [
               ...models,
               ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
@@ -1792,12 +2240,12 @@ export default function ProviderDetailPage() {
             return (
               <div className="flex gap-2">
                 {disabledModelIds.length > 0 && (
-                  <Button size="sm" variant="secondary" icon="restart_alt" onClick={handleEnableAll}>
+                  <Button size="sm" variant="secondary" icon="replay" onClick={handleEnableAll}>
                     Active All
                   </Button>
                 )}
                 {activeIds.length > 0 && (
-                  <Button size="sm" variant="secondary" icon="block" onClick={() => handleDisableAll(activeIds)}>
+                  <Button size="sm" variant="secondary" icon="do_not_disturb_on" onClick={() => handleDisableAll(activeIds)}>
                     Disable All
                   </Button>
                 )}
@@ -1827,7 +2275,7 @@ export default function ProviderDetailPage() {
                     className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 hover:bg-amber-500/20 dark:text-amber-400 transition-colors"
                   >
                     <span>Allow China-hosted models</span>
-                    <span className="material-symbols-outlined text-[13px]">open_in_new</span>
+                    <span className="material-symbols-outlined text-[13px]">launch</span>
                   </a>
                 </div>
               );
@@ -1853,6 +2301,13 @@ export default function ProviderDetailPage() {
       ) : providerId === "cursor" ? (
         <CursorAuthModal
           isOpen={showOAuthModal}
+          onSuccess={handleOAuthSuccess}
+          onClose={() => setShowOAuthModal(false)}
+        />
+      ) : providerId === "zed" ? (
+        <ZedAuthModal
+          isOpen={showOAuthModal}
+          providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
           onClose={() => setShowOAuthModal(false)}
         />
@@ -1905,6 +2360,88 @@ export default function ProviderDetailPage() {
           setShowAddApiKeyModal(false);
         }}
       />
+      {/* OpenCode Free Lane Switch Banner Modal */}
+      <Modal
+        isOpen={laneBannerOpen}
+        onClose={() => setLaneBannerOpen(false)}
+        title="Switch OpenCode Free Lane"
+        size="md"
+      >
+        <div className="flex flex-col gap-4 text-sm text-text-muted">
+          <div className="flex items-center gap-2 p-3 rounded-lg border border-border-subtle bg-surface-2">
+            <span className="material-symbols-outlined text-[20px] text-brand-500">build_circle</span>
+            <div>
+              <p className="text-xs text-text-muted">Current Active Lane</p>
+              <p className="text-sm font-semibold text-text-main">
+                {opencodeCliMode ? "CLI Lane (Using Local CLI)" : "Direct Lane (No CLI / Fast TLS)"}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => setSelectedLaneMode(false)}
+              className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${!selectedLaneMode ? "border-brand-500 bg-brand-500/10 ring-1 ring-brand-500/30" : "border-border-subtle bg-surface-2/40 hover:bg-surface-2/70"}`}
+            >
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center gap-2 font-medium text-text-main">
+                  <span className="material-symbols-outlined text-[18px] text-success">electric_bolt</span>
+                  <span>Direct Lane (Default / Recommended)</span>
+                </div>
+                {!selectedLaneMode && (
+                  <span className="material-symbols-outlined text-[18px] text-brand-500">task_alt</span>
+                )}
+              </div>
+              <p className="text-xs text-text-muted leading-relaxed">
+                Requests are sent directly to upstream via impersonated TLS (Bun-shaped ClientHello). Fast (~400ms), lightweight, and requires no local OpenCode CLI or Bun runtime installed on the host.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedLaneMode(true)}
+              className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${selectedLaneMode ? "border-brand-500 bg-brand-500/10 ring-1 ring-brand-500/30" : "border-border-subtle bg-surface-2/40 hover:bg-surface-2/70"}`}
+            >
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center gap-2 font-medium text-text-main">
+                  <span className="material-symbols-outlined text-[18px] text-warning">code</span>
+                  <span>CLI Lane</span>
+                </div>
+                {selectedLaneMode && (
+                  <span className="material-symbols-outlined text-[18px] text-brand-500">task_alt</span>
+                )}
+              </div>
+              <p className="text-xs text-text-muted leading-relaxed">
+                Spawns the local <code className="text-[11px] bg-surface px-1 py-0.5 rounded">opencode</code> binary and Bun sidecar transport on the host. Requires the CLI installed locally; otherwise requests will hang and time out.
+              </p>
+            </button>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-subtle">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setLaneBannerOpen(false)}
+              disabled={switchingLane}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={switchingLane}
+              onClick={async () => {
+                await applyOpencodeCliMode(selectedLaneMode);
+                setLaneBannerOpen(false);
+              }}
+            >
+              {switchingLane ? "Switching..." : "Konfirmasi"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       <EditConnectionModal
         isOpen={showEditModal}
         connection={selectedConnection}
@@ -1926,8 +2463,10 @@ export default function ProviderDetailPage() {
           isOpen={showAddCustomModel}
           providerAlias={providerStorageAlias}
           providerDisplayAlias={providerDisplayAlias}
-          onSave={async (modelId, caps) => {
-            await handleAddCustomModel(modelId, "llm", providerStorageAlias, caps);
+          onSave={async (modelId, caps, transport, ownedBy, multipliers) => {
+            // caps.stt is a UI-only flag; the API accepts transports only on
+            // type "stt" records, so the save derives the type from it.
+            await handleAddCustomModel(modelId, caps?.stt ? "stt" : "llm", providerStorageAlias, caps, transport, ownedBy, multipliers);
             setShowAddCustomModel(false);
           }}
           onClose={() => setShowAddCustomModel(false)}
@@ -1947,6 +2486,17 @@ export default function ProviderDetailPage() {
           isOpen={showBulkImportGrokCli}
           onClose={() => setShowBulkImportGrokCli(false)}
           onSuccess={fetchConnections}
+        />
+      )}
+
+      {scheduleConnection && (
+        <AutoPingScheduleModal
+          isOpen={!!scheduleConnection}
+          onClose={() => setScheduleConnection(null)}
+          connection={scheduleConnection}
+          reactive={autoPing.connections[scheduleConnection.id] === true}
+          schedule={autoPing.schedules?.[scheduleConnection.id] || null}
+          onSave={(result) => handleSaveAutoPing(scheduleConnection.id, result)}
         />
       )}
 

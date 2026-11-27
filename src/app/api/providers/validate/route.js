@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
 import { getProviderNodeById } from "@/models";
+
+export const dynamic = "force-dynamic";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
+import { buildCommandCodeHeaders } from "open-sse/shared/commandCodeHeaders.js";
 import { resolveQoderCredentials, resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { probeBedrockCredentials } from "open-sse/executors/bedrock.js";
+import { probeGeminiWebCookie } from "open-sse/services/geminiWebCookie.js";
+import {
+  createNousApiKeyProbe,
+  getNousApiKeyValidationError,
+  isNousApiKeyAccepted,
+} from "open-sse/services/nous.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
@@ -89,12 +99,17 @@ export async function POST(request) {
     const { apiKey, providerSpecificData } = body;
 
     const isNoAuth = AI_PROVIDERS[provider]?.noAuth === true;
-    if (!provider || (!apiKey && provider !== "ollama-local" && !isNoAuth)) {
+    // Same exemption as the create route: a provider can name a providerSpecificData field
+    // that replaces the API key (Bedrock's `profile`), so validating that setup must not 400.
+    const apiKeySubstitute = AI_PROVIDERS[provider]?.apiKeyOptionalWith;
+    const hasApiKeySubstitute = !!(apiKeySubstitute && providerSpecificData?.[apiKeySubstitute]);
+    if (!provider || (!apiKey && provider !== "ollama-local" && !isNoAuth && !hasApiKeySubstitute)) {
       return NextResponse.json({ error: "Provider and API key required" }, { status: 400 });
     }
 
     let isValid = false;
     let error = null;
+    let warning = null;
 
     // Validate with each provider
     try {
@@ -131,7 +146,7 @@ export async function POST(request) {
         if (modelsRes.status === 401 || modelsRes.status === 403) {
           return NextResponse.json({ valid: false, error: "Invalid API key" });
         }
-        // Fallback: probe /embeddings with a common test model — many providers lack /models
+        // Fallback: probe /embeddings with a common test model - many providers lack /models
         const embedRes = await fetch(`${baseUrl}/embeddings`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -234,6 +249,12 @@ export async function POST(request) {
         });
       }
 
+      // AWS-signed providers (Bedrock) have no bearer key for the generic probes below, which
+      // would reject bedrock outright and send bedrock-xai to a literal "{region}" host.
+      if (AI_PROVIDERS[provider]?.credentialForm === "aws") {
+        return NextResponse.json(await probeBedrockCredentials({ apiKey, providerSpecificData }, fetch));
+      }
+
       // Generic probe for webSearch/webFetch providers (config-driven)
       const webResult = await probeWebProvider(provider, apiKey);
       if (webResult !== null) {
@@ -296,6 +317,19 @@ export async function POST(request) {
           isValid = openrouterRes.ok;
           break;
 
+
+        case "nous": {
+          // Nous exposes /models publicly, so a models request cannot validate
+          // the Portal key. Use the smallest authenticated inference instead.
+          const probe = createNousApiKeyProbe(apiKey);
+          const res = await fetch(probe.url, {
+            ...probe.options,
+            signal: AbortSignal.timeout(8000),
+          });
+          isValid = isNousApiKeyAccepted(res.status);
+          if (!isValid) error = getNousApiKeyValidationError(res.status);
+          break;
+        }
         case "glm":
         case "glm-cn":
         case "kimi":
@@ -352,6 +386,26 @@ export async function POST(request) {
           break;
         }
 
+        case "llmtr": {
+          // GET /v1/models is public (200 with or without a key), so it cannot
+          // tell a bad key from a good one. Chat returns 401 for a bad key.
+          const res = await fetch("https://llmtr.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "qwen/qwen3.8-27b-free",
+              messages: [{ role: "user", content: "ping" }],
+              max_tokens: 1,
+            }),
+            signal: AbortSignal.timeout(8000),
+          });
+          isValid = res.status !== 401 && res.status !== 403;
+          break;
+        }
+
         case "deepseek":
         case "groq":
         case "xai":
@@ -369,6 +423,7 @@ export async function POST(request) {
         case "assemblyai":
         case "nanobanana":
         case "chutes":
+        case "runcrate":
         case "xiaomi-mimo":
         case "xiaomi-tokenplan":
         case "nvidia": {
@@ -376,7 +431,7 @@ export async function POST(request) {
             ...Object.fromEntries(
               Object.entries(PROVIDERS).filter(([, t]) => t.validateUrl).map(([id, t]) => [id, t.validateUrl])
             ),
-            // dynamic URLs (depend on providerSpecificData) — kept inline
+            // dynamic URLs (depend on providerSpecificData) - kept inline
             "ollama-local": `${resolveOllamaLocalHost({ providerSpecificData })}/api/tags`,
             "xiaomi-tokenplan": `${resolveXiaomiTokenplanBaseUrl({ providerSpecificData })}/models`,
           };
@@ -420,12 +475,7 @@ export async function POST(request) {
           }, false);
           const res = await fetch(cfg.baseUrl, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(cfg.headers || {}),
-              "x-session-id": crypto.randomUUID(),
-              "Authorization": `Bearer ${apiKey}`,
-            },
+            headers: buildCommandCodeHeaders({ apiKey, sessionId: payload.threadId }),
             body: JSON.stringify(payload),
           });
           isValid = res.status !== 401 && res.status !== 403;
@@ -466,7 +516,7 @@ export async function POST(request) {
             // Validate SA JSON has required fields
             isValid = !!(saJson.client_email && saJson.private_key && saJson.project_id);
           } else {
-            // Raw key: probe Vertex — 404 means key is valid (model just doesn't exist), 401 means invalid key
+            // Raw key: probe Vertex - 404 means key is valid (model just doesn't exist), 401 means invalid key
             const probeRes = await fetch(
               `https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
               { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
@@ -490,151 +540,45 @@ export async function POST(request) {
           break;
         }
 
-        case "deepseek-web": {
-          let token = apiKey.trim();
-          if (token.startsWith("{")) {
-            try {
-              const parsed = JSON.parse(token);
-              if (parsed && typeof parsed.value === "string") token = parsed.value.trim();
-            } catch {}
-          }
-          if (token.includes("userToken=")) {
-            const m = token.match(/userToken=([^;]+)/);
-            if (m) token = m[1].trim();
-          }
-          if (token.startsWith("Bearer ")) token = token.slice(7).trim();
-          token = token.replace(/^["']|["']$/g, "").trim();
-
-          if (!token) {
-            isValid = false;
-            error = "Invalid token format";
-            break;
-          }
-
-          const res = await fetch("https://chat.deepseek.com/api/v0/users/current", {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-              Origin: "https://chat.deepseek.com",
-              Referer: "https://chat.deepseek.com/",
-              "x-app-version": "20241129.0",
-              "x-client-platform": "web",
-            },
-            signal: AbortSignal.timeout(8000),
-          }).catch(() => null);
-
-          if (!res || !res.ok) {
-            isValid = false;
-            error = "Invalid token - copy userToken from chat.deepseek.com DevTools -> Application -> Local Storage/Cookies";
-          } else {
-            const data = await res.json().catch(() => null);
-            if (!data || data.code !== 0 || (data.data && data.data.biz_code !== undefined && data.data.biz_code !== 0)) {
-              isValid = false;
-              error = data?.msg || data?.data?.biz_msg || "Invalid token - rejected by chat.deepseek.com";
-            } else {
-              isValid = true;
-            }
-          }
-          break;
-        }
-
         case "gemini-web": {
-          let cookie = apiKey.trim();
-          if (cookie.startsWith("{")) {
-            try {
-              const parsed = JSON.parse(cookie);
-              const cookies =
-                parsed.cookies && typeof parsed.cookies === "object" && !Array.isArray(parsed.cookies)
-                  ? parsed.cookies
-                  : parsed;
-              const pairs = Object.entries(cookies)
-                .filter(([, v]) => typeof v === "string" && v.trim().length > 0)
-                .map(([k, v]) => `${k}=${String(v).trim()}`);
-              if (pairs.length > 0) cookie = pairs.join("; ");
-            } catch {}
-          }
-          if (!cookie) {
-            isValid = false;
-            error = "Invalid cookie format";
-            break;
-          }
-          if (!cookie.includes("=")) cookie = `__Secure-1PSID=${cookie}`;
-
-          const res = await fetch("https://gemini.google.com/app", {
-            method: "GET",
-            headers: {
-              Cookie: cookie,
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-              Accept: "text/html",
-            },
-            signal: AbortSignal.timeout(10000),
-          }).catch(() => null);
-
-          if (!res || !res.ok) {
-            isValid = false;
-            error = "Invalid cookie - copy __Secure-1PSID from gemini.google.com DevTools -> Application -> Cookies";
-          } else {
-            const html = await res.text().catch(() => "");
-            if (html.includes("SNlM0e") || html.includes("BardChatUi")) {
-              isValid = true;
-            } else {
-              isValid = false;
-              error = "Invalid cookie - rejected by gemini.google.com, re-copy __Secure-1PSID";
-            }
-          }
+          // The credential is a browser session, not a bearer token, so the
+          // generic probe below cannot validate it: a live session is the one
+          // whose /app HTML still carries the BardChatUi bootstrap + XSRF token.
+          const probe = await probeGeminiWebCookie(apiKey);
+          isValid = probe.valid;
+          if (!isValid) error = probe.error;
+          else if (probe.warning) warning = probe.warning;
           break;
         }
 
-        case "kimi-web": {
-          let token = apiKey.trim();
-          if (token.startsWith("{") && token.endsWith("}")) {
+        case "deepseek-web": {
+          const raw = String(apiKey || "").trim();
+          let token = raw;
+          if (raw.startsWith("{")) {
             try {
-              const parsed = JSON.parse(token);
-              const access = parsed?.access_token || parsed?.token || "";
-              if (access && typeof access === "string") token = access.trim();
-            } catch {}
+              const parsed = JSON.parse(raw);
+              token = parsed.value || parsed.userToken || parsed.token || raw;
+            } catch {
+              token = raw;
+            }
           }
-          const bearer = token.match(/^(?:authorization:\s*)?bearer\s+([^;\s]+)/i);
-          if (bearer) token = bearer[1];
-          for (const key of ["access_token", "kimi-auth"]) {
-            const m = token.match(new RegExp(`(?:^|[\\s;])${key}=([^;\\s]+)`));
-            if (m) { token = m[1]; break; }
+          if (token.toLowerCase().startsWith("bearer ")) {
+            token = token.slice(7).trim();
           }
+          token = token.replace(/^["']|["']$/g, "").trim();
           if (!token) {
             isValid = false;
-            error = "Invalid token format";
+            error = "Token is required. Copy the 'userToken' value from chat.deepseek.com Local Storage.";
             break;
           }
-
-          const res = await fetch("https://www.kimi.ai/apiv2/kimi.gateway.user.v1.UserService/GetUserInfo", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/connect+json",
-              Accept: "*/*",
-              Authorization: `Bearer ${token}`,
-              Origin: "https://www.kimi.ai",
-              Referer: "https://www.kimi.ai/",
-              "connect-protocol-version": "1",
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            },
-            body: "\x00\x00\x00\x00\x00",
-            signal: AbortSignal.timeout(8000),
-          }).catch(() => null);
-
-          if (!res || !res.ok) {
-            isValid = false;
-            error = "Invalid token - copy access_token from www.kimi.ai DevTools -> Application -> Local Storage";
-          } else {
-            isValid = true;
-          }
+          isValid = true;
           break;
         }
 
         case "qoder":
         case "qoder-cn": {
           // PAT (pt-...) needs the job-token exchange before it can sign
-          // anything — the generic OpenAI-compat probe below can't validate it.
+          // anything - the generic OpenAI-compat probe below can't validate it.
           try {
             const resolved = await resolveQoderCredentials({ provider, apiKey, providerSpecificData }, null, AbortSignal.timeout(8000));
             const result = await resolveQoderModels(resolved, { forceRefresh: true });
@@ -692,6 +636,7 @@ export async function POST(request) {
     return NextResponse.json({
       valid: isValid,
       error: isValid ? null : (error || "Invalid API key"),
+      warning: isValid ? warning : null,
     });
   } catch (error) {
     console.log("Error validating API key:", error);

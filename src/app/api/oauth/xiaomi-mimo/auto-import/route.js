@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { readFile, access, constants } from "fs/promises";
+
+export const dynamic = "force-dynamic";
 import { homedir } from "os";
 import { join } from "path";
 import { readDesktopPassToken } from "open-sse/shared/mimoAccount.js";
@@ -105,7 +107,7 @@ export async function GET() {
 
     // Account-session passToken from Desktop's cookie store. Persisting it per
     // connection is what lets multiple Xiaomi accounts rotate independently.
-    // (null while Desktop is running — its cookie DB is exclusively locked.)
+    // (null while Desktop is running - its cookie DB is exclusively locked.)
     let mimoPassToken = null;
     let mimoUserId = null;
     let mimoCUserId = null;
