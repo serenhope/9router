@@ -14,7 +14,7 @@ describe("planBulkAdd: auto-named gap-fill (the replace bug)", () => {
     expect(out.every(o => o.skipped === false)).toBe(true);
   });
 
-  it("gap-fills around existing names — never reuses an existing name", () => {
+  it("gap-fills around existing names - never reuses an existing name", () => {
     // Key 3 and Key 5 already exist; user adds 4 keys.
     // Free slots: 1, 2, 4, 6 -> assign those, never 3 or 5.
     const out = planBulkAdd(["sk-a", "sk-b", "sk-c", "sk-d"], ["Key 3", "Key 5"]);
@@ -34,7 +34,7 @@ describe("planBulkAdd: auto-named gap-fill (the replace bug)", () => {
 
   it("within-batch names are unique even for the same free slot", () => {
     const out = planBulkAdd(["sk-a", "sk-b", "sk-c"], ["Key 1"]);
-    // Key 1 taken; batch gets 2, 3, 4 — no internal dup.
+    // Key 1 taken; batch gets 2, 3, 4 - no internal dup.
     const names = out.map(o => o.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names).toEqual(["Key 2", "Key 3", "Key 4"]);
@@ -109,5 +109,28 @@ describe("planBulkAdd: robustness", () => {
   it("coerces non-array existingNames gracefully", () => {
     const out = planBulkAdd(["sk-a"], null);
     expect(out[0].name).toBe("Key 1");
+  });
+});
+
+describe("planBulkAdd: opaque LLM|id|secret tokens", () => {
+  it("treats LLM|id|secret as one opaque token, not name|key", () => {
+    const line = "LLM|1412752987604207|PYVRCdb9ZAnsZZk63RBlNQzApKk";
+    const out = planBulkAdd([line], []);
+    expect(out[0].name).toBe("LLM 1");
+    expect(out[0].apiKey).toBe(line);
+  });
+
+  it("treats lowercase llm|... as opaque too", () => {
+    const line = "llm|1412752987604207|PYVRCdb9ZAnsZZk63RBlNQzApKk";
+    const out = planBulkAdd([line], []);
+    expect(out[0].name).toBe("LLM 1");
+    expect(out[0].apiKey).toBe(line);
+  });
+
+  it("cloudflare mode still parses name|key|accountId", () => {
+    const out = planBulkAdd(["main|sk-key1|acc123"], [], { isCloudflareAi: true });
+    expect(out[0].name).toBe("main 1");
+    expect(out[0].apiKey).toBe("sk-key1");
+    expect(out[0].providerSpecificData).toEqual({ accountId: "acc123" });
   });
 });

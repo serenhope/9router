@@ -23,6 +23,10 @@ export function SttExampleCard({ providerId }) {
   const [prompt, setPrompt] = useState("");
   const [responseFormat, setResponseFormat] = useState("json");
   const [temperature, setTemperature] = useState("");
+  const [granularity, setGranularity] = useState("");
+  const [tagAudioEvents, setTagAudioEvents] = useState(false);
+  const [diarize, setDiarize] = useState(false);
+  const [numSpeakers, setNumSpeakers] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [useTunnel, setUseTunnel] = useState(false);
   const [localEndpoint, setLocalEndpoint] = useState("");
@@ -68,7 +72,7 @@ export function SttExampleCard({ providerId }) {
   const curlSnippet = `curl -X POST ${endpoint}/v1/audio/transcriptions \\
   -H "Authorization: Bearer ${apiKey || "YOUR_KEY"}" \\
   -F "file=@${audioFile?.name || "audio.mp3"}" \\
-  -F "model=${modelFull}"${allowedParams.includes("language") && language ? ` \\\n  -F "language=${language}"` : ""}${allowedParams.includes("response_format") ? ` \\\n  -F "response_format=${responseFormat}"` : ""}${allowedParams.includes("temperature") && temperature ? ` \\\n  -F "temperature=${temperature}"` : ""}${allowedParams.includes("prompt") && prompt ? ` \\\n  -F "prompt=${prompt}"` : ""}`;
+  -F "model=${modelFull}"${allowedParams.includes("language") && language ? ` \\\n  -F "language=${language}"` : ""}${allowedParams.includes("response_format") ? ` \\\n  -F "response_format=${responseFormat}"` : ""}${allowedParams.includes("temperature") && temperature ? ` \\\n  -F "temperature=${temperature}"` : ""}${allowedParams.includes("prompt") && prompt ? ` \\\n  -F "prompt=${prompt}"` : ""}${allowedParams.includes("timestamps_granularity") && granularity ? ` \\\n  -F "timestamps_granularity=${granularity}"` : ""}${allowedParams.includes("tag_audio_events") && tagAudioEvents ? ` \\\n  -F "tag_audio_events=true"` : ""}${allowedParams.includes("diarize") && diarize ? ` \\\n  -F "diarize=true"` : ""}${allowedParams.includes("num_speakers") && !diarize && numSpeakers ? ` \\\n  -F "num_speakers=${numSpeakers}"` : ""}`;
 
   const handleRun = async () => {
     if (!audioFile || !modelFull) return;
@@ -84,6 +88,18 @@ export function SttExampleCard({ providerId }) {
       if (allowedParams.includes("response_format")) fd.append("response_format", responseFormat);
       if (allowedParams.includes("temperature") && temperature) fd.append("temperature", temperature);
       if (allowedParams.includes("prompt") && prompt) fd.append("prompt", prompt);
+      if (allowedParams.includes("timestamps_granularity") && granularity) {
+        fd.append("timestamps_granularity", granularity);
+      }
+      if (allowedParams.includes("tag_audio_events") && tagAudioEvents) {
+        fd.append("tag_audio_events", "true");
+      }
+      // diarize and num_speakers are mutually exclusive upstream — only one goes out.
+      if (allowedParams.includes("diarize") && diarize) {
+        fd.append("diarize", "true");
+      } else if (allowedParams.includes("num_speakers") && numSpeakers) {
+        fd.append("num_speakers", numSpeakers);
+      }
 
       const headers = {};
       if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
@@ -147,7 +163,7 @@ export function SttExampleCard({ providerId }) {
                   useTunnel ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-text-muted hover:text-primary"
                 }`}
               >
-                <span className="material-symbols-outlined text-[14px]">wifi_tethering</span>
+                <span className="material-symbols-outlined text-[14px]">sensors</span>
                 Tunnel
               </button>
             )}
@@ -235,6 +251,66 @@ export function SttExampleCard({ providerId }) {
           </Row>
         )}
 
+        {/* Scribe-style extras — shown only when the model declares the param */}
+        {allowedParams.includes("timestamps_granularity") && (
+          <Row label="Timestamps">
+            <select
+              value={granularity}
+              onChange={(e) => setGranularity(e.target.value)}
+              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
+            >
+              <option value="">provider default</option>
+              <option value="word">word</option>
+              <option value="character">character</option>
+              <option value="none">none</option>
+            </select>
+          </Row>
+        )}
+
+        {allowedParams.includes("tag_audio_events") && (
+          <Row label="Tag audio events">
+            <label className="flex items-center gap-2 text-sm text-text-muted">
+              <input
+                type="checkbox"
+                checked={tagAudioEvents}
+                onChange={(e) => setTagAudioEvents(e.target.checked)}
+                className="accent-primary"
+              />
+              Label non-speech sounds as [laughter], [applause], ...
+            </label>
+          </Row>
+        )}
+
+        {allowedParams.includes("diarize") && (
+          <Row label="Speaker labels">
+            <label className="flex items-center gap-2 text-sm text-text-muted">
+              <input
+                type="checkbox"
+                checked={diarize}
+                onChange={(e) => setDiarize(e.target.checked)}
+                className="accent-primary"
+              />
+              Detect speakers automatically (overrides speaker count)
+            </label>
+          </Row>
+        )}
+
+        {allowedParams.includes("num_speakers") && (
+          <Row label="Speaker count">
+            <input
+              type="number"
+              step="1"
+              min="1"
+              max="32"
+              value={numSpeakers}
+              onChange={(e) => setNumSpeakers(e.target.value)}
+              disabled={diarize}
+              placeholder="auto-detect"
+              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary disabled:opacity-50"
+            />
+          </Row>
+        )}
+
         {/* Curl + Run */}
         <div className="mt-1">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-1.5">
@@ -253,7 +329,7 @@ export function SttExampleCard({ providerId }) {
                 className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span className="material-symbols-outlined text-[14px]" style={running ? { animation: "spin 1s linear infinite" } : undefined}>
-                  play_arrow
+                  play_circle
                 </span>
                 {running ? "Transcribing..." : "Run"}
               </button>
@@ -268,7 +344,7 @@ export function SttExampleCard({ providerId }) {
         <div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-1.5">
             <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-              Response {result && latency && <span className="font-normal normal-case">&#9889; {latency}ms</span>}
+              Response {result && latency && <span className="inline-flex items-center gap-1 font-normal normal-case"><span className="material-symbols-outlined text-[11px] leading-none">speed</span>{latency}ms</span>}
             </span>
             {result && (
               <button

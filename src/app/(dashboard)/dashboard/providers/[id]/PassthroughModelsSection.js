@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import PropTypes from "prop-types";
-import { Button } from "@/shared/components";
+import { Button, ModelTierBadge } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 
 function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
@@ -28,23 +28,22 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
       </span>
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{modelId}</p>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p className="text-sm font-medium truncate">{modelId}</p>
+          <ModelTierBadge model={modelId} />
+        </div>
 
         <div className="flex items-center gap-1 mt-1">
         <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
-          <div className="relative group/btn">
-            <button
-              onClick={() => onCopy(fullModel, `model-${modelId}`)}
-              className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary"
-            >
-              <span className="material-symbols-outlined text-sm">
-                {copied === `model-${modelId}` ? "check" : "content_copy"}
-              </span>
-            </button>
-            <span className="pointer-events-none absolute top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
-              {copied === `model-${modelId}` ? "Copied!" : "Copy"}
+          <button
+            onClick={() => onCopy(fullModel, `model-${modelId}`)}
+            title={copied === `model-${modelId}` ? "Copied" : "Copy"}
+            className="p-1 hover:bg-surface-2 rounded text-text-muted hover:text-primary transition-all shrink-0"
+          >
+            <span className="material-symbols-outlined text-[14px]">
+              {copied === `model-${modelId}` ? "check" : "content_copy"}
             </span>
-          </div>
+          </button>
           {onTest && (
             <div className="relative group/btn">
               <button
@@ -70,7 +69,7 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
         className="p-1 hover:bg-red-50 rounded text-red-500"
         title="Remove model"
       >
-        <span className="material-symbols-outlined text-sm">delete</span>
+        <span className="material-symbols-outlined text-sm">delete_sweep</span>
       </button>
     </div>
   );
@@ -138,7 +137,7 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
             className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
           />
         </div>
-        <Button size="sm" icon="add" onClick={handleAdd} disabled={!newModel.trim() || adding}>
+        <Button size="sm" icon="add_circle" onClick={handleAdd} disabled={!newModel.trim() || adding}>
           {adding ? "Adding..." : "Add"}
         </Button>
       </div>

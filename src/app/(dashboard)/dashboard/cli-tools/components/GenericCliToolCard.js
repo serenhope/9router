@@ -9,6 +9,38 @@ import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 
+const PI_CONTEXT_WINDOWS = [200000, 400000, 600000, 1000000];
+const PI_MAX_TOKENS = [16000, 32000, 64000, 128000];
+const PI_DEFAULT_CAPS = { contextWindow: 200000, maxTokens: 64000 };
+const PI_CAP_LIMITS = { contextWindow: 2000000, maxTokens: 200000 };
+const formatTokens = (n) =>
+  n >= 1000000 ? `${+(n / 1000000).toFixed(2)}M` : `${Math.round(n / 1000)}k`;
+
+const sanitizeCap = (v, fallback, max) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 && n <= max ? n : fallback;
+};
+
+const capOptions = (values, current) =>
+  values.includes(current) ? values : [...values, current].sort((a, b) => a - b);
+
+const readPiModels = (cfg) => {
+  const list = cfg?.providers?.["9router"]?.models;
+  if (!Array.isArray(list) || list.length === 0) return null;
+  const caps = {};
+  const ids = list.map((m) => {
+    const id = typeof m === "string" ? m : m.id;
+    if (typeof m !== "string") {
+      caps[id] = {
+        contextWindow: sanitizeCap(m.contextWindow, PI_DEFAULT_CAPS.contextWindow, PI_CAP_LIMITS.contextWindow),
+        maxTokens: sanitizeCap(m.maxTokens, PI_DEFAULT_CAPS.maxTokens, PI_CAP_LIMITS.maxTokens),
+      };
+    }
+    return id;
+  });
+  return { ids, caps };
+};
+
 export default function GenericCliToolCard({
   tool,
   isExpanded,
@@ -34,14 +66,9 @@ export default function GenericCliToolCard({
     const cfg = initialStatus?.config;
     return cfg?.model || cfg?.openai?.model || cfg?.providers?.["9router"]?.models?.[0]?.id || "";
   });
-  const [selectedModels, setSelectedModels] = useState(() => {
-    const cfg = initialStatus?.config;
-    const list = cfg?.providers?.["9router"]?.models;
-    if (Array.isArray(list) && list.length > 0) {
-      return list.map((m) => (typeof m === "string" ? m : m.id));
-    }
-    return [];
-  });
+  const initialPi = readPiModels(initialStatus?.config);
+  const [selectedModels, setSelectedModels] = useState(() => initialPi?.ids || []);
+  const [modelCaps, setModelCaps] = useState(() => initialPi?.caps || {});
   const [modalOpen, setModalOpen] = useState(false);
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
@@ -58,10 +85,10 @@ export default function GenericCliToolCard({
             setStatus(data);
             const cfg = data?.config;
             if (tool.id === "pi") {
-              const list = cfg?.providers?.["9router"]?.models;
-              if (Array.isArray(list) && list.length > 0) {
-                const ids = list.map((m) => (typeof m === "string" ? m : m.id));
-                setSelectedModels(ids);
+              const pi = readPiModels(cfg);
+              if (pi) {
+                setSelectedModels(pi.ids);
+                setModelCaps(pi.caps);
               }
             } else {
               const mod = cfg?.model || cfg?.openai?.model || cfg?.providers?.["9router"]?.models?.[0]?.id;
@@ -86,10 +113,10 @@ export default function GenericCliToolCard({
       setStatus(data);
       const cfg = data?.config;
       if (tool.id === "pi") {
-        const list = cfg?.providers?.["9router"]?.models;
-        if (Array.isArray(list) && list.length > 0) {
-          const ids = list.map((m) => (typeof m === "string" ? m : m.id));
-          setSelectedModels(ids);
+        const pi = readPiModels(cfg);
+        if (pi) {
+          setSelectedModels(pi.ids);
+          setModelCaps(pi.caps);
         }
       } else {
         const mod = cfg?.model || cfg?.openai?.model || cfg?.providers?.["9router"]?.models?.[0]?.id;
@@ -144,7 +171,12 @@ export default function GenericCliToolCard({
       };
 
       if (tool.id === "pi") {
-        payload.models = selectedModels.length > 0 ? selectedModels : ["provider/model-id"];
+        payload.models = (selectedModels.length > 0 ? selectedModels : ["provider/model-id"]).map((id) => ({
+          id,
+          name: id,
+          ...PI_DEFAULT_CAPS,
+          ...modelCaps[id],
+        }));
       } else {
         payload.model = selectedModel;
       }
@@ -192,6 +224,7 @@ export default function GenericCliToolCard({
     if (tool.id === "pi") {
       if (!selectedModels.includes(model.value)) {
         setSelectedModels((prev) => [...prev, model.value]);
+        setModelCaps((prev) => ({ ...prev, [model.value]: { ...PI_DEFAULT_CAPS, ...prev[model.value] } }));
       }
     } else {
       setSelectedModel(model.value);
@@ -211,11 +244,32 @@ export default function GenericCliToolCard({
     });
     if (allModels.length > 0) {
       setSelectedModels((prev) => Array.from(new Set([...prev, ...allModels])));
+      setModelCaps((prev) => {
+        const next = { ...prev };
+        allModels.forEach((id) => { next[id] ||= { ...PI_DEFAULT_CAPS }; });
+        return next;
+      });
     }
   };
 
   const handleRemoveModel = (modelToRemove) => {
     setSelectedModels((prev) => prev.filter((m) => m !== modelToRemove));
+    setModelCaps((prev) => {
+      const next = { ...prev };
+      delete next[modelToRemove];
+      return next;
+    });
+  };
+
+  const setModelCap = (modelId, key, value) => {
+    setModelCaps((prev) => ({
+      ...prev,
+      [modelId]: {
+        ...PI_DEFAULT_CAPS,
+        ...prev[modelId],
+        [key]: sanitizeCap(value, PI_DEFAULT_CAPS[key], PI_CAP_LIMITS[key]),
+      },
+    }));
   };
 
   const getInstallCommand = () => {
@@ -258,8 +312,8 @@ export default function GenericCliToolCard({
                     models: modelsList.map((id) => ({
                       id,
                       name: id,
-                      contextWindow: 128000,
-                      maxTokens: 16384,
+                      ...PI_DEFAULT_CAPS,
+                      ...modelCaps[id],
                     })),
                   },
                 },
@@ -301,7 +355,7 @@ export default function GenericCliToolCard({
         return [
           {
             filename: "~/.forge/config.toml",
-            content: `# Forge config — managed by 9Router\n\n[openai]\napi_key = "${key}"\nbase_url = "${effectiveUrl}"\nmodel = "${mod}"`,
+            content: `# Forge config - managed by 9Router\n\n[openai]\napi_key = "${key}"\nbase_url = "${effectiveUrl}"\nmodel = "${mod}"`,
           },
         ];
       case "smelt":
@@ -315,7 +369,7 @@ export default function GenericCliToolCard({
         return [
           {
             filename: "~/.codewhale/config.toml",
-            content: `# CodeWhale config — managed by 9Router\n\n[openai]\nbase_url = "${effectiveUrl}"\napi_key = "${key}"\nmodel = "${mod}"`,
+            content: `# CodeWhale config - managed by 9Router\n\n[openai]\nbase_url = "${effectiveUrl}"\napi_key = "${key}"\nmodel = "${mod}"`,
           },
         ];
       default:
@@ -346,24 +400,24 @@ export default function GenericCliToolCard({
                 {tool.icon}
               </span>
             ) : (
-              <span className="material-symbols-outlined text-[28px] text-primary">terminal</span>
+              <span className="material-symbols-outlined text-[28px] text-primary">integration_instructions</span>
             )}
           </div>
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <h3 className="font-medium text-sm">{tool.name}</h3>
               {configStatus === "configured" && (
-                <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-500/10 text-green-600 dark:text-green-400 rounded-full">
+                <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-500/10 text-success rounded-full">
                   Connected
                 </span>
               )}
               {configStatus === "not_configured" && (
-                <span className="px-1.5 py-0.5 text-[10px] font-medium bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 rounded-full">
+                <span className="px-1.5 py-0.5 text-[10px] font-medium bg-yellow-500/10 text-warning rounded-full">
                   Not configured
                 </span>
               )}
               {configStatus === "other" && (
-                <span className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-full">
+                <span className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-500/10 text-info rounded-full">
                   Other
                 </span>
               )}
@@ -372,7 +426,7 @@ export default function GenericCliToolCard({
           </div>
         </div>
         <span className={`material-symbols-outlined text-text-muted text-[20px] transition-transform ${isExpanded ? "rotate-180" : ""}`}>
-          expand_more
+          keyboard_arrow_down
         </span>
       </div>
 
@@ -380,7 +434,7 @@ export default function GenericCliToolCard({
         <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
           {checking && (
             <div className="flex items-center gap-2 text-text-muted">
-              <span className="material-symbols-outlined animate-spin">progress_activity</span>
+              <span className="material-symbols-outlined animate-spin">autorenew</span>
               <span>Checking {tool.name}...</span>
             </div>
           )}
@@ -389,9 +443,9 @@ export default function GenericCliToolCard({
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-3 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <div className="flex items-start gap-3">
-                  <span className="material-symbols-outlined text-yellow-500">warning</span>
+                  <span className="material-symbols-outlined text-yellow-500">priority_high</span>
                   <div className="flex-1">
-                    <p className="font-medium text-yellow-600 dark:text-yellow-400">{tool.name} not detected locally</p>
+                    <p className="font-medium text-warning">{tool.name} not detected locally</p>
                     <p className="text-sm text-text-muted">Manual configuration is still available if 9router is deployed on a remote server.</p>
                   </div>
                 </div>
@@ -400,9 +454,9 @@ export default function GenericCliToolCard({
                     variant="secondary"
                     size="sm"
                     onClick={() => setShowManualConfigModal(true)}
-                    className="!bg-yellow-500/20 !border-yellow-500/40 !text-yellow-700 dark:!text-yellow-300 hover:!bg-yellow-500/30"
+                    className="!bg-yellow-500/20 !border-yellow-500/40 !text-warning hover:!bg-yellow-500/30"
                   >
-                    <span className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
+                    <span className="material-symbols-outlined text-[18px] mr-1">file_copy</span>
                     Manual Config
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => setShowInstallGuide(!showInstallGuide)}>
@@ -417,7 +471,7 @@ export default function GenericCliToolCard({
                   <div className="space-y-3 text-sm">
                     <div>
                       <p className="text-text-muted mb-1">Install command:</p>
-                      <code className="block px-3 py-2 bg-black/5 dark:bg-white/5 rounded font-mono text-xs">{getInstallCommand()}</code>
+                      <code className="block px-3 py-2 bg-surface-2 rounded-[var(--r-control)] font-mono text-xs border border-border-subtle text-text-main">{getInstallCommand()}</code>
                     </div>
                     {tool.docsUrl && (
                       <p className="text-xs text-text-muted">
@@ -436,7 +490,7 @@ export default function GenericCliToolCard({
                 {/* Endpoint (selector) */}
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr] sm:items-center sm:gap-2">
                   <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Select Endpoint</span>
-                  <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
+                  <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">east</span>
                   <BaseUrlSelect
                     value={customBaseUrl || getEffectiveBaseUrl()}
                     onChange={setCustomBaseUrl}
@@ -453,7 +507,7 @@ export default function GenericCliToolCard({
                 {currentBaseUrl ? (
                   <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                     <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Current</span>
-                    <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
+                    <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">east</span>
                     <span className="min-w-0 truncate rounded bg-surface/40 px-2 py-2 text-xs text-text-muted sm:py-1.5">
                       {currentBaseUrl}
                     </span>
@@ -463,7 +517,7 @@ export default function GenericCliToolCard({
                 {/* API Key */}
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                   <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">API Key</span>
-                  <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
+                  <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">east</span>
                   <ApiKeySelect value={selectedApiKey} onChange={setSelectedApiKey} apiKeys={apiKeys} cloudEnabled={cloudEnabled} />
                 </div>
 
@@ -471,27 +525,50 @@ export default function GenericCliToolCard({
                 {tool.id === "pi" && (
                   <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr] sm:items-start sm:gap-2">
                     <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm mt-1">Models</span>
-                    <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline mt-1.5">arrow_forward</span>
+                    <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline mt-1.5">east</span>
                     <div className="flex-1 flex flex-col gap-2">
                       <div className="flex flex-wrap gap-1.5 min-h-[36px] p-2 bg-surface rounded border border-border">
                         {selectedModels.length === 0 ? (
                           <span className="text-xs text-text-muted italic">No models selected. Add models to use in Pi.</span>
                         ) : (
-                          selectedModels.map((modelId) => (
-                            <span
-                              key={modelId}
-                              className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-bg-secondary text-xs text-text-main border border-border"
-                            >
-                              <span>{modelId}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveModel(modelId)}
-                                className="text-text-muted hover:text-red-500 rounded p-0.5"
+                          selectedModels.map((modelId) => {
+                            const caps = { ...PI_DEFAULT_CAPS, ...modelCaps[modelId] };
+                            return (
+                              <div
+                                key={modelId}
+                                className="flex w-full flex-wrap items-center gap-1.5 rounded border border-border bg-bg-secondary px-2 py-1 text-xs text-text-main"
                               >
-                                <span className="material-symbols-outlined text-[12px]">close</span>
-                              </button>
-                            </span>
-                          ))
+                                <span className="min-w-0 flex-1 basis-40 truncate">{modelId}</span>
+                                <select
+                                  value={caps.contextWindow}
+                                  onChange={(e) => setModelCap(modelId, "contextWindow", e.target.value)}
+                                  title="Context window"
+                                  className="shrink-0 rounded border border-border bg-surface px-1 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-primary/50"
+                                >
+                                  {capOptions(PI_CONTEXT_WINDOWS, caps.contextWindow).map((n) => (
+                                    <option key={n} value={n}>{formatTokens(n)} ctx</option>
+                                  ))}
+                                </select>
+                                <select
+                                  value={caps.maxTokens}
+                                  onChange={(e) => setModelCap(modelId, "maxTokens", e.target.value)}
+                                  title="Max output tokens"
+                                  className="rounded border border-border bg-surface px-1 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-primary/50"
+                                >
+                                  {capOptions(PI_MAX_TOKENS, caps.maxTokens).map((n) => (
+                                    <option key={n} value={n}>{formatTokens(n)} out</option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveModel(modelId)}
+                                  className="text-text-muted hover:text-red-500 rounded p-0.5"
+                                >
+                                  <span className="material-symbols-outlined text-[12px]">cancel</span>
+                                </button>
+                              </div>
+                            );
+                          })
                         )}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -502,7 +579,7 @@ export default function GenericCliToolCard({
                           onClick={() => setModalOpen(true)}
                           disabled={!activeProviders?.length}
                         >
-                          <span className="material-symbols-outlined text-[14px] mr-1">add</span>
+                          <span className="material-symbols-outlined text-[14px] mr-1">add_circle</span>
                           Add Model
                         </Button>
                         {activeProviders?.length > 0 && (
@@ -534,7 +611,7 @@ export default function GenericCliToolCard({
                 {tool.id !== "omp" && tool.id !== "pi" && (
                   <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                     <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Model</span>
-                    <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
+                    <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">east</span>
                     <div className="relative w-full min-w-0">
                       <input
                         type="text"
@@ -549,7 +626,7 @@ export default function GenericCliToolCard({
                           className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-text-muted hover:text-red-500 rounded transition-colors"
                           title="Clear"
                         >
-                          <span className="material-symbols-outlined text-[14px]">close</span>
+                          <span className="material-symbols-outlined text-[14px]">cancel</span>
                         </button>
                       )}
                     </div>
@@ -573,8 +650,8 @@ export default function GenericCliToolCard({
                 <div
                   className={`p-3 rounded-lg text-sm ${
                     message.type === "success"
-                      ? "bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20"
-                      : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
+                      ? "bg-green-500/10 text-success border border-green-500/20"
+                      : "bg-red-500/10 text-danger border border-red-500/20"
                   }`}
                 >
                   {message.text}
@@ -609,7 +686,7 @@ export default function GenericCliToolCard({
                   size="sm"
                   onClick={() => setShowManualConfigModal(true)}
                 >
-                  <span className="material-symbols-outlined text-[18px] mr-1">code</span>
+                  <span className="material-symbols-outlined text-[18px] mr-1">source</span>
                   Manual Config
                 </Button>
               </div>

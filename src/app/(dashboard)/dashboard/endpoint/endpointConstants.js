@@ -1,10 +1,14 @@
+// Presets live with the pruner that consumes them; re-exported here so the
+// Token Saver picker renders exactly the levels the proxy will apply.
+export { PRUNING_PRESETS } from "open-sse/rtk/contextPruning.js";
+
 export const WENYAN_LOCALES = ["zh-CN", "zh-TW"];
 
 export const TUNNEL_BENEFITS = [
-  { icon: "public", title: "Access Anywhere", desc: "Use your API from any network" },
-  { icon: "group", title: "Share Endpoint", desc: "Share URL with team members" },
-  { icon: "code", title: "Use in Cursor/Cline", desc: "Connect AI tools remotely" },
-  { icon: "lock", title: "Encrypted", desc: "End-to-end TLS via Cloudflare" },
+  { icon: "language", title: "Access Anywhere", desc: "Use your API from any network" },
+  { icon: "share", title: "Share Endpoint", desc: "Share URL with team members" },
+  { icon: "terminal", title: "Use in Cursor/Cline", desc: "Connect AI tools remotely" },
+  { icon: "encrypted", title: "Encrypted", desc: "End-to-end TLS via Cloudflare" },
 ];
 
 export const TUNNEL_PING_INTERVAL_MS = 2000;

@@ -1,4 +1,3 @@
-"use server";
 
 import { NextResponse } from "next/server";
 import { exec } from "child_process";
@@ -6,6 +5,9 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { resolveModelDisplayName } from "@/shared/utils/modelDisplayName";
+
+export const dynamic = "force-dynamic";
 
 const execAsync = promisify(exec);
 
@@ -141,7 +143,7 @@ export async function POST(request) {
         index: i,
         baseUrl: normalizedBaseUrl,
         apiKey: keyToUse,
-        displayName: m,
+        displayName: resolveModelDisplayName(m),
         maxOutputTokens: 131072,
         noImageSupport: false,
         provider: "openai",

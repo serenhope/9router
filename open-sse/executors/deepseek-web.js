@@ -134,9 +134,14 @@ function createFinishedDrainScheduler(finishStream, drainMs = 750) {
   };
 }
 
-function resolveModelOptions(model, bodyObj) {
+export function resolveModelOptions(model, bodyObj) {
   const m = (model || "").toLowerCase();
-  const modelType = m.includes("pro") || m.includes("expert") ? "expert" : "default";
+  const isExpertModel =
+    m.includes("pro") ||
+    m.includes("expert") ||
+    m.includes("reason") ||
+    m.includes("r1");
+  const modelType = isExpertModel ? "expert" : "default";
   const thinkingEnabled =
     m.includes("r1") ||
     m.includes("think") ||
@@ -698,7 +703,18 @@ export class DeepSeekWebExecutor extends BaseExecutor {
 
     try {
       const accessToken = await acquireAccessToken(userToken, signal, log);
-      const toolMode = hasTools(bodyObj);
+      let disableToolCalling = false;
+      try {
+        const { getSettings } = await import("@/lib/localDb.js");
+        const settings = await getSettings();
+        if (settings?.webCookieToolCalling?.["deepseek-web"] === false) {
+          disableToolCalling = true;
+        }
+      } catch {
+        // fail-open
+      }
+
+      const toolMode = disableToolCalling ? false : hasTools(bodyObj);
       const toolPrompt = toolMode ? buildToolSystemPrompt(bodyObj.tools) : "";
 
       // Special turns (assistant tool_calls, tool results) become transcript

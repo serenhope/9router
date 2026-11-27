@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { createProxyPool, getProviderConnections, getProxyPools } from "@/models";
 
+export const dynamic = "force-dynamic";
+
 function toBoolean(value) {
   if (value === "true") return true;
   if (value === "false") return false;
   return undefined;
 }
 
-const VALID_PROXY_TYPES = ["http", "vercel", "cloudflare", "deno"];
+const VALID_PROXY_TYPES = ["http", "vercel", "cloudflare", "deno", "netlify"];
 
 function normalizeProxyPoolInput(body = {}) {
   const name = typeof body?.name === "string" ? body.name.trim() : "";

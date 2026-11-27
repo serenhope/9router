@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import PropTypes from "prop-types";
-import { Button } from "@/shared/components";
+import { Button, Input, Modal, ModelTierBadge } from "@/shared/components";
+import { useTaskStore } from "@/store/taskStore";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
   const borderColor = testStatus === "ok"
@@ -26,22 +27,21 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
         {testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{modelId}</p>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p className="text-sm font-medium truncate">{modelId}</p>
+          <ModelTierBadge model={modelId} />
+        </div>
         <div className="flex items-center gap-1 mt-1">
           <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
-          <div className="relative group/btn">
-            <button
-              onClick={() => onCopy(fullModel, `model-${modelId}`)}
-              className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary"
-            >
-              <span className="material-symbols-outlined text-sm">
-                {copied === `model-${modelId}` ? "check" : "content_copy"}
-              </span>
-            </button>
-            <span className="pointer-events-none absolute top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
-              {copied === `model-${modelId}` ? "Copied!" : "Copy"}
+          <button
+            onClick={() => onCopy(fullModel, `model-${modelId}`)}
+            title={copied === `model-${modelId}` ? "Copied" : "Copy"}
+            className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all shrink-0"
+          >
+            <span className="material-symbols-outlined text-[14px]">
+              {copied === `model-${modelId}` ? "check" : "content_copy"}
             </span>
-          </div>
+          </button>
           {onTest && (
             <div className="relative group/btn">
               <button
@@ -65,7 +65,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
         className="p-1 hover:bg-red-50 rounded text-red-500"
         title="Remove model"
       >
-        <span className="material-symbols-outlined text-sm">delete</span>
+        <span className="material-symbols-outlined text-sm">delete_sweep</span>
       </button>
     </div>
   );
@@ -122,14 +122,47 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     }
   };
 
+  // Client-side cap for the list-fetch step: the route bounds each upstream
+  // read, but without this the browser still waits on the route itself with no
+  // ceiling when the provider stalls.
+  // Client-side cap for the list-fetch step: the route bounds each upstream
+  // read, but without this the browser still waits on the route itself with no
+  // ceiling when the provider stalls.
+  const LIST_TIMEOUT_MS = 20000;
   const handleImport = async () => {
     if (importing) return;
     const activeConnection = connections.find((conn) => conn.isActive !== false);
     if (!activeConnection) return;
 
     setImporting(true);
+    // The bell owns long-task visibility in this app, so a local boolean is
+    // not enough: register the run in the store and the panel shows it, with
+    // its own Completed row and running dot, like every other long task.
+    const taskId = `models-import-${activeConnection.id}`;
+    useTaskStore.getState().start({
+      id: taskId,
+      title: "Importing models",
+      message: "Fetching model list",
+      progress: 0,
+      href: typeof window !== "undefined" ? window.location.pathname : null,
+    });
     try {
-      const res = await fetch(`/api/providers/${activeConnection.id}/models`);
+      const controller = new AbortController();
+      const listTimer = setTimeout(() => controller.abort(), LIST_TIMEOUT_MS);
+      let res;
+      try {
+        res = await fetch(`/api/providers/${activeConnection.id}/models`, {
+          signal: controller.signal,
+        });
+      } catch (listError) {
+        if (listError?.name === "AbortError") {
+          alert("Fetching the model list timed out after 20 seconds.");
+          return;
+        }
+        throw listError;
+      } finally {
+        clearTimeout(listTimer);
+      }
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || "Failed to import models");
@@ -140,20 +173,36 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         alert("No models returned from /models.");
         return;
       }
+      useTaskStore.getState().update(taskId, {
+        message: `0/${models.length} models`,
+        progress: 0,
+      });
       let importedCount = 0;
-      for (const model of models) {
+      for (let index = 0; index < models.length; index += 1) {
+        const model = models[index];
         const modelId = model.id || model.name || model.model;
-        if (!modelId) continue;
-        if (allModels.some((entry) => entry.id === modelId)) continue;
+        if (!modelId) {
+          continue;
+        }
+        if (allModels.some((entry) => entry.id === modelId)) {
+          continue;
+        }
         await onAddCustomModel(modelId);
         importedCount += 1;
+        useTaskStore.getState().update(taskId, {
+          message: `${index + 1}/${models.length} models`,
+          progress: Math.round(((index + 1) / models.length) * 100),
+        });
       }
-      if (importedCount === 0) {
-        alert("No new models were added.");
-      }
+      useTaskStore.getState().update(taskId, {
+        message: importedCount > 0 ? `Imported ${importedCount} models` : "No new models added",
+        progress: 100,
+        state: "done",
+      });
     } catch (error) {
       console.log("Error importing models:", error);
     } finally {
+      useTaskStore.getState().finish(taskId);
       setImporting(false);
     }
   };
@@ -179,11 +228,11 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
             className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
           />
         </div>
-        <Button size="sm" icon="add" onClick={handleAdd} disabled={!newModel.trim() || adding}>
+        <Button size="sm" icon="add_circle" onClick={handleAdd} disabled={!newModel.trim() || adding}>
           {adding ? "Adding..." : "Add"}
         </Button>
-        <Button size="sm" variant="secondary" icon="download" onClick={handleImport} disabled={!canImport || importing}>
-          {importing ? "Importing..." : "Import from /models"}
+        <Button size="sm" variant="secondary" icon="download_for_offline" onClick={handleImport} disabled={!canImport || importing}>
+          Import from /models
         </Button>
       </div>
 
@@ -210,6 +259,9 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
           ))}
         </div>
       )}
+
+      {/* No section-covering scrim here: handleImport() reports into the task
+          store, so the notification bell is the only progress surface. */}
     </div>
   );
 }

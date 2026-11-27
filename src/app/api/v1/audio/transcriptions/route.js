@@ -1,6 +1,8 @@
 import { handleStt } from "@/sse/handlers/stt.js";
 
-// Allow large audio uploads — 5min for processing large files
+export const dynamic = "force-dynamic";
+
+// Allow large audio uploads - 5min for processing large files
 export const maxDuration = 300;
 
 export async function OPTIONS() {

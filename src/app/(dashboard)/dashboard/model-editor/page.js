@@ -1,11 +1,32 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Card, Button, Modal, Input, ModelSelectModal } from "@/shared/components";
+import PropTypes from "prop-types";
+import { Card, Button, Modal, Input, ModelSelectModal, Toggle } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
+import { findStudioCycle, describeStudioCycle } from "@/shared/utils/studioComboGuard";
 
-const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
+const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}(\/[a-zA-Z0-9][a-zA-Z0-9._-]{0,63})*$/;
+// The name box itself holds one segment; the provider prefix (its own
+// toggle) holds any number, and the two are joined on submit.
+const SEGMENT_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
+const PREFIX_RE = NAME_RE;
+
+// Fields the bulk editor may write, and how each one reads to the operator.
+const MODEL_BULK_LABELS = {
+  targetModel: "Target model (what it routes to)",
+  inputMultiplier: "Input multiplier (0 = none)",
+  outputMultiplier: "Output multiplier (0 = none)",
+  contextWindow: "Context window (0 = provider default)",
+};
+
+const MODEL_BULK_PLACEHOLDERS = {
+  targetModel: "Pick a model to route to",
+  inputMultiplier: "e.g. 2",
+  outputMultiplier: "e.g. 5",
+  contextWindow: "e.g. 200000",
+};
 
 function formatTokens(n) {
   const value = Number(n) || 0;
@@ -14,21 +35,162 @@ function formatTokens(n) {
   return String(value);
 }
 
+// BazaarLink Probe judges behaviour, not spelling: it never trusts a
+// self-claim. So these checks cannot pass a model, they only catch metadata
+// that would READ as masked - which is the part a custom model controls.
+//
+// Vendor families, used to compare a claim against the resolved target. A
+// prefix or an owned_by naming a different vendor than the target's own is the
+// classic "renamed for resale" shape.
+const VENDOR_HINTS = [
+  { re: /\b(openai|gpt|o[134](?:-|$)|codex)\b/i, vendor: "openai" },
+  { re: /\b(anthropic|claude)\b/i, vendor: "anthropic" },
+  { re: /\b(google|gemini|gemma)\b/i, vendor: "google" },
+  { re: /\b(meta|llama)\b/i, vendor: "meta" },
+  { re: /\b(mistral|codestral|magistral)\b/i, vendor: "mistral" },
+  { re: /\b(deepseek)\b/i, vendor: "deepseek" },
+  { re: /\b(qwen|qwq)\b/i, vendor: "alibaba" },
+  { re: /\b(kimi|moonshot)\b/i, vendor: "moonshot" },
+  { re: /\b(glm|zhipu|z-ai)\b/i, vendor: "zhipu" },
+  { re: /\b(minimax)\b/i, vendor: "minimax" },
+  { re: /\b(grok)\b/i, vendor: "xai" },
+  { re: /\b(mimo)\b/i, vendor: "xiaomi" },
+];
+
+function detectVendor(text) {
+  const t = String(text || "").trim();
+  if (!t) return null;
+  for (const h of VENDOR_HINTS) {
+    if (h.re.test(t)) return h.vendor;
+  }
+  return null;
+}
+
+// Vendor implied by a router prefix: "oc/...", "kr/..." are aliases, so the
+// meaningful signal is the model half, not the prefix.
+function targetVendor(target) {
+  const t = String(target || "").trim();
+  if (!t) return null;
+  const slash = t.indexOf("/");
+  return detectVendor(slash >= 0 ? t.slice(slash + 1) : t);
+}
+
+/**
+ * Concrete, fixable inconsistencies between what a custom model claims and the
+ * model it points at. Returns [] when nothing is off - which is NOT a pass
+ * mark, only the absence of an obvious self-contradiction.
+ */
+function antiMaskFindings({ callName, ownedBy, targetModel }) {
+  const findings = [];
+  const tv = targetVendor(targetModel);
+
+  if (!String(callName || "").trim()) {
+    findings.push({
+      level: "info",
+      text: "Name this model. A bare or empty id is indistinguishable from padding in a listing.",
+    });
+  }
+
+  const nv = detectVendor(callName);
+  if (nv && tv && nv !== tv) {
+    findings.push({
+      level: "warn",
+      text: `Name reads as ${nv} but the target is ${tv}. A probe compares the claim against the answer, and this is the shape it flags.`,
+    });
+  }
+
+  const ov = detectVendor(ownedBy);
+  if (ov && tv && ov !== tv) {
+    findings.push({
+      level: "warn",
+      text: `owned_by says ${ov} while the target is ${tv}. Keep owned_by on the target's real vendor.`,
+    });
+  }
+
+  if (!String(ownedBy || "").trim()) {
+    findings.push({
+      level: "info",
+      text: "Set owned_by to the target model's real vendor. Blank falls back to this model's own name, which reads as an invented model.",
+    });
+  }
+
+  return findings;
+}
+
+// The BazaarLink probe is an outside service that judges an endpoint by its
+// behaviour, not by its name. The anti-probe switch decides whether this editor
+// also warns about the metadata that reads as masked: a call name or owned_by
+// claiming a vendor the target does not match. It is a saved setting, not a
+// per-browser cookie, so the same editor form shows the same warnings for every
+// administrator who opens it.
 export default function ModelStudioPage() {
+  const [antiProbe, setAntiProbe] = useState(true);
+  const [savingProbe, setSavingProbe] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((data) => {
+        // Absent means this install never stored the switch: default on, so an
+        // existing deployment keeps the warnings it had before the toggle existed.
+        if (data && typeof data.antiProbeMetadata === "boolean") {
+          setAntiProbe(data.antiProbeMetadata);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const toggleAntiProbe = async () => {
+    const next = !antiProbe;
+    setAntiProbe(next);
+    setSavingProbe(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ antiProbeMetadata: next }),
+      });
+      if (!res.ok) setAntiProbe(!next);
+    } catch {
+      setAntiProbe(!next);
+    } finally {
+      setSavingProbe(false);
+    }
+  };
+
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+    <div className="flex min-w-0 flex-col gap-7 px-1 sm:px-0">
       <div className="min-w-0">
-        <h1 className="text-lg font-semibold leading-none text-text-main">Custom Models &amp; Editor</h1>
-        <p className="text-xs text-text-muted mt-0.5">
+        <h1 className="text-2xl font-semibold tracking-tight text-text-main">Custom Models &amp; Editor</h1>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-text-muted">
           Give any model your own name, context size and behaviour, and it becomes a callable model ID for clients, combos, and API keys.
         </p>
+        <div className="mt-4 flex items-start justify-between gap-4 rounded-2xl border border-border-subtle bg-surface-2 px-4 py-3">
+          <div className="min-w-0">
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-text-main">
+              <span className="material-symbols-outlined text-[16px] leading-none text-primary">
+                policy
+              </span>
+              Anti-probe metadata
+            </span>
+            <p className="text-[11px] text-text-muted mt-0.5">
+              Warns in the form when a model&apos;s name or <code className="font-mono">owned_by</code> claims a
+              vendor the target model does not match - the shape BazaarLink&apos;s probe flags. Nothing is blocked
+              or rewritten; the checks only report what a probe would read.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col items-center gap-1">
+            <Toggle checked={antiProbe} onChange={toggleAntiProbe} disabled={savingProbe} />
+            <span className="text-[10px] font-medium text-text-muted">{antiProbe ? "On" : "Off"}</span>
+          </div>
+        </div>
       </div>
-      <ModelStudioContent />
+      <ModelStudioContent antiProbe={antiProbe} />
     </div>
   );
 }
 
-function ModelStudioContent() {
+function ModelStudioContent({ antiProbe = true }) {
   const [models, setModels] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
   const [activeProviders, setActiveProviders] = useState([]);
@@ -37,8 +199,14 @@ function ModelStudioContent() {
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [duplicating, setDuplicating] = useState(null);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(null);
+  // Bulk edit: which models are ticked, and whether the dialog is open. Same
+  // shape as the API-key page - nothing is written until Apply, and only the
+  // fields the operator ticks are sent.
+  const [selectedNames, setSelectedNames] = useState(() => new Set());
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
   const { copied: copiedName, copy } = useCopyToClipboard(1800);
 
   const fetchData = useCallback(async () => {
@@ -50,6 +218,14 @@ function ModelStudioContent() {
         fetch("/api/models/alias").then((r) => (r.ok ? r.json() : { aliases: {} })).catch(() => ({ aliases: {} })),
       ]);
       setModels(studioRes.models || []);
+      // A model deleted (or renamed) elsewhere must not stay ticked: a later
+      // Apply would otherwise report it missing every time.
+      const alive = new Set((studioRes.models || []).map((m) => m.callName));
+      setSelectedNames((prev) => {
+        if (!prev.size) return prev;
+        const next = new Set([...prev].filter((name) => alive.has(name)));
+        return next.size === prev.size ? prev : next;
+      });
       setProviderNodes((nodesRes.nodes || []).filter((n) => n.type !== "custom-embedding"));
       setActiveProviders(providersRes.connections || []);
       setModelAliases(aliasesRes.aliases || {});
@@ -67,12 +243,35 @@ function ModelStudioContent() {
 
   const openCreate = () => {
     setEditing(null);
+    setDuplicating(null);
     setShowForm(true);
   };
 
   const openEdit = (model) => {
+    setDuplicating(null);
     setEditing(model);
     setShowForm(true);
+  };
+
+  // Duplicate: open the create form carrying every rule of the source model
+  // (target, context window, multipliers, system prompt) under a fresh name, so a
+  // variant never starts from an empty form. createDuplicateName keeps the name
+  // unique because the call name IS the model id clients send.
+  const openDuplicate = (model) => {
+    setEditing(null);
+    setDuplicating(model);
+    setShowForm(true);
+  };
+
+  const createDuplicateName = (sourceName) => {
+    const taken = new Set(models.map((m) => String(m.callName || "").toLowerCase()));
+    const base = `${sourceName}-copy`;
+    if (!taken.has(base.toLowerCase())) return base;
+    for (let n = 2; n < 100; n++) {
+      const candidate = `${base}-${n}`;
+      if (!taken.has(candidate.toLowerCase())) return candidate;
+    }
+    return `${base}-${Date.now().toString(36)}`;
   };
 
   const handleDelete = async (model) => {
@@ -85,74 +284,160 @@ function ModelStudioContent() {
     }
   };
 
+  const toggleSelected = (name) =>
+    setSelectedNames((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+
+  const handleBulkApply = async (patch) => {
+    const names = Array.from(selectedNames);
+    const res = await fetch("/api/model-editor/bulk", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ names, patch }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Failed to apply bulk changes");
+    if (Array.isArray(data.missing) && data.missing.length) {
+      setSelectedNames((prev) => {
+        const next = new Set(prev);
+        for (const name of data.missing) next.delete(name);
+        return next;
+      });
+    }
+    setShowBulkEdit(false);
+    await fetchData();
+  };
+
   return (
-    <>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.38fr)] lg:items-start">
+      <div className="order-1 flex min-w-0 flex-col gap-3 rounded-2xl border-2 border-border bg-surface p-4 shadow-[4px_4px_0_var(--color-border)] sm:flex-row sm:items-center sm:justify-between lg:col-start-2 lg:row-start-1 lg:flex-col lg:items-stretch">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-medium text-text-main">
-            {models.length} {models.length === 1 ? "model" : "models"}
+          <span className="material-symbols-outlined flex size-9 shrink-0 items-center justify-center rounded-lg border-2 border-border bg-primary/10 text-[19px] text-primary">
+            schema
           </span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-text-main">Model library</p>
+            <p className="text-xs text-text-muted">{models.length} {models.length === 1 ? "model" : "models"} available to clients</p>
+          </div>
           {error && <span className="text-xs text-red-500 truncate">{error}</span>}
         </div>
-        <Button size="sm" icon="add" onClick={openCreate}>
-          Add Model
+        <Button size="sm" icon="add_circle" onClick={openCreate} className="w-full sm:w-auto lg:w-full">
+          Create model
         </Button>
       </div>
 
+      {selectedNames.size > 1 && (
+        // Same shape as the API-key page: a toolbar that only offers itself for
+        // more than one row, because one model already has its own editor.
+        <div className="order-2 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-full border border-border-subtle bg-surface-2/70 py-1 pl-3 pr-1  lg:col-start-2 lg:row-start-2">
+          <span className="flex items-center gap-2 text-xs text-text-muted">
+            <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-primary/15 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-primary">
+              {selectedNames.size}
+            </span>
+            models selected
+          </span>
+          <div className="flex items-center gap-0.5">
+            {selectedNames.size < models.length && (
+              <button
+                type="button"
+                onClick={() => setSelectedNames(new Set(models.map((m) => m.callName)))}
+                className="rounded-full px-2.5 py-1.5 text-xs text-text-muted transition-colors hover:bg-surface hover:text-text-main"
+              >
+                Select all {models.length}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setSelectedNames(new Set())}
+              className="rounded-full px-2.5 py-1.5 text-xs text-text-muted transition-colors hover:bg-surface hover:text-text-main"
+            >
+              Clear
+            </button>
+            <Button size="sm" variant="primary" onClick={() => setShowBulkEdit(true)}>
+              Edit
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="order-3 min-w-0 rounded-2xl border-2 border-border bg-surface-2/40 p-3 sm:p-4 lg:col-start-1 lg:row-start-1 lg:row-span-3">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-2 border-b-2 border-border pb-3">
+        <div>
+          <h2 className="text-base font-bold text-text-main">Your custom routes</h2>
+          <p className="mt-0.5 text-xs text-text-muted">Names and routing rules exposed through your model API.</p>
+        </div>
+        {models.length > 0 && <span className="rounded-md border-2 border-border bg-surface px-2 py-1 font-mono text-[11px] font-semibold text-text-muted">{models.length.toString().padStart(2, "0")} TOTAL</span>}
+      </div>
       {loading ? (
         <Card padding="md">
           <div className="text-xs text-text-muted py-4">Loading models...</div>
         </Card>
       ) : models.length === 0 ? (
         <Card padding="lg" className="flex flex-col items-center gap-3 text-center py-10">
-          <span className="material-symbols-outlined text-[34px] text-text-muted/50">auto_awesome</span>
+          <span className="material-symbols-outlined text-[34px] text-text-muted/50">model_training</span>
           <div>
             <p className="text-sm font-medium text-text-main">No models yet</p>
             <p className="text-xs text-text-muted mt-1 max-w-md">
               Pick any connected model, name it however you like, and call it by that name.
             </p>
           </div>
-          <Button size="sm" icon="add" onClick={openCreate}>
+          <Button size="sm" icon="add_circle" onClick={openCreate}>
             Add your first model
           </Button>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:auto-rows-fr">
           {models.map((model) => (
-            <Card key={model.callName} padding="md" className="flex min-w-0 flex-col gap-3">
+            <Card key={model.callName} padding="md" className="flex h-full min-w-0 flex-col gap-3 border-2 border-border shadow-[3px_3px_0_var(--color-border)]">
               <div className="flex min-w-0 items-start justify-between gap-2">
+                <input
+                  type="checkbox"
+                  checked={selectedNames.has(model.callName)}
+                  onChange={() => toggleSelected(model.callName)}
+                  className="mt-1 size-4 shrink-0 accent-brand-500"
+                  aria-label={`Select ${model.callName}`}
+                />
                 <div className="min-w-0 flex-1">
-                  <button
-                    type="button"
-                    onClick={() => copy(model.callName, model.callName)}
-                    title="Copy model name"
-                    className="flex items-center gap-2 min-w-0 max-w-full text-left group"
-                  >
+                  {/* Same copy affordance as an API-key row: a small always-visible
+                      icon button that swaps to a check, instead of a hover-only
+                      glyph plus a "Copied" label. */}
+                  <div className="flex min-w-0 items-center gap-1">
                     <code className="font-mono text-sm font-semibold text-primary truncate">
                       {model.callName}
                     </code>
-                    {copiedName === model.callName ? (
-                      <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-green-500">
-                        <span className="material-symbols-outlined text-[14px]">check</span>
-                        Copied
+                    <button
+                      type="button"
+                      onClick={() => copy(model.callName, model.callName)}
+                      title="Copy model name"
+                      className="p-1 hover:bg-surface-2 rounded text-text-muted hover:text-primary transition-all shrink-0"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">
+                        {copiedName === model.callName ? "check" : "content_copy"}
                       </span>
-                    ) : (
-                      <span className="material-symbols-outlined text-[14px] shrink-0 text-text-muted opacity-0 transition-opacity group-hover:opacity-100">
-                        content_copy
-                      </span>
-                    )}
-                  </button>
+                    </button>
+                  </div>
                   {model.displayName && model.displayName !== model.callName && (
                     <p className="text-xs text-text-muted mt-0.5 truncate">{model.displayName}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
+                    onClick={() => openDuplicate(model)}
+                    title="Duplicate"
+                    className="p-1 hover:bg-surface-2 rounded text-text-muted hover:text-primary transition-all"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">library_add_check</span>
+                  </button>
+                  <button
                     onClick={() => openEdit(model)}
                     title="Edit"
                     className="p-1.5 rounded-lg text-text-muted hover:text-primary hover:bg-primary/10 transition-colors"
                   >
-                    <span className="material-symbols-outlined text-[16px]">edit</span>
+                    <span className="material-symbols-outlined text-[16px]">edit_note</span>
                   </button>
                   <button
                     onClick={() => handleDelete(model)}
@@ -168,18 +453,30 @@ function ModelStudioContent() {
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                <span className="px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/5 text-text-muted font-mono truncate max-w-full">
+                <span className="px-2 py-0.5 rounded-full bg-surface-2 border border-border-subtle text-text-muted font-mono truncate max-w-full">
                   {model.targetLabel || model.targetModel}
                 </span>
+                {!String(model.targetModel || "").includes("/") && (
+                  <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                    combo
+                  </span>
+                )}
                 {model.contextWindow > 0 && (
                   <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
                     {formatTokens(model.contextWindow)} context
                   </span>
                 )}
+                {(model.inputMultiplier > 0 || model.outputMultiplier > 0) && (
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-success font-medium">
+                    {model.inputMultiplier ? `${model.inputMultiplier}x In` : ""}
+                    {model.inputMultiplier && model.outputMultiplier ? " · " : ""}
+                    {model.outputMultiplier ? `${model.outputMultiplier}x Out` : ""}
+                  </span>
+                )}
               </div>
 
               {model.systemPrompt && (
-                <div className="rounded-lg bg-black/5 dark:bg-white/5 px-2.5 py-2">
+                <div className="rounded-lg bg-surface-2 border border-border-subtle px-2.5 py-2">
                   <p className="text-[10px] uppercase tracking-wide text-text-muted/70 mb-0.5">
                     System prompt
                   </p>
@@ -193,11 +490,18 @@ function ModelStudioContent() {
         </div>
       )}
 
+      </div>
+      <div className="order-4 min-w-0 lg:col-start-2 lg:row-start-3">
       <PrefixCard nodes={providerNodes} onSaved={fetchData} />
+      </div>
 
       {showForm && (
         <StudioFormModal
+          key={editing?.callName || duplicating?.callName || "new"}
+          antiProbe={antiProbe}
           editing={editing}
+          duplicating={duplicating}
+          duplicateName={duplicating ? createDuplicateName(duplicating.callName) : ""}
           activeProviders={activeProviders}
           modelAliases={modelAliases}
           saving={saving}
@@ -209,12 +513,172 @@ function ModelStudioContent() {
           }}
         />
       )}
-    </>
+
+      {showBulkEdit && (
+        <BulkEditModels
+          count={selectedNames.size}
+          onApply={handleBulkApply}
+          onClose={() => setShowBulkEdit(false)}
+          activeProviders={activeProviders}
+          modelAliases={modelAliases}
+        />
+      )}
+    </div>
   );
 }
 
+/**
+ * Bulk edit models: write one field to every selected model in one call.
+ * Each field is opt-in (checkbox): fields left off are not touched, so the form
+ * never rewrites what the user did not mean to change. Same shape as the API-key
+ * bulk editor.
+ */
+function BulkEditModels({ count, onApply, onClose, activeProviders = [], modelAliases = {} }) {
+  const [fields, setFields] = useState({
+    targetModel: { on: false, value: "" },
+    inputMultiplier: { on: false, value: "" },
+    outputMultiplier: { on: false, value: "" },
+    contextWindow: { on: false, value: "" },
+  });
+  const [showPicker, setShowPicker] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [error, setError] = useState("");
+
+  const toggle = (name) =>
+    setFields((prev) => ({ ...prev, [name]: { ...prev[name], on: !prev[name].on } }));
+  const setValue = (name, value) =>
+    setFields((prev) => ({ ...prev, [name]: { ...prev[name], value } }));
+
+  const handleApply = async () => {
+    const patch = {};
+    for (const [name, { on, value }] of Object.entries(fields)) {
+      if (!on) continue;
+      if (name === "targetModel") {
+        const target = String(value || "").trim();
+        if (!target) {
+          setError("Pick a target model to route to");
+          return;
+        }
+        patch.targetModel = target;
+        continue;
+      }
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0) {
+        setError(`${MODEL_BULK_LABELS[name]} must be a number of 0 or more`);
+        return;
+      }
+      patch[name] = n;
+    }
+    if (!Object.keys(patch).length) {
+      setError("Enable at least one field to change");
+      return;
+    }
+    setError("");
+    setApplying(true);
+    try {
+      await onApply(patch);
+      onClose();
+    } catch (err) {
+      setError(err?.message || "Failed to apply bulk changes");
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} title={`Edit ${count} model${count === 1 ? "" : "s"}`}>
+      <div className="flex flex-col gap-3">
+        {Object.keys(fields).map((name) => (
+          <div key={name} className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={fields[name].on}
+              onChange={() => toggle(name)}
+              className="mt-1.5 size-4 shrink-0 accent-brand-500"
+              aria-label={`Change ${MODEL_BULK_LABELS[name]}`}
+            />
+            <div className="flex-1 min-w-0">
+              <label className="text-sm font-medium text-text-main block mb-1">
+                {MODEL_BULK_LABELS[name]}
+              </label>
+              {name === "targetModel" ? (
+                <button
+                  type="button"
+                  onClick={() => fields.targetModel.on && setShowPicker(true)}
+                  disabled={!fields[name].on}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border text-left transition-colors ${fields[name].value
+                    ? "border-primary/40 bg-primary/5"
+                    : "border-dashed border-border hover:border-primary/50"
+                    } ${fields[name].on ? "" : "opacity-50 cursor-not-allowed"}`}
+                >
+                  <span className="min-w-0 flex-1 truncate font-mono text-sm text-text-main">
+                    {fields[name].value || MODEL_BULK_PLACEHOLDERS[name]}
+                  </span>
+                  <span className="material-symbols-outlined text-[18px] text-primary shrink-0">
+                    {fields[name].value ? "swap_horiz" : "search"}
+                  </span>
+                </button>
+              ) : (
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={fields[name].value}
+                  onChange={(e) => setValue(name, e.target.value)}
+                  disabled={!fields[name].on}
+                  placeholder={MODEL_BULK_PLACEHOLDERS[name]}
+                />
+              )}
+            </div>
+          </div>
+        ))}
+
+        {showPicker && (
+          <ModelSelectModal
+            isOpen
+            onClose={() => setShowPicker(false)}
+            onSelect={(model) => {
+              if (!model?.value || model.isPlaceholder) return;
+              setFields((prev) => ({ ...prev, targetModel: { on: true, value: model.value } }));
+              setShowPicker(false);
+            }}
+            activeProviders={activeProviders}
+            modelAliases={modelAliases}
+            selectedModel={fields.targetModel.value}
+            showStudioTargets
+          />
+        )}
+
+        {error && (
+          <p className="text-xs text-red-500" role="alert">{error}</p>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose} disabled={applying}>
+            Cancel
+          </Button>
+          <Button onClick={handleApply} loading={applying}>
+            Apply to {count} model{count === 1 ? "" : "s"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+BulkEditModels.propTypes = {
+  count: PropTypes.number.isRequired,
+  onApply: PropTypes.func.isRequired,
+  onClose: PropTypes.func.isRequired,
+  activeProviders: PropTypes.array,
+  modelAliases: PropTypes.object,
+};
+
 function StudioFormModal({
+  antiProbe = true,
   editing,
+  duplicating,
+  duplicateName = "",
   activeProviders,
   modelAliases,
   saving,
@@ -224,43 +688,143 @@ function StudioFormModal({
 }) {
   const { getCaps } = useModelCaps();
   const [showPicker, setShowPicker] = useState(false);
-  const [callName, setCallName] = useState(editing?.callName || "");
-  const [displayName, setDisplayName] = useState(editing?.displayName || "");
-  const [targetModel, setTargetModel] = useState(editing?.targetModel || "");
-  const [contextWindow, setContextWindow] = useState(
-    editing?.contextWindow ? String(editing.contextWindow) : ""
+  // A duplicate opens with the source model's rules already filled in, so the
+  // only thing left to decide is the new name.
+  const source = editing || duplicating || null;
+  // The provider prefix is a separate concern from the model name, so it gets
+  // its own toggle and field instead of letting people type slashes into the
+  // name box. A stored name that already carries one opens with the toggle on
+  // and the prefix split out of it.
+  const [namePrefix, setNamePrefix] = useState(() => {
+    const stored = editing?.callName || duplicateName || "";
+    const idx = stored.lastIndexOf("/");
+    return idx > 0 ? stored.slice(0, idx) : "";
+  });
+  const [prefixEnabled, setPrefixEnabled] = useState(() => !!namePrefix);
+  const [callName, setCallName] = useState(() => {
+    const stored = editing?.callName || duplicateName || "";
+    const idx = stored.lastIndexOf("/");
+    return idx > 0 ? stored.slice(idx + 1) : stored;
+  });
+  const [displayName, setDisplayName] = useState(source?.displayName || "");
+  // Label this model claims in a model listing (owned_by). Free-form; blank means
+  // "present itself as the model name clients call".
+  const [ownedBy, setOwnedBy] = useState(source?.ownedBy || "");
+  // The record stores both: `targetModel` is the resolved router target
+  // (provider id), `targetLabel` is what the user actually picked. Editing has
+  // to start from the label, otherwise saving writes the resolved prefix back
+  // and the picker's own spelling ("oc/...") is lost on every round trip.
+  const [targetModel, setTargetModel] = useState(
+    source?.targetLabel || source?.targetModel || ""
   );
-  const [systemPrompt, setSystemPrompt] = useState(editing?.systemPrompt || "");
+  // True while the user has typed their own number: the suggestion then stops
+  // overriding, but stays visible so a stale value is obvious.
+  const [contextTouched, setContextTouched] = useState(
+    source ? !!source.contextWindow : false
+  );
+  const [combos, setCombos] = useState([]);
+  const [siblings, setSiblings] = useState([]);
+  const [contextWindow, setContextWindow] = useState(
+    source?.contextWindow ? String(source.contextWindow) : ""
+  );
+  const [inputMultiplier, setInputMultiplier] = useState(
+    source?.inputMultiplier ? String(source.inputMultiplier) : ""
+  );
+  const [outputMultiplier, setOutputMultiplier] = useState(
+    source?.outputMultiplier ? String(source.outputMultiplier) : ""
+  );
+  const [systemPrompt, setSystemPrompt] = useState(source?.systemPrompt || "");
+
+  useEffect(() => {
+    let alive = true;
+    Promise.all([
+      fetch("/api/combos").then((r) => (r.ok ? r.json() : { combos: [] })).catch(() => ({ combos: [] })),
+      fetch("/api/model-editor").then((r) => (r.ok ? r.json() : { models: [] })).catch(() => ({ models: [] })),
+    ]).then(([comboData, studioData]) => {
+      if (!alive) return;
+      setCombos(comboData.combos || []);
+      setSiblings(studioData.models || []);
+    });
+    return () => { alive = false; };
+  }, []);
 
   const targetCaps = useMemo(() => (targetModel ? getCaps(targetModel) : null), [targetModel, getCaps]);
+  const isComboTarget = useMemo(
+    () => (targetModel ? !targetModel.includes("/") && combos.some((c) => c.name === targetModel) : false),
+    [targetModel, combos]
+  );
   const nameError = useMemo(() => {
     if (!callName) return "";
-    if (callName.includes("/")) return "Use a name without \"/\" — it is the model ID clients send.";
-    if (!NAME_RE.test(callName)) return "Letters, numbers, dot, dash and underscore only (max 64).";
+    if (!SEGMENT_RE.test(callName))
+      return "Letters, numbers, dot, dash and underscore only (max 64). The provider prefix has its own field below.";
     return "";
   }, [callName]);
+  const prefixError = useMemo(() => {
+    if (!prefixEnabled || !namePrefix) return "";
+    if (!PREFIX_RE.test(namePrefix))
+      return "Prefix segments use letters, numbers, dot, dash and underscore (max 64 per segment).";
+    return "";
+  }, [prefixEnabled, namePrefix]);
+  const fullCallName = useMemo(() => {
+    const base = callName.trim();
+    if (!base) return "";
+    return prefixEnabled && namePrefix.trim() ? `${namePrefix.trim()}/${base}` : base;
+  }, [callName, prefixEnabled, namePrefix]);
+
+  // Client-side precheck mirroring the server guard: warn before saving when
+  // the picked combo leads back to this model. The server still decides.
+
+  // Only computed while the switch is on: the panel is not rendered otherwise,
+  // and re-deriving it on every keystroke for a hidden check is wasted work.
+  const maskFindings = useMemo(
+    () => (antiProbe ? antiMaskFindings({ callName: fullCallName, ownedBy, targetModel }) : []),
+    [antiProbe, fullCallName, ownedBy, targetModel]
+  );
+  const maskWarns = maskFindings.filter((f) => f.level === "warn");
+  const cycleError = useMemo(() => {
+    const name = fullCallName;
+    const target = targetModel.trim();
+    if (!name || !target || target.includes("/")) return "";
+    if (!combos.some((c) => c.name === target)) return "";
+    const chain = findStudioCycle({
+      callName: name,
+      comboName: target,
+      combosByName: new Map(combos.map((c) => [c.name, c.models || []])),
+      studioTargets: new Map(
+        siblings.filter((m) => m.callName !== name && m.callName !== editing?.callName).map((m) => [m.callName, m.targetModel])
+      ),
+      extraSelfNames: editing?.callName && editing.callName !== name ? [editing.callName] : [],
+    });
+    return chain ? describeStudioCycle(chain) : "";
+  }, [fullCallName, targetModel, combos, siblings, editing]);
 
   const handlePickModel = (model) => {
     if (!model?.value || model.isPlaceholder) return;
     setTargetModel(model.value);
-    const caps = getCaps(model.value);
-    if (caps?.contextWindow && !contextWindow) setContextWindow(String(caps.contextWindow));
+    // Clear the "user typed this" flag: a new pick is a new model, so its own
+    // context window is the correct suggestion again.
+    setContextTouched(false);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!callName.trim() || !targetModel || nameError) return;
+    if (!fullCallName || !targetModel || nameError || prefixError || cycleError) return;
     setSaving(true);
     try {
       const res = await fetch("/api/model-editor", {
         method: editing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          callName: callName.trim(),
+          callName: fullCallName,
           previousName: editing?.callName,
           displayName: displayName.trim(),
+          ownedBy: ownedBy.trim(),
           targetModel,
+          // Sent verbatim: the server keeps this as targetLabel, so the picker
+          // keeps showing the spelling that was chosen here.
           contextWindow: contextWindow ? Number(contextWindow) : 0,
+          inputMultiplier: inputMultiplier ? Number(inputMultiplier) : undefined,
+          outputMultiplier: outputMultiplier ? Number(outputMultiplier) : undefined,
           systemPrompt,
         }),
       });
@@ -282,7 +846,7 @@ function StudioFormModal({
       <Modal
         isOpen
         onClose={onClose}
-        title={editing ? `Edit ${editing.callName}` : "Add Model"}
+        title={editing ? `Edit ${editing.callName}` : duplicating ? `Duplicate ${duplicating.callName}` : "Add Model"}
       >
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
@@ -309,7 +873,10 @@ function StudioFormModal({
               <span className="min-w-0 flex-1">
                 {targetModel ? (
                   <>
-                    <span className="block font-mono text-sm text-text-main truncate">{targetModel}</span>
+                    <span className="block font-mono text-sm text-text-main truncate">
+                      {targetModel}
+                      {isComboTarget ? <span className="ml-1.5 text-[10px] font-sans font-medium text-primary">combo</span> : null}
+                    </span>
                     {targetCaps?.contextWindow ? (
                       <span className="block text-[11px] text-text-muted mt-0.5">
                         {formatTokens(targetCaps.contextWindow)} context
@@ -326,8 +893,11 @@ function StudioFormModal({
               </span>
             </button>
             <p className="text-[11px] text-text-muted">
-              Any model you have connected — built-in, custom provider or combo.
+              Any model you have connected - built-in, custom provider or combo.
             </p>
+            {cycleError && (
+              <p className="text-[11px] text-red-500 mt-1">{cycleError}</p>
+            )}
           </div>
 
           <div>
@@ -335,15 +905,54 @@ function StudioFormModal({
             <Input
               value={callName}
               onChange={(e) => setCallName(e.target.value)}
-              placeholder="e.g. workhorse"
+              placeholder="e.g. claude-opus-5"
               autoFocus
             />
             {nameError ? (
               <p className="text-[11px] text-red-500 mt-1">{nameError}</p>
             ) : (
               <p className="text-[11px] text-text-muted mt-1">
-                Clients call <code className="font-mono">{`"${callName || "name"}"`}</code> as the model ID.
+                Clients call <code className="font-mono">{`"${fullCallName || "name"}"`}</code> as the model ID.
               </p>
+            )}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <label className="block text-xs font-medium text-text-main">Provider prefix</label>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  Clients call the model as <code className="font-mono">vendor/name</code> instead of plain{" "}
+                  <code className="font-mono">name</code>. The vendor is any label you choose.
+                </p>
+              </div>
+              <Toggle checked={prefixEnabled} onChange={setPrefixEnabled} />
+            </div>
+            {prefixEnabled && (
+              <div className="mt-2">
+                <div className="flex items-stretch rounded-lg border border-border overflow-hidden focus-within:border-primary/60 transition-colors">
+                  <input
+                    value={namePrefix}
+                    onChange={(e) => setNamePrefix(e.target.value)}
+                    placeholder="anthropic"
+                    spellCheck={false}
+                    className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-text-main outline-none font-mono placeholder:font-sans placeholder:text-text-muted/70"
+                  />
+                  <span className="flex items-center px-1 text-sm font-mono text-text-muted bg-surface-light/60 border-l border-border select-none">
+                    /
+                  </span>
+                  <span className="flex items-center px-3 text-sm font-mono text-text-muted bg-surface-light/60 border-l border-border truncate max-w-[45%]" title={callName || "name"}>
+                    {callName || "name"}
+                  </span>
+                </div>
+                {prefixError ? (
+                  <p className="text-[11px] text-red-500 mt-1">{prefixError}</p>
+                ) : (
+                  <p className="text-[11px] text-text-muted mt-1">
+                    Free-form label; it does not need to be a provider you connected.
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
@@ -360,19 +969,154 @@ function StudioFormModal({
 
           <div>
             <label className="block text-xs font-medium text-text-main mb-1">
+              Owned by <span className="text-text-muted font-normal">(optional)</span>
+            </label>
+            <Input
+              value={ownedBy}
+              onChange={(e) => setOwnedBy(e.target.value)}
+              placeholder={`Defaults to "${fullCallName || "the model name"}"`}
+            />
+            <p className="text-[11px] text-text-muted mt-1">
+              Shown as <code className="font-mono">owned_by</code> when clients list
+              models. The real target model is never exposed.
+            </p>
+          </div>
+
+          {/* Owned-by stays a plain field; the external probe link lived here. */}
+
+
+          {antiProbe ? (
+          <div className="rounded-xl border border-border-subtle bg-surface-2 p-3 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-text-main">
+                <span className="material-symbols-outlined text-[16px] leading-none text-primary">
+                  policy
+                </span>
+                Anti-mask check
+              </span>
+              <a
+                href="https://bazaarlink.ai/probe"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-[11px] text-primary hover:underline whitespace-nowrap"
+              >
+                Run BazaarLink Probe
+                <span className="material-symbols-outlined text-[12px] leading-none">launch</span>
+              </a>
+            </div>
+
+            {maskWarns.length === 0 ? (
+              <p className="text-[11px] text-text-muted flex items-start gap-1.5">
+                <span className="material-symbols-outlined text-[13px] leading-none mt-px text-emerald-500">
+                  task_alt
+                </span>
+                No contradiction between this model&apos;s name and its target&apos;s vendor.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1.5">
+                {maskFindings.map((f, i) => (
+                  <li
+                    key={i}
+                    className={`text-[11px] flex items-start gap-1.5 ${
+                      f.level === "warn" ? "text-amber-500" : "text-text-muted"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[13px] leading-none mt-px shrink-0">
+                      {f.level === "warn" ? "warning" : "info"}
+                    </span>
+                    <span>{f.text}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <p className="text-[10px] text-text-muted leading-relaxed border-t border-border pt-2">
+              BazaarLink&apos;s probe sends behavioural checks and compares how the
+              endpoint answers against known baselines - it never trusts the name
+              a model calls itself. This panel only catches metadata that would
+              <em> read</em> as masked (a vendor claim your target does not
+              match); an honest endpoint passes on behaviour alone, and no
+              spelling of a name can make a probe pass or fail it.
+            </p>
+          </div>
+          ) : null}
+          <div>
+            <label className="block text-xs font-medium text-text-main mb-1">
               Context window <span className="text-text-muted font-normal">(tokens)</span>
             </label>
             <Input
               type="number"
               min="0"
               value={contextWindow}
-              onChange={(e) => setContextWindow(e.target.value)}
+              onChange={(e) => {
+                setContextWindow(e.target.value);
+                setContextTouched(true);
+              }}
               placeholder={targetCaps?.contextWindow ? String(targetCaps.contextWindow) : "0 = provider default"}
             />
+            {targetCaps?.contextWindow ? (
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[11px] text-text-muted">
+                  {targetModel} is listed at{" "}
+                  <code className="font-mono">{formatTokens(targetCaps.contextWindow)}</code>
+                  {targetCaps.maxOutput ? (
+                    <> · {formatTokens(targetCaps.maxOutput)} output</>
+                  ) : null}
+                </span>
+                {Number(contextWindow || 0) !== targetCaps.contextWindow ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setContextWindow(String(targetCaps.contextWindow));
+                      setContextTouched(false);
+                    }}
+                    className="text-[11px] text-primary hover:underline whitespace-nowrap"
+                  >
+                    use {formatTokens(targetCaps.contextWindow)}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             <p className="text-[11px] text-text-muted mt-1">
               Advertised to clients reading <code className="font-mono">/v1/models</code>. Leave empty to
-              keep the provider default.
+              keep the provider default. A custom model that renames a target keeps
+              the target&apos;s own window unless you override it here.
             </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-text-main mb-1">
+                Input Multiplier <span className="text-text-muted font-normal">(optional)</span>
+              </label>
+              <Input
+                type="number"
+                step="0.1"
+                min="0"
+                value={inputMultiplier}
+                onChange={(e) => setInputMultiplier(e.target.value)}
+                placeholder="e.g. 1 or 2 (2x input)"
+              />
+              <p className="text-[11px] text-text-muted mt-1">
+                Token input multiplier applied to usage and quota calculation.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-main mb-1">
+                Output Multiplier <span className="text-text-muted font-normal">(optional)</span>
+              </label>
+              <Input
+                type="number"
+                step="0.1"
+                min="0"
+                value={outputMultiplier}
+                onChange={(e) => setOutputMultiplier(e.target.value)}
+                placeholder="e.g. 5 (5x output)"
+              />
+              <p className="text-[11px] text-text-muted mt-1">
+                Token output multiplier applied to usage and quota calculation.
+              </p>
+            </div>
           </div>
 
           <div>
@@ -392,7 +1136,7 @@ function StudioFormModal({
             <Button type="button" variant="secondary" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!callName.trim() || !targetModel || !!nameError || saving}>
+            <Button type="submit" disabled={!fullCallName || !targetModel || !!nameError || !!prefixError || !!cycleError || saving}>
               {saving ? "Saving..." : editing ? "Save" : "Create"}
             </Button>
           </div>
@@ -464,7 +1208,7 @@ function PrefixCard({ nodes, onSaved }) {
         <div>
           <h3 className="text-sm font-semibold text-text-main">Provider prefixes</h3>
           <p className="text-[11px] text-text-muted mt-0.5">
-            One prefix per custom provider — clients call{" "}
+            One prefix per custom provider - clients call{" "}
             <code className="font-mono">prefix/model-id</code>.
           </p>
         </div>
@@ -472,7 +1216,7 @@ function PrefixCard({ nodes, onSaved }) {
           {compatible.map((node) => (
             <div
               key={node.id}
-              className="flex items-center justify-between gap-2 rounded-lg border border-black/5 dark:border-white/5 bg-black/5 dark:bg-white/5 px-2.5 py-2"
+              className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-surface-2 px-2.5 py-2"
             >
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-medium text-text-main truncate">{node.name}</p>
@@ -483,7 +1227,7 @@ function PrefixCard({ nodes, onSaved }) {
                 title="Edit prefix"
                 className="p-1.5 rounded-lg text-text-muted hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
               >
-                <span className="material-symbols-outlined text-[16px]">edit</span>
+                <span className="material-symbols-outlined text-[16px]">edit_note</span>
               </button>
             </div>
           ))}
@@ -522,4 +1266,3 @@ function PrefixCard({ nodes, onSaved }) {
     </>
   );
 }
-

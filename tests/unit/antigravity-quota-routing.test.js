@@ -203,7 +203,7 @@ describe("Antigravity quota-aware routing", () => {
       await handleAntigravityQuotaError("ag-window", 429, MODEL, "token", {});
       await vi.advanceTimersByTimeAsync(61_000);
       const result = await handleAntigravityQuotaError("ag-window", 429, MODEL, "token", {});
-      expect(result).toBeNull(); // window lapsed — counter restarted at 1
+      expect(result).toBeNull(); // window lapsed - counter restarted at 1
     } finally {
       vi.useRealTimers();
     }
@@ -238,7 +238,7 @@ describe("Antigravity quota-aware routing", () => {
       await handleAntigravityQuotaError("ag-persist", 429, MODEL, "token", {});
 
       // The synthesized entry must be visible to the auth pre-filter reading
-      // the shared cache — and must survive an optimistic upstream refresh.
+      // the shared cache - and must survive an optimistic upstream refresh.
       const cached = getAntigravityQuotaCache().get("ag-persist")?.[MODEL];
       expect(cached).toMatchObject({ remainingPercentage: 0 });
       expect(Date.parse(cached.resetAt)).toBe(Date.parse("2026-08-26T00:15:00.000Z"));
@@ -266,7 +266,7 @@ describe("Antigravity quota-aware routing", () => {
       expect(getAntigravityQuotaCache().get("ag-clear")?.[MODEL]?.remainingPercentage).toBe(0);
 
       clearAntigravityStrikes("ag-clear", MODEL);
-      // Synthesized entry gone — pair selectable again immediately.
+      // Synthesized entry gone - pair selectable again immediately.
       expect(getAntigravityQuotaCache().get("ag-clear")?.[MODEL]).toBeUndefined();
 
       // Two more 429s do NOT inherit earlier strikes: no block on the third-in-episode.
@@ -309,3 +309,54 @@ describe("Antigravity quota-aware routing", () => {
     expect(getAntigravityQuotaCache().get("ag-optimistic")?.[MODEL]?.remainingPercentage).toBe(90);
   });
 });
+
+  it("checks shared family summary quota (claude_gpt_session / weekly)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
+    mocks.getAntigravityUsage.mockResolvedValue({
+      quotas: {
+        claude_gpt_session: { remainingPercentage: 0, resetAt: FUTURE_RESET },
+        claude_gpt_weekly: { remainingPercentage: 50, resetAt: "2026-09-02T00:00:00.000Z" },
+      }
+    });
+
+    try {
+      const reset = await handleAntigravityQuotaError("ag-family", 429, "claude-sonnet-5-5", "token", {});
+      expect(reset).toBe(Date.parse(FUTURE_RESET));
+      expect(getAntigravityQuotaCache().get("ag-family")["claude-sonnet-5-5"]).toMatchObject({
+        remainingPercentage: 0,
+        resetAt: FUTURE_RESET,
+      });
+
+      // auth pre-filter should skip this account for claude-sonnet-5-5 based on cache
+      mocks.getProviderConnections.mockResolvedValue([
+        { id: "ag-family", email: "family@example.com", isActive: true },
+        { id: "ag-other", email: "other@example.com", isActive: true },
+      ]);
+      const creds = await getProviderCredentials("antigravity", null, "claude-sonnet-5-5");
+      expect(creds.connectionId).toBe("ag-other");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("checks shared family summary quota for gemini models", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
+    mocks.getAntigravityUsage.mockResolvedValue({
+      quotas: {
+        gemini_weekly: { remainingPercentage: 0, resetAt: FUTURE_RESET },
+      }
+    });
+
+    try {
+      const reset = await handleAntigravityQuotaError("ag-gem", 429, "gemini-3.8-flash-high", "token", {});
+      expect(reset).toBe(Date.parse(FUTURE_RESET));
+      expect(getAntigravityQuotaCache().get("ag-gem")["gemini-3.8-flash-high"]).toMatchObject({
+        remainingPercentage: 0,
+        resetAt: FUTURE_RESET,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });

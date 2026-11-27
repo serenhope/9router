@@ -56,11 +56,11 @@ function nextMonthlyResetFromSignup(createdAt, now = new Date()) {
 
 /**
  * Ollama Cloud Usage
- * GET https://ollama.com/api/usage — `limits.<window>.usage` is a 0..1 ratio
+ * GET https://ollama.com/api/usage - `limits.<window>.usage` is a 0..1 ratio
  *   (1.0 = limit reached). Paid plans report session (5h) + weekly (7d); the
  *   free plan reports a single monthly window. No reset timestamp exposed;
  *   the free monthly reset is derived from the account's signup date.
- * POST https://ollama.com/api/me — plan label + CreatedAt (fail-open).
+ * POST https://ollama.com/api/me - plan label + CreatedAt (fail-open).
  * Auth: Authorization: Bearer <apiKey>
  */
 export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions = null) {
@@ -109,7 +109,7 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
     const limits = data?.limits && typeof data.limits === "object" ? data.limits : {};
 
     // Ollama `usage` is a 0..1 ratio (1.0 = limit reached). Convert to a 0..100
-    // bar. Do NOT set absolute `remaining` — QuotaTable reads remainingPercentage.
+    // bar. Do NOT set absolute `remaining` - QuotaTable reads remainingPercentage.
     function ratioQuota(usageRatio, resetAt = null) {
       const ratio = Math.max(0, Math.min(1, Number(usageRatio) || 0));
       const usedPct = Math.round(ratio * 100);
@@ -146,7 +146,7 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
 
 
 /**
- * Vercel AI Gateway usage — credit balance for the API key
+ * Vercel AI Gateway usage - credit balance for the API key
  *
  * Calls GET /v1/credits which returns:
  *   { "balance": "95.50", "total_used": "4.50" }   (USD as decimal strings)
@@ -255,13 +255,26 @@ export async function getQoderUsage(accessToken, proxyOptions = null, providerId
     // siblings so the dashboard parser doesn't try to render them as rows.
     const userQuota = body.userQuota || {};
     const orgQuota = body.orgResourcePackage || {};
+    // Add-on credits (free grants / promos). Qoder emits this block only when
+    // the account actually holds a grant — an account that never redeemed one,
+    // or consumed it, omits the key entirely. Verified against both regions:
+    // qoder CN returns it (e.g. 2200 total) after redeeming the free-credit
+    // promo, while an intl account without a grant has no such key. Gating on
+    // total > 0 keeps the intl/no-grant shape byte-identical to before.
+    const addOnQuota = body.addOnQuota || {};
+    const addOnTotal = Number(addOnQuota.total) || 0;
     // Qoder publishes a single absolute reset timestamp (`expiresAt` in ms);
     // surface it on every quota record as ISO so the table can render
-    // "resets at" alongside used/total.
+    // "resets at" alongside used/total. 253402214400000 (9999-12-31T00:00:00Z)
+    // is Qoder's "never expires" sentinel, returned by both regions for
+    // open-ended plans — rendering a reset date in the year 9999 is noise, so
+    // flag it instead and let the tracker word it as "Never expires".
     const expiresAtMs = Number.isFinite(Number(body.expiresAt)) && Number(body.expiresAt) > 0
       ? Number(body.expiresAt)
       : null;
-    const resetAt = expiresAtMs ? new Date(expiresAtMs).toISOString() : null;
+    const NO_RESET_SENTINEL_MS = 253402214400000;
+    const neverExpires = expiresAtMs === NO_RESET_SENTINEL_MS;
+    const resetAt = expiresAtMs && !neverExpires ? new Date(expiresAtMs).toISOString() : null;
     const quotas = {
       user: {
         total: Number(userQuota.total) || 0,
@@ -269,6 +282,7 @@ export async function getQoderUsage(accessToken, proxyOptions = null, providerId
         remaining: Number(userQuota.remaining) || 0,
         unit: userQuota.unit || "credits",
         resetAt,
+        neverExpires,
       },
       organization: {
         total: Number(orgQuota.total) || 0,
@@ -276,8 +290,28 @@ export async function getQoderUsage(accessToken, proxyOptions = null, providerId
         remaining: Number(orgQuota.remaining) || 0,
         unit: orgQuota.unit || "credits",
         resetAt,
+        neverExpires,
       },
     };
+    if (addOnTotal > 0) {
+      quotas.addOn = {
+        total: addOnTotal,
+        used: Number(addOnQuota.used) || 0,
+        remaining: Number(addOnQuota.remaining) || 0,
+        unit: addOnQuota.unit || "credits",
+        // The add-on block carries no expiry of its own in this API. Qoder's
+        // web console lists every redeemed resource package with its own
+        // deadline (check-in bonuses do expire, typically ~30 days), but
+        // openapi only exposes the account-level `expiresAt` sentinel above,
+        // which describes the plan, not the grants — reusing it here would
+        // advertise "never expires" for credits that actually expire. So
+        // leave the reset date unset and let the row link to Qoder's own
+        // usage page (detailUrl) where the per-package dates live.
+        resetAt: null,
+        neverExpires: false,
+        detailUrl: addOnQuota.detailUrl || null,
+      };
+    }
     return {
       quotas,
       totalUsagePercentage: Number(body.totalUsagePercentage) || 0,

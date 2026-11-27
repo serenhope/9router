@@ -9,10 +9,10 @@ export const APP_CONFIG = {
 
 // GitHub configuration
 export const GITHUB_CONFIG = {
-  changelogUrl: "https://raw.githubusercontent.com/decolua/9router/refs/heads/master/CHANGELOG.md",
+  changelogUrl: "https://raw.githubusercontent.com/alvin-revoers/9router/refs/heads/master/CHANGELOG.md",
   donateUrl: "https://9router.com/api/donate",
-  repoUrl: "https://github.com/serenhope/9router",
-  apiRepo: "serenhope/9router", // update checks compare the running checkout with this
+  repoUrl: "https://github.com/alvin-revoers/9router",
+  apiRepo: "alvin-revoers/9router", // update checks compare the running checkout with this
   branch: "master",
 };
 
@@ -24,9 +24,13 @@ export const WELCOME_CONFIG = {
 
 // Updater configuration
 export const UPDATER_CONFIG = {
+  // This install is a fork of the upstream npm package: pulling the published
+  // `9router` from npm would hand the operator a different codebase than the one
+  // reporting the update, so the command points at this repository instead.
   npmPackageName: "9router",
-  installCmd: "npm i -g 9router",
-  installCmdLatest: "npm i -g 9router@latest --prefer-online",
+  repoPackageSpec: "github:alvin-revoers/9router",
+  installCmd: "npm install -g github:alvin-revoers/9router",
+  installCmdLatest: "npm install -g github:alvin-revoers/9router@master",
   shutdownCountdownSec: 3,
   exitDelayMs: 500,
   statusPort: 20129,
@@ -92,8 +96,8 @@ export const QUOTA_AUTOPING_CONFIG = {
       resetAtDriftMs: 30000,
       minPingIntervalMs: 600000,
       skipWhenBlockingQuotaExhausted: true,
-      // Free and Plus Codex accounts both expose gpt-5.5; avoid fallback probes that waste requests.
-      pingModel: "gpt-5.5",
+      // gpt-5.6-terra is the lightweight model for auto-pinging Codex 5h reset window.
+      pingModel: "gpt-5.6-terra",
       pingText: "hi",
       pingInstructions: "Reply with OK.",
       pingReasoningEffort: "none",

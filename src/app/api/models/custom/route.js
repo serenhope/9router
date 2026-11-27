@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getCustomModels, addCustomModel, deleteCustomModel } from "@/models";
-import { CAPACITY_META } from "@/shared/constants/models";
+import { reconcileAllowedModels } from "@/lib/db/repos/apiKeysRepo";
+import { CAPACITY_META, isSttTransport } from "@/shared/constants/models";
 
 export const dynamic = "force-dynamic";
 
-// Whitelist capability keys to boolean values — ignore anything else
+// Whitelist capability keys to boolean values - ignore anything else
 function sanitizeCaps(caps) {
   if (!caps || typeof caps !== "object") return null;
   const clean = {};
@@ -12,6 +13,16 @@ function sanitizeCaps(caps) {
     if (typeof caps[key] === "boolean") clean[key] = caps[key];
   }
   return Object.keys(clean).length ? clean : null;
+}
+
+// Accepted STT transport markers live in the shared whitelist
+// (src/shared/constants/models STT_TRANSPORT_META) - the dashboard transport
+// select and this validator must agree on one set, so neither owns a copy.
+// Unknown or mistyped values are silently dropped, the same policy
+// sanitizeCaps applies to capability keys.
+function sanitizeTransport(transport, type) {
+  if (type !== "stt" || !isSttTransport(transport)) return null;
+  return transport.trim();
 }
 
 // GET /api/models/custom - List all custom models
@@ -28,12 +39,25 @@ export async function GET() {
 // POST /api/models/custom - Add custom model
 export async function POST(request) {
   try {
-    const { providerAlias, id, type, name, caps } = await request.json();
+    const { providerAlias, id, type, name, ownedBy, caps, transport, inputMultiplier, outputMultiplier, antiProbe } = await request.json();
     if (!providerAlias || !id) {
       return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
     }
     const cleanCaps = sanitizeCaps(caps);
-    const added = await addCustomModel({ providerAlias, id, type: type || "llm", name, ...(cleanCaps ? { caps: cleanCaps } : {}) });
+    const cleanTransport = sanitizeTransport(transport, type || "llm");
+    const added = await addCustomModel({
+      providerAlias,
+      id,
+      type: type || "llm",
+      name,
+      // Optional free-form label; blank keeps the provider alias as before.
+      ownedBy: typeof ownedBy === "string" ? ownedBy.trim() : "",
+      ...(cleanCaps ? { caps: cleanCaps } : {}),
+      ...(cleanTransport ? { transport: cleanTransport } : {}),
+      inputMultiplier,
+      outputMultiplier,
+      antiProbe,
+    });
     return NextResponse.json({ success: true, added });
   } catch (error) {
     console.log("Error adding custom model:", error);
@@ -52,7 +76,10 @@ export async function DELETE(request) {
       return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
     }
     await deleteCustomModel({ providerAlias, id, type });
-    return NextResponse.json({ success: true });
+    // Keys pinned to this model now point at nothing. Keys may hold it either
+    // bare or provider-qualified, so both spellings are handed over.
+    const { emptied } = await reconcileAllowedModels({ removed: [id, `${providerAlias}/${id}`] });
+    return NextResponse.json({ success: true, ...(emptied.length ? { keysLeftForReview: emptied } : {}) });
   } catch (error) {
     console.log("Error deleting custom model:", error);
     return NextResponse.json({ error: "Failed to delete custom model" }, { status: 500 });

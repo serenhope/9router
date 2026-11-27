@@ -64,6 +64,9 @@ export async function createProviderNode(data) {
     baseUrl: data.baseUrl,
     brand: data.brand,
     logo: data.logo, // optional custom logo (data URL)
+    quotaEnabled: data.quotaEnabled === true,
+    quotaPath: data.quotaPath || "/credits",
+
     createdAt: now,
     updatedAt: now,
   };
@@ -92,6 +95,7 @@ export async function deleteProviderNode(id) {
     if (!row) return;
     removed = rowToNode(row);
     db.run(`DELETE FROM providerNodes WHERE id = ?`, [id]);
+    db.run(`DELETE FROM kv WHERE scope = 'customModels' AND key LIKE ?`, [`${id}|%`]);
   });
   return removed;
 }

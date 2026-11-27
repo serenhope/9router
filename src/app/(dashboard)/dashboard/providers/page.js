@@ -8,13 +8,16 @@ import {
   Badge,
   Button,
   Toggle,
+  Modal,
 } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
+import PageShell from "@/shared/components/PageShell";
 import { getProviderIconSrc } from "@/shared/utils/providerIcon";
 import { getCustomLogo } from "@/shared/utils/providerLogo";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
 import {
   FREE_PROVIDERS,
+  UNAUTH_PROVIDERS,
   FREE_TIER_PROVIDERS,
   WEB_COOKIE_PROVIDERS,
   OPENAI_COMPATIBLE_PREFIX,
@@ -24,6 +27,7 @@ import Link from "next/link";
 import { getErrorCode, getRelativeTime } from "@/shared/utils";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
+import { useTaskStore } from "@/store/taskStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
 import { STATUS_FILTER_OPTIONS, matchesStatusFilter } from "./utils";
@@ -110,6 +114,12 @@ export default function ProvidersPage() {
   const [testingMode, setTestingMode] = useState(null);
   const [testResults, setTestResults] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [opencodeInstalled, setOpencodeInstalled] = useState(true);
+  // OpenCode Free is one card with two lanes; the hammer on that card flips this.
+  const [opencodeCliMode, setOpencodeCliMode] = useState(false);
+  const [selectedLaneMode, setSelectedLaneMode] = useState(false);
+  const [togglingCliMode, setTogglingCliMode] = useState(false);
+  const [laneBannerOpen, setLaneBannerOpen] = useState(false);
   const notify = useNotificationStore();
   const searchQuery = useHeaderSearchStore((s) => s.query);
   const registerSearch = useHeaderSearchStore((s) => s.register);
@@ -155,14 +165,25 @@ export default function ProvidersPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [connectionsRes, nodesRes] = await Promise.all([
+        const [connectionsRes, nodesRes, settingsRes] = await Promise.all([
           fetch("/api/providers"),
           fetch("/api/provider-nodes"),
+          fetch("/api/settings"),
         ]);
         const connectionsData = await connectionsRes.json();
         const nodesData = await nodesRes.json();
-        if (connectionsRes.ok)
+        if (settingsRes.ok) {
+          const settingsData = await settingsRes.json();
+          const isCli = settingsData?.opencodeCliMode === true;
+          setOpencodeCliMode(isCli);
+          setSelectedLaneMode(isCli);
+        }
+        if (connectionsRes.ok) {
           setConnections(connectionsData.connections || []);
+          if (connectionsData.opencodeInstalled !== undefined) {
+            setOpencodeInstalled(Boolean(connectionsData.opencodeInstalled));
+          }
+        }
         if (nodesRes.ok) setProviderNodes(nodesData.nodes || []);
       } catch (error) {
         console.log("Error fetching data:", error);
@@ -172,6 +193,27 @@ export default function ProvidersPage() {
     };
     fetchData();
   }, []);
+
+  const applyOpencodeCliMode = async (targetMode) => {
+    if (togglingCliMode) return;
+    setTogglingCliMode(true);
+    setOpencodeCliMode(targetMode);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ opencodeCliMode: targetMode }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      notify.success(targetMode ? "OpenCode Free: CLI lane" : "OpenCode Free: Direct lane");
+    } catch (error) {
+      setOpencodeCliMode(!targetMode);
+      setSelectedLaneMode(!targetMode);
+      notify.error(`Could not switch lane: ${error.message}`);
+    } finally {
+      setTogglingCliMode(false);
+    }
+  };
 
   const getProviderStats = (providerId, authType) => {
     const authTypes = Array.isArray(authType) ? authType : [authType];
@@ -243,8 +285,22 @@ export default function ProvidersPage() {
 
   const handleBatchTest = async (mode, providerId = null) => {
     if (testingMode) return;
-    setTestingMode(mode === "provider" ? providerId : mode);
+    const activeMode = mode === "provider" ? providerId : mode;
+    setTestingMode(activeMode);
     setTestResults(null);
+    const taskId = "provider-batch-test";
+    const testTitle = "Testing connections";
+    const testMessage =
+      mode === "provider"
+        ? "Testing every connection on this provider"
+        : `Testing all ${mode === "oauth" ? "OAuth" : mode === "free" ? "Free tier" : "API key"} connections`;
+    useTaskStore.getState().start({
+      id: taskId,
+      title: testTitle,
+      message: testMessage,
+      progress: 0,
+      href: "/dashboard/providers",
+    });
     try {
       const res = await fetch("/api/providers/test-batch", {
         method: "POST",
@@ -262,6 +318,7 @@ export default function ProvidersPage() {
       setTestResults({ error: "Test request failed" });
       notify.error("Provider test failed");
     } finally {
+      useTaskStore.getState().finish(taskId);
       setTestingMode(null);
     }
   };
@@ -302,7 +359,7 @@ export default function ProvidersPage() {
     const modes = info?.authModes;
     // Free-tier and API-key providers default to supporting apikey even when the
     // registry entry omits authModes (e.g. cloudflare-ai, byteplus, ollama,
-    // vertex) — otherwise their apikey connections are invisible on the grid card.
+    // vertex) - otherwise their apikey connections are invisible on the grid card.
     if (!Array.isArray(modes)) {
       return key in FREE_TIER_PROVIDERS || key in APIKEY_PROVIDERS
         ? ["oauth", "apikey", "api_key"]
@@ -321,16 +378,23 @@ export default function ProvidersPage() {
     ),
     "oauth",
   );
+  const unauthEntries = Object.entries(UNAUTH_PROVIDERS).filter(
+    ([key, info]) =>
+      !info.hidden &&
+      matchSearch(info.name) &&
+      matchStatus(getProviderStats(key, dualAuthTypes(info, key)), info.noAuth),
+  );
   const freeEntries = Object.entries(FREE_PROVIDERS)
     .filter(
       ([key, info]) =>
         !info.hidden &&
+        !(key in UNAUTH_PROVIDERS) &&
         matchSearch(info.name) &&
         matchStatus(getProviderStats(key, dualAuthTypes(info, key)), info.noAuth),
     )
     .sort(([, a], [, b]) => (b.noAuth ? 1 : 0) - (a.noAuth ? 1 : 0));
   // Free Tier cards may be oauth-only (e.g. kimchi) or dual-auth, so count via
-  // dualAuthTypes per provider instead of a fixed "apikey" — otherwise oauth
+  // dualAuthTypes per provider instead of a fixed "apikey" - otherwise oauth
   // connections are invisible here (mismatch with the detail page).
   const freeTierEntries = Object.entries(FREE_TIER_PROVIDERS)
     .filter(
@@ -400,12 +464,20 @@ export default function ProvidersPage() {
     anthropicCompatibleProviders.length > 0;
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
-      <div className="flex items-center justify-end">
+    <PageShell>
+      <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(17rem,0.85fr)_minmax(0,3fr)] lg:items-start">
+        <aside className="flex min-w-0 flex-col gap-5">
+      <div className="border-2 border-black bg-surface p-4 shadow-[5px_5px_0_0_rgba(0,0,0,0.9)]">
+        <p className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-primary">UPSTREAMS / 02</p>
+        <h1 className="mt-1 text-2xl font-black tracking-tight text-text-main">Providers</h1>
+        <p className="mt-2 text-sm leading-relaxed text-text-muted">Manage provider connections, availability and custom endpoints.</p>
+      </div>
+      <div className="flex items-center justify-between gap-3 border-2 border-black bg-surface p-3 shadow-[4px_4px_0_0_rgba(0,0,0,0.9)]">
+        <span className="text-xs font-bold uppercase tracking-wide">Connection status</span>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="h-8 rounded-lg border border-black/10 bg-black/[0.02] px-2 text-xs text-text-primary outline-none transition-colors hover:bg-black/5 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/10"
+          className="h-8 rounded-lg border border-border bg-surface-2 px-2 text-xs text-text-main outline-none transition-colors hover:bg-surface-3"
           aria-label="Filter providers by connection status"
         >
           {STATUS_FILTER_OPTIONS.map((option) => (
@@ -419,7 +491,7 @@ export default function ProvidersPage() {
       {!hasAnyResult && (
         <div className="text-center py-8 border border-dashed border-border rounded-xl">
           <span className="material-symbols-outlined text-[32px] text-text-muted mb-2">
-            search_off
+            manage_search
           </span>
           <p className="text-text-muted text-sm">
             No providers match your search or filters
@@ -427,49 +499,50 @@ export default function ProvidersPage() {
         </div>
       )}
 
-      {/* Custom Providers (OpenAI/Anthropic/MoonshotAI Compatible) — dynamic */}
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
-            Custom Providers (OpenAI/Anthropic/MoonshotAI){" "}
+      {/* Custom Providers (OpenAI/Anthropic/MoonshotAI Compatible) - dynamic */}
+      <div className="flex flex-col gap-4 border-2 border-black bg-surface p-4 shadow-[5px_5px_0_0_rgba(0,0,0,0.9)]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:items-stretch lg:flex-col">
+          <h2 className="min-w-0 break-words text-lg sm:text-xl font-semibold leading-tight">
+            Custom Providers (OpenAI/<wbr />Anthropic/<wbr />MoonshotAI)
           </h2>
-          <div className="grid grid-cols-1 gap-2 sm:flex sm:w-auto">
+          <div className="grid grid-cols-1 sm:flex sm:items-center gap-2 w-full sm:w-auto lg:grid lg:grid-cols-1 lg:w-full">
             <Button
               size="sm"
-              icon="add"
+              variant="secondary"
+              icon="add_circle"
               onClick={() => setShowAddAnthropicCompatibleModal(true)}
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto text-xs"
             >
-              Add Anthropic Compatible
+              Anthropic Compatible
             </Button>
             <Button
               size="sm"
               variant="secondary"
-              icon="add"
+              icon="add_circle"
               onClick={() => setShowAddCompatibleModal(true)}
-              className="w-full !bg-white !text-black hover:!bg-gray-100 sm:w-auto"
+              className="w-full sm:w-auto text-xs"
             >
-              Add OpenAI Compatible
+              OpenAI Compatible
             </Button>
-              <Button
+            <Button
               size="sm"
               variant="secondary"
-              icon="add"
+              icon="add_circle"
               onClick={() => setShowAddMoonshotCompatibleModal(true)}
-              className="w-full sm:w-auto"
-              >
-              Add MoonshotAI Compatible
-              </Button>
+              className="w-full sm:w-auto text-xs"
+            >
+              MoonshotAI Compatible
+            </Button>
           </div>
         </div>
         {compatibleProviders.length === 0 &&
         anthropicCompatibleProviders.length === 0 ? (
           <div className="flex items-center justify-center gap-2 py-2 border border-dashed border-border rounded-xl text-text-muted text-sm">
-            <span className="material-symbols-outlined text-[18px]">extension</span>
-            <span>No custom providers — use buttons above to add OpenAI/Anthropic/MoonshotAI compatible endpoints</span>
+            <span className="material-symbols-outlined text-[18px]">extension_off</span>
+            <span>No custom providers - use buttons above to add OpenAI/Anthropic/MoonshotAI compatible endpoints</span>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3">
             {[...compatibleProviders, ...anthropicCompatibleProviders].map(
               (info) => (
                 <ApiKeyProviderCard
@@ -488,10 +561,12 @@ export default function ProvidersPage() {
         )}
       </div>
 
+        </aside>
+        <main className="flex min-w-0 flex-col gap-6">
       {/* OAuth Providers */}
       {oauthEntries.length > 0 && (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border-b-2 border-black pb-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
             OAuth Providers
           </h2>
@@ -511,13 +586,13 @@ export default function ProvidersPage() {
               <span
                 className={`material-symbols-outlined text-[14px]${testingMode === "oauth" ? " animate-spin" : ""}`}
               >
-                play_arrow
+                play_circle
               </span>
-              {testingMode === "oauth" ? "Testing..." : "Test All"}
+              Test All
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 auto-rows-fr gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {oauthEntries.map(([key, info]) => {
             const authTypes = dualAuthTypes(info, key);
             return (
@@ -535,10 +610,36 @@ export default function ProvidersPage() {
       </div>
       )}
 
+      {/* Unauthenticated Providers */}
+      {unauthEntries.length > 0 && (
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 border-b-2 border-black pb-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
+            Unauthenticated Providers
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 auto-rows-fr gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+          {unauthEntries.map(([key, info]) => {
+            const unauthAuthTypes = dualAuthTypes(info, key);
+            return (
+              <ProviderCard
+                key={key}
+                providerId={key}
+                provider={info}
+                stats={getProviderStats(key, unauthAuthTypes)}
+                authType="free"
+                onToggle={(active) => handleToggleProvider(key, unauthAuthTypes, active)}
+              />
+            );
+          })}
+        </div>
+      </div>
+      )}
+
       {/* Free Tier Providers */}
       {(freeEntries.length > 0 || freeTierEntries.length > 0) && (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border-b-2 border-black pb-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
             Free Tier Providers
           </h2>
@@ -556,12 +657,12 @@ export default function ProvidersPage() {
             <span
               className={`material-symbols-outlined text-[14px]${testingMode === "free" ? " animate-spin" : ""}`}
             >
-              play_arrow
+              play_circle
             </span>
-            {testingMode === "free" ? "Testing..." : "Test All"}
+            Test All
           </button>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 auto-rows-fr gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {freeEntries.map(([key, info]) => {
             // Dual-auth (e.g. kiro): count/toggle oauth + apikey/api_key so the
             // card total matches the provider detail page.
@@ -573,6 +674,12 @@ export default function ProvidersPage() {
                 provider={info}
                 stats={getProviderStats(key, freeAuthTypes)}
                 authType="free"
+                opencodeInstalled={opencodeInstalled}
+                cliMode={opencodeCliMode}
+                onOpenLaneModal={key === "opencode" ? () => {
+                  setSelectedLaneMode(opencodeCliMode);
+                  setLaneBannerOpen(true);
+                } : null}
                 onToggle={(active) =>
                   handleToggleProvider(key, freeAuthTypes, active)
                 }
@@ -596,7 +703,7 @@ export default function ProvidersPage() {
       </div>
       )}
 
-      {/* Web Cookie Providers — use browser subscription cookie instead of API key */}
+      {/* Web Cookie Providers - use browser subscription cookie instead of API key */}
       {webCookieEntries.length > 0 && (
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
@@ -604,7 +711,7 @@ export default function ProvidersPage() {
             Web Cookie Providers{" "}
           </h2>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 auto-rows-fr gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {webCookieEntries.map(([key, info]) => (
             <ApiKeyProviderCard
               key={key}
@@ -619,10 +726,10 @@ export default function ProvidersPage() {
       </div>
       )}
 
-      {/* API Key Providers — fixed list */}
+      {/* API Key Providers - fixed list */}
       {apikeyEntries.length > 0 && (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border-b-2 border-black pb-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
             API Key Providers{" "}
           </h2>
@@ -640,12 +747,12 @@ export default function ProvidersPage() {
             <span
               className={`material-symbols-outlined text-[14px]${testingMode === "apikey" ? " animate-spin" : ""}`}
             >
-              play_arrow
+              play_circle
             </span>
-            {testingMode === "apikey" ? "Testing..." : "Test All"}
+            Test All
           </button>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 auto-rows-fr gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {visibleApikeyEntries.map(([key, info]) => (
             <ApiKeyProviderCard
               key={key}
@@ -662,13 +769,15 @@ export default function ProvidersPage() {
             onClick={() => setShowAllApikey(true)}
             className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:border-primary hover:bg-primary/5"
           >
-            <span className="material-symbols-outlined text-[16px]">expand_more</span>
+            <span className="material-symbols-outlined text-[16px]">keyboard_arrow_down</span>
             Show all {apikeyEntries.length} providers
           </button>
         )}
       </div>
       )}
 
+        </main>
+      </div>
       <AddCompatibleModal
         variant="openai"
         isOpen={showAddCompatibleModal}
@@ -697,25 +806,110 @@ export default function ProvidersPage() {
         }}
         />
 
-      {/* Test Results Modal */}
+      {/* OpenCode Free Lane Switch Banner Modal */}
+      <Modal
+        isOpen={laneBannerOpen}
+        onClose={() => setLaneBannerOpen(false)}
+        title="Switch OpenCode Free Lane"
+        size="md"
+      >
+        <div className="flex flex-col gap-4 text-sm text-text-muted">
+          <div className="flex items-center gap-2 p-3 rounded-lg border border-border-subtle bg-surface-2">
+            <span className="material-symbols-outlined text-[20px] text-brand-500">build_circle</span>
+            <div>
+              <p className="text-xs text-text-muted">Current Active Lane</p>
+              <p className="text-sm font-semibold text-text-main">
+                {opencodeCliMode ? "CLI Lane (Using Local CLI)" : "Direct Lane (No CLI / Fast TLS)"}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => setSelectedLaneMode(false)}
+              className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${!selectedLaneMode ? "border-brand-500 bg-brand-500/10 ring-1 ring-brand-500/30" : "border-border-subtle bg-surface-2/40 hover:bg-surface-2/70"}`}
+            >
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center gap-2 font-medium text-text-main">
+                  <span className="material-symbols-outlined text-[18px] text-success">electric_bolt</span>
+                  <span>Direct Lane (Default / Recommended)</span>
+                </div>
+                {!selectedLaneMode && (
+                  <span className="material-symbols-outlined text-[18px] text-brand-500">task_alt</span>
+                )}
+              </div>
+              <p className="text-xs text-text-muted leading-relaxed">
+                Requests are sent directly to upstream via impersonated TLS (Bun-shaped ClientHello). Fast (~400ms), lightweight, and requires no local OpenCode CLI or Bun runtime installed on the host.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedLaneMode(true)}
+              className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${selectedLaneMode ? "border-brand-500 bg-brand-500/10 ring-1 ring-brand-500/30" : "border-border-subtle bg-surface-2/40 hover:bg-surface-2/70"}`}
+            >
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center gap-2 font-medium text-text-main">
+                  <span className="material-symbols-outlined text-[18px] text-warning">code</span>
+                  <span>CLI Lane</span>
+                </div>
+                {selectedLaneMode && (
+                  <span className="material-symbols-outlined text-[18px] text-brand-500">task_alt</span>
+                )}
+              </div>
+              <p className="text-xs text-text-muted leading-relaxed">
+                Spawns the local <code className="text-[11px] bg-surface px-1 py-0.5 rounded">opencode</code> binary and Bun sidecar transport on the host. Requires the CLI installed locally; otherwise requests will hang and time out.
+              </p>
+            </button>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-subtle">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setLaneBannerOpen(false)}
+              disabled={togglingCliMode}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={togglingCliMode}
+              onClick={async () => {
+                await applyOpencodeCliMode(selectedLaneMode);
+                setLaneBannerOpen(false);
+              }}
+            >
+              {togglingCliMode ? "Switching..." : "Konfirmasi"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* No overlay while a batch test runs: handleBatchTest() reports it into
+          the task store, so the bell owns the readout and the page stays
+          usable. The results modal below is the outcome, not the progress. */}
+
       {testResults && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center px-3 pt-[6vh] sm:pt-[10vh]"
           onClick={() => setTestResults(null)}
         >
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-scrim " />
           <div
             className="relative bg-surface border border-border rounded-xl w-full max-w-[600px] max-h-[86vh] sm:max-h-[80vh] overflow-y-auto shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3 border-b border-border bg-surface/95 backdrop-blur-sm rounded-t-xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3 border-b border-border bg-surface/95  rounded-t-xl">
               <h3 className="font-semibold">Test Results</h3>
               <button
                 onClick={() => setTestResults(null)}
                 className="p-1 rounded-lg hover:bg-bg text-text-muted hover:text-text-main transition-colors"
                 aria-label="Close test results"
               >
-                <span className="material-symbols-outlined text-lg">close</span>
+                <span className="material-symbols-outlined text-lg">close_small</span>
               </button>
             </div>
             <div className="p-5">
@@ -724,11 +918,11 @@ export default function ProvidersPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }
 
-function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
+function ProviderCard({ providerId, provider, stats, authType, onToggle, opencodeInstalled = true, cliMode = false, onOpenLaneModal = null }) {
   const { connected, error, errorCode, errorTime, allDisabled } = stats;
   const isNoAuth = !!provider.noAuth;
 
@@ -746,24 +940,20 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
   };
 
   return (
-    <Link href={`/dashboard/providers/${providerId}`} className="group min-w-0">
+    <Link href={`/dashboard/providers/${providerId}`} className="group min-w-0 chrome-focus">
       <Card
         padding="xs"
-        className={`h-full hover:bg-black/[0.01] dark:hover:bg-white/[0.01] transition-colors cursor-pointer ${allDisabled ? "opacity-50" : ""}`}
+        hover
+        className={`provider-directory-card h-full min-h-[92px] ${allDisabled ? "opacity-50" : ""}`}
       >
         <div className="flex min-w-0 items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div
-              className="size-8 shrink-0 rounded-lg flex items-center justify-center"
-              style={{
-                backgroundColor: `${provider.color?.length > 7 ? provider.color : provider.color + "15"}`,
-              }}
-            >
+            {/* The paper stamp gives each complete logo a clear, consistent stage. */}
+            <div className="provider-logo-frame flex size-11 shrink-0 items-center justify-center p-1">
               <ProviderIcon
                 src={`/providers/${provider.id}.png`}
                 alt={provider.name}
-                size={30}
-                className="object-contain rounded-lg max-w-[32px] max-h-[32px]"
+                size={32}
                 fallbackText={
                   provider.textIcon || provider.id.slice(0, 2).toUpperCase()
                 }
@@ -771,19 +961,27 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
               />
             </div>
             <div className="min-w-0">
-              <h3 className="truncate font-semibold">{provider.name}</h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="truncate font-semibold">{provider.name}</h3>
+              </div>
               <div className="flex min-w-0 items-center gap-1.5 text-xs flex-wrap">
                 {allDisabled ? (
                   <Badge variant="default" size="sm">
                     <span className="flex items-center gap-1">
                       <span className="material-symbols-outlined text-[12px]">
-                        pause_circle
+                        pause_circle_filled
                       </span>
                       Disabled
                     </span>
                   </Badge>
                 ) : isNoAuth ? (
-                  <Badge variant="success" size="sm" dot>Ready</Badge>
+                  <Badge
+                    variant={provider.statusBadge?.variant || "success"}
+                    size="sm"
+                    dot
+                  >
+                    {provider.statusBadge?.label || "Ready"}
+                  </Badge>
                 ) : (
                   <>
                     {getStatusDisplay(connected, error, errorCode)}
@@ -796,6 +994,25 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {providerId === "opencode" && onOpenLaneModal && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onOpenLaneModal();
+                }}
+                title={cliMode ? "Lane: CLI — click to switch" : "Lane: Direct — click to switch"}
+                aria-label="Switch OpenCode Free lane"
+                className={`flex size-7 shrink-0 items-center justify-center rounded-lg border transition-all ${
+                  cliMode
+                    ? "border-brand-500/50 bg-brand-500/15 text-brand-500 hover:bg-brand-500/25"
+                    : "border-border/60 bg-surface text-text-muted hover:text-text-main hover:border-border"
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">build_circle</span>
+              </button>
+            )}
             {stats.total > 0 && (
               <div
                 className="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
@@ -836,6 +1053,8 @@ ProviderCard.propTypes = {
   }).isRequired,
   authType: PropTypes.string,
   onToggle: PropTypes.func,
+  cliMode: PropTypes.bool,
+  onOpenLaneModal: PropTypes.func,
 };
 
 function ApiKeyProviderCard({
@@ -870,32 +1089,25 @@ function ApiKeyProviderCard({
     if (isCompatible && (provider.brand === "moonshot" || /moonshot|kimi/i.test(provider.name || "")))
       return "/providers/moonshot-ai.png";
     if (isCompatible && provider.apiType)
-      return provider.apiType === "responses"
-        ? "/providers/oai-r.png"
-        : "/providers/oai-cc.png";
-    if (isAnthropicCompatible) return "/providers/anthropic-m.png";
+      return "/providers/openai.png";
+    if (isAnthropicCompatible) return "/providers/claude.png";
     return getProviderIconSrc(provider.id);
   };
 
   return (
-    <Link href={`/dashboard/providers/${providerId}`} className="group min-w-0">
+    <Link href={`/dashboard/providers/${providerId}`} className="group min-w-0 chrome-focus">
       <Card
         padding="xs"
-        className={`h-full hover:bg-black/[0.01] dark:hover:bg-white/[0.01] transition-colors cursor-pointer ${allDisabled ? "opacity-50" : ""}`}
+        hover
+        className={`provider-directory-card h-full min-h-[92px] ${allDisabled ? "opacity-50" : ""}`}
       >
         <div className="flex min-w-0 items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div
-              className="size-8 shrink-0 rounded-lg flex items-center justify-center"
-              style={{
-                backgroundColor: `${provider.color?.length > 7 ? provider.color : provider.color + "15"}`,
-              }}
-            >
+            <div className="provider-logo-frame flex size-11 shrink-0 items-center justify-center p-1">
               <ProviderIcon
                 src={getIconPath()}
                 alt={provider.name}
-                size={30}
-                className="object-contain rounded-lg max-w-[30px] max-h-[30px]"
+                size={32}
                 fallbackText={
                   provider.textIcon || provider.id.slice(0, 2).toUpperCase()
                 }
@@ -903,13 +1115,15 @@ function ApiKeyProviderCard({
               />
             </div>
             <div className="min-w-0">
-              <h3 className="truncate font-semibold">{provider.name}</h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="truncate font-semibold">{provider.name}</h3>
+              </div>
               <div className="flex min-w-0 items-center gap-1.5 text-xs flex-wrap">
                 {allDisabled ? (
                   <Badge variant="default" size="sm">
                     <span className="flex items-center gap-1">
                       <span className="material-symbols-outlined text-[12px]">
-                        pause_circle
+                        pause_circle_filled
                       </span>
                       Disabled
                     </span>
@@ -986,7 +1200,7 @@ function ProviderTestResultsView({ results }) {
     return (
       <div className="text-center py-6">
         <span className="material-symbols-outlined text-red-500 text-[32px] mb-2 block">
-          error
+          error_outline
         </span>
         <p className="text-sm text-red-400">{results.error}</p>
       </div>
@@ -1025,7 +1239,7 @@ function ProviderTestResultsView({ results }) {
       {items.map((r, i) => (
         <div
           key={r.connectionId || i}
-          className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg bg-black/[0.03] px-3 py-2 text-xs dark:bg-white/[0.03] sm:flex-nowrap"
+          className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg bg-surface-2/60 px-3 py-2 text-xs sm:flex-nowrap"
         >
           <span
             className={`material-symbols-outlined text-[16px] ${r.valid ? "text-emerald-500" : "text-red-500"}`}

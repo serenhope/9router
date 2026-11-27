@@ -1,4 +1,4 @@
-// Fish Audio TTS — the model id travels in an HTTP `model` header rather than the
+// Fish Audio TTS - the model id travels in an HTTP `model` header rather than the
 // JSON body, and the voice is a reference_id (a cloned or preset voice model).
 export default {
   id: "fish-audio",
@@ -16,12 +16,20 @@ export default {
   category: "apikey",
   authType: "apikey",
   serviceKinds: ["tts"],
+  models: [
+    { id: "drama-3", name: "Drama 3", kind: "tts" },
+    { id: "s2.1-pro-free", name: "S2.1 Pro Free", kind: "tts" },
+    { id: "s2.1-pro", name: "S2.1 Pro", kind: "tts" },
+    { id: "s2-pro", name: "S2 Pro", kind: "tts" },
+    { id: "s1", name: "S1", kind: "tts" },
+  ],
   ttsConfig: {
     baseUrl: "https://api.fish.audio/v1/tts",
     authType: "apikey",
     authHeader: "bearer",
     format: "fish-audio",
     models: [
+      { id: "drama-3", name: "Drama 3" },
       { id: "s2.1-pro-free", name: "S2.1 Pro Free" },
       { id: "s2.1-pro", name: "S2.1 Pro" },
       { id: "s2-pro", name: "S2 Pro" },

@@ -2,6 +2,8 @@ import os from "os";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 import { isTailscaleInstalled, isTailscaleLoggedIn, isSystemDaemonRunning, getTailscaleBin, TAILSCALE_SOCKET } from "@/lib/tunnel";
 import { getCachedPassword, loadEncryptedPassword } from "@/mitm/manager";
 
@@ -38,7 +40,7 @@ export async function GET() {
   try {
     const installed = isTailscaleInstalled();
     const platform = os.platform();
-    // Run independent probes in parallel — none blocks the event loop
+    // Run independent probes in parallel - none blocks the event loop
     const [brewAvailable, customDaemonRunning, systemDaemonRunning] = await Promise.all([
       platform === "darwin" ? hasBrew() : Promise.resolve(false),
       installed ? isCustomDaemonRunning() : Promise.resolve(false),

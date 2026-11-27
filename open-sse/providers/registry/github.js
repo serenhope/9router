@@ -49,7 +49,7 @@ export default {
     { id: "gpt-5.4-mini", name: "GPT-5.4 Mini" },
     // Note: routing to Copilot's Anthropic-native /v1/messages shim (see
     // executors/github.js) is decided by model-NAME pattern at request time, not by
-    // a static targetFormat field here — Copilot's live model catalog (see
+    // a static targetFormat field here - Copilot's live model catalog (see
     // services/copilotModels.js) regularly exposes claude-* models this static list
     // hasn't caught up with yet (e.g. claude-opus-4.8), and a static per-entry
     // targetFormat would silently miss those while also double-translating requests
@@ -68,10 +68,10 @@ export default {
     { id: "oswe-vscode-prime", name: "Raptor Mini" },
     { id: "goldeneye-free-auto", name: "GoldenEye" },
     { id: "text-embedding-3-small", name: "Text Embedding 3 Small (GitHub)", kind: "embedding" },
-    { id: "text-embedding-3-large", name: "Text Embedding 3 Large (GitHub)", kind: "embedding" },
+    { id: "text-embedding-ada-002", name: "Text Embedding Ada 002 (GitHub)", kind: "embedding" },
   ],
   serviceKinds: ["llm","embedding"],
-  embeddingConfig: { baseUrl: "https://models.github.ai/inference/embeddings", authType: "apikey", authHeader: "bearer" },
+  embeddingConfig: { baseUrl: "https://api.githubcopilot.com/embeddings", authType: "apikey", authHeader: "bearer" },
   oauth: {
     clientId: "Iv1.b507a08c87ecfe98",
     authorizeUrl: "https://github.com/login/oauth/authorize",

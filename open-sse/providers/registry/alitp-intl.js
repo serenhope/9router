@@ -1,4 +1,4 @@
-// Token Plan — credit subscription keys on token-plan.<region>.maas.aliyuncs.com.
+// Token Plan - credit subscription keys on token-plan.<region>.maas.aliyuncs.com.
 // Fourth Alibaba key type: Coding Plan (alicode/alicode-intl) and Model Studio
 // (alims-intl) both reject these keys, and they reject Model Studio keys back.
 // Singapore is the only region that serves the plan; eu-central-1 answers
@@ -30,6 +30,7 @@ export default {
     { id: "qwen3.7-plus", name: "Qwen3.7 Plus" },
     { id: "qwen3.6-flash", name: "Qwen3.6 Flash" },
     { id: "glm-5.2", name: "GLM 5.2" },
+    { id: "deepseek-v4.1-flash-1017", name: "DeepSeek V4.1 Flash 1017" },
     { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
   ],
 };

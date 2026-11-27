@@ -4,17 +4,38 @@ export default {
   id: "glm",
   priority: 140,
   alias: "glm",
+  aliases: ["zcode", "zai-coding", "glm-coding"],
+  uiAlias: "glm",
   display: {
-    name: "GLM Coding",
+    name: "ZCode (Z.ai GLM)",
     icon: "code",
     color: "#2563EB",
     textIcon: "GL",
     website: "https://open.bigmodel.cn",
     notice: {
-      apiKeyUrl: "https://open.bigmodel.cn/usercenter/apikeys",
+      apiKeyUrl: "https://zcode.z.ai",
+      signupUrl: "https://zcode.z.ai",
+      text: "Official ZCode harness by Z.ai for GLM-5.3 coding. Login via Z.ai / BigModel OAuth CLI polling flow or paste your GLM Coding Plan API key (from zcode.z.ai / api.z.ai). Supports OpenAI & Anthropic Claude protocol.",
     },
   },
-  category: "apikey",
+  category: "oauth",
+  // Dual-auth like kimi: paste an API key, or OAuth-login with the Z.ai
+  // account to auto-mint a coding-plan key.
+  authModes: ["oauth", "apikey"],
+  hasOAuth: true,
+  // OAuth = ZCode CLI polling flow (apps/zcode-cli cli-oauth.ts) - no PKCE, no
+  // local callback: init mints a one-off poll token, the browser authorize_url
+  // is server-generated, and poll/ready carries the tokens. The Z.AI OAuth
+  // token is exchanged for a business JWT, then a long-lived coding-plan API
+  // key (no refresh grant - re-login on expiry, same as the official CLI).
+  oauth: {
+    providerId: "zai",
+    cliInitUrl: "https://zcode.z.ai/api/v1/oauth/cli/init",
+    cliPollUrl: "https://zcode.z.ai/api/v1/oauth/cli/poll",
+    businessLoginUrl: "https://api.z.ai/api/auth/z/login",
+    apiBaseUrl: "https://api.z.ai",
+    planApiKeyName: "zcode-api-key",
+  },
   transport: {
     baseUrl: "https://api.z.ai/api/anthropic/v1/messages",
     format: "claude",

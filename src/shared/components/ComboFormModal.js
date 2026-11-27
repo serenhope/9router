@@ -5,11 +5,13 @@ import Modal from "./Modal";
 import Input from "./Input";
 import Button from "./Button";
 import ModelSelectModal from "./ModelSelectModal";
+import { useModelCaps } from "@/shared/hooks/useModelCaps";
+import { formatContextWindow } from "@/shared/utils/contextWindow";
 
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 
 // Inline editable model item
-function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove }) {
+function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove, context }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(model);
   const commit = () => {
@@ -23,27 +25,30 @@ function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown
     if (e.key === "Escape") { setDraft(model); setEditing(false); }
   };
   return (
-    <div className="group flex min-w-0 items-center gap-1.5 rounded-md bg-black/[0.02] px-2 py-1 transition-colors hover:bg-black/[0.04] dark:bg-white/[0.02] dark:hover:bg-white/[0.04]">
+    <div className="group flex min-w-0 items-center gap-1.5 rounded-md bg-surface-2 px-2 py-1 transition-colors hover:bg-surface-3">
       <span className="text-[10px] font-medium text-text-muted w-3 text-center shrink-0">{index + 1}</span>
       {editing ? (
         <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={handleKeyDown}
-          className="min-w-0 flex-1 rounded border border-primary/40 bg-white px-1.5 py-0.5 font-mono text-xs text-text-main outline-none dark:bg-black/20" />
+          className="min-w-0 flex-1 rounded border border-primary/40 bg-surface px-1.5 py-0.5 font-mono text-xs text-text-main outline-none" />
       ) : (
-        <div className="min-w-0 flex-1 cursor-text truncate rounded px-1.5 py-0.5 font-mono text-xs text-text-main hover:bg-black/5 dark:hover:bg-white/5"
+        <div className="min-w-0 flex-1 cursor-text truncate rounded px-1.5 py-0.5 font-mono text-xs text-text-main hover:bg-surface-2"
           onClick={() => setEditing(true)} title="Click to edit">{model}</div>
       )}
       <div className="flex shrink-0 items-center gap-0.5">
+        <span className="mr-1 shrink-0 rounded bg-surface-2 px-1 py-0.5 font-mono text-xs text-text-muted" title={context ? `${Number(context).toLocaleString()} tokens` : "Context window unknown"}>
+          {formatContextWindow(context)}
+        </span>
         <button onClick={onMoveUp} disabled={isFirst}
-          className={`p-0.5 rounded ${isFirst ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5"}`} title="Move up">
-          <span className="material-symbols-outlined text-[12px]">arrow_upward</span>
+          className={`p-0.5 rounded ${isFirst ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-surface-2"}`} title="Move up">
+          <span className="material-symbols-outlined text-[12px]">north</span>
         </button>
         <button onClick={onMoveDown} disabled={isLast}
-          className={`p-0.5 rounded ${isLast ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5"}`} title="Move down">
-          <span className="material-symbols-outlined text-[12px]">arrow_downward</span>
+          className={`p-0.5 rounded ${isLast ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-surface-2"}`} title="Move down">
+          <span className="material-symbols-outlined text-[12px]">south</span>
         </button>
       </div>
       <button onClick={onRemove} className="p-0.5 hover:bg-red-500/10 rounded text-text-muted hover:text-red-500 transition-all" title="Remove">
-        <span className="material-symbols-outlined text-[12px]">close</span>
+        <span className="material-symbols-outlined text-[12px]">cancel</span>
       </button>
     </div>
   );
@@ -61,6 +66,10 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
   const [modelAliases, setModelAliases] = useState({});
+  // 0 keeps the window on auto: the combo reports the largest member.
+  const [contextMode, setContextMode] = useState(combo?.contextWindow > 0 ? "custom" : "auto");
+  const [contextInput, setContextInput] = useState(combo?.contextWindow > 0 ? String(combo.contextWindow) : "");
+  const { getCaps } = useModelCaps();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -102,9 +111,20 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
   const handleSave = async () => {
     if (!validateName(name)) return;
     setSaving(true);
-    await onSave({ name: forcePrefix + name.trim(), models });
+    const customContext = Math.floor(Number(contextInput));
+    await onSave({
+      name: forcePrefix + name.trim(),
+      models,
+      contextWindow: contextMode === "custom" && Number.isFinite(customContext) && customContext > 0 ? customContext : 0,
+    });
     setSaving(false);
   };
+
+  // What the combo publishes when left on auto.
+  const autoContext = models.reduce((largest, m) => {
+    const value = getCaps(m)?.contextWindow;
+    return Number.isFinite(value) && value > largest ? value : largest;
+  }, 0);
 
   const isEdit = !!combo;
 
@@ -117,9 +137,9 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
               <>
                 <label className="text-sm font-medium mb-1 block">Combo Name</label>
                 <div className="flex items-stretch">
-                  <span className="inline-flex items-center px-2 rounded-l border border-r-0 border-black/10 dark:border-white/10 bg-black/[0.04] dark:bg-white/[0.04] text-text-muted font-mono text-sm">{forcePrefix}</span>
+                  <span className="inline-flex items-center px-2 rounded-l border border-r-0 border-border-subtle bg-surface-2 text-text-muted font-mono text-sm">{forcePrefix}</span>
                   <input value={name} onChange={handleNameChange} placeholder="my-combo"
-                    className="flex-1 min-w-0 rounded-r border border-black/10 dark:border-white/10 bg-white dark:bg-black/20 px-2 py-1.5 font-mono text-sm outline-none focus:border-primary" />
+                    className="flex-1 min-w-0 rounded-r border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm outline-none focus:border-primary" />
                 </div>
                 {nameError && <p className="text-[11px] text-red-500 mt-0.5">{nameError}</p>}
               </>
@@ -134,8 +154,8 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
           <div>
             <label className="text-sm font-medium mb-1.5 block">Models</label>
             {models.length === 0 ? (
-              <div className="text-center py-4 border border-dashed border-black/10 dark:border-white/10 rounded-lg bg-black/[0.01] dark:bg-white/[0.01]">
-                <span className="material-symbols-outlined text-text-muted text-xl mb-1">layers</span>
+              <div className="text-center py-4 border border-dashed border-border-subtle rounded-lg bg-surface-2/40">
+                <span className="material-symbols-outlined text-text-muted text-xl mb-1">stacks</span>
                 <p className="text-xs text-text-muted">No models added yet</p>
               </div>
             ) : (
@@ -143,6 +163,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
                 {models.map((model, index) => (
                   <ModelItem key={index} index={index} model={model}
                     isFirst={index === 0} isLast={index === models.length - 1}
+                    context={getCaps(model)?.contextWindow}
                     onEdit={(v) => { const a = [...models]; a[index] = v; setModels(a); }}
                     onMoveUp={() => handleMoveUp(index)}
                     onMoveDown={() => handleMoveDown(index)}
@@ -151,10 +172,38 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
               </div>
             )}
             <button onClick={() => setShowModelSelect(true)}
-              className="w-full mt-2 py-2 border border-dashed border-black/10 dark:border-white/10 rounded-lg text-xs text-primary font-medium hover:text-primary hover:border-primary/50 transition-colors flex items-center justify-center gap-1">
-              <span className="material-symbols-outlined text-[16px]">add</span>
+              className="w-full mt-2 py-2 border border-dashed border-border-subtle rounded-lg text-xs text-primary font-medium hover:text-primary hover:border-primary/50 transition-colors flex items-center justify-center gap-1">
+              <span className="material-symbols-outlined text-[16px]">playlist_add</span>
               Add Model
             </button>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Context Window</label>
+            <div className="flex rounded-lg border border-black/10 bg-surface-2 p-1 border-border-subtle">
+              <button type="button" onClick={() => setContextMode("auto")}
+                className={`flex-1 rounded-md py-1 text-xs font-medium transition-colors ${contextMode === "auto" ? "bg-primary text-white shadow-xs" : "text-text-muted hover:text-text-main"}`}>
+                Auto
+              </button>
+              <button type="button" onClick={() => setContextMode("custom")}
+                className={`flex-1 rounded-md py-1 text-xs font-medium transition-colors ${contextMode === "custom" ? "bg-primary text-white shadow-xs" : "text-text-muted hover:text-text-main"}`}>
+                Custom
+              </button>
+            </div>
+            {contextMode === "auto" ? (
+              <p className="text-[10px] text-text-muted mt-1">
+                Follows the largest member, currently {formatContextWindow(autoContext)} ({autoContext.toLocaleString()} tokens).
+              </p>
+            ) : (
+              <>
+                <input value={contextInput} onChange={(e) => setContextInput(e.target.value.replace(/[^\d]/g, ""))}
+                  inputMode="numeric" placeholder={String(autoContext || 200000)}
+                  className="mt-1.5 w-full rounded border border-black/10 bg-white px-2 py-1.5 font-mono text-sm outline-none focus:border-primary dark:border-white/10 dark:bg-black/20" />
+                <p className="text-[10px] text-text-muted mt-0.5">
+                  Tokens clients may send before compaction. Leave empty to fall back to {formatContextWindow(autoContext)}.
+                </p>
+              </>
+            )}
           </div>
 
           <div className="flex flex-col gap-2 pt-1 sm:flex-row">
@@ -169,6 +218,14 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
       {showModelSelect && (
         <ModelSelectModal isOpen={showModelSelect} onClose={() => setShowModelSelect(false)}
           onSelect={handleAddModel} onDeselect={handleDeselectModel}
+          onSelectBatch={(items) => {
+            const vals = items.map((m) => m?.value || m?.name || m).filter(Boolean);
+            setModels((prev) => [...new Set([...prev, ...vals])]);
+          }}
+          onDeselectBatch={(items) => {
+            const vals = new Set(items.map((m) => m?.value || m?.name || m).filter(Boolean));
+            setModels((prev) => prev.filter((m) => !vals.has(m)));
+          }}
           activeProviders={activeProviders} modelAliases={modelAliases}
           title="Add Model to Combo" kindFilter={kindFilter}
           addedModelValues={models} closeOnSelect={false} />

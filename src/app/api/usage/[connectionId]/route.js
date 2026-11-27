@@ -2,10 +2,16 @@
 import "open-sse/index.js";
 
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
+import { getProviderNodeById } from "@/models";
 import { getUsageForProvider } from "open-sse/services/usage.js";
+import { isCustomQuotaProvider } from "open-sse/services/usage/customCredits.js";
+import { isUnrecoverableRefreshError } from "open-sse/services/tokenRefresh.js";
+
 import { getExecutor } from "open-sse/executors/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
+
+export const dynamic = "force-dynamic";
 
 // Detect auth-expired messages returned by usage providers instead of throwing
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
@@ -48,7 +54,7 @@ export async function refreshAndUpdateCredentials(connection, force = false, pro
   const refreshResult = await executor.refreshCredentials(credentials, console, proxyOptions);
 
   if (!refreshResult) {
-    // Refresh failed but we still have an accessToken — try with existing token
+    // Refresh failed but we still have an accessToken - try with existing token
     if (connection.accessToken) {
       return { connection, refreshed: false };
     }
@@ -132,16 +138,38 @@ export async function GET(request, { params }) {
       return Response.json({ error: "Connection not found" }, { status: 404 });
     }
 
+    // Compatible nodes opt in to the standard quota endpoint on the node itself.
+    // Merge the node settings into the connection so the usage handler can use
+    // the same base URL and quota path that the provider was configured with.
+    let customQuotaNode = null;
+    if (isCustomQuotaProvider(connection.provider)) {
+      customQuotaNode = await getProviderNodeById(connection.provider);
+      if (!customQuotaNode?.quotaEnabled) {
+        return Response.json({ message: "Usage not available for this connection" });
+      }
+      connection = {
+        ...connection,
+        providerSpecificData: {
+          ...(connection.providerSpecificData || {}),
+          baseUrl: customQuotaNode.baseUrl || connection.providerSpecificData?.baseUrl,
+          quotaEnabled: true,
+          quotaPath: customQuotaNode.quotaPath || "/credits",
+          nodeName: customQuotaNode.name,
+        },
+      };
+    }
+
     // Allow OAuth connections, plus whitelisted apikey providers (glm/minimax/kiro/...)
     // Kiro's headless api-key flow persists authType "api_key" (underscore) while
-    // generic apikey providers persist "apikey" — accept both spellings here.
+    // generic apikey providers persist "apikey" - accept both spellings here.
     const isOAuth = connection.authType === "oauth";
     const isApikeyAuth =
       connection.authType === "apikey" || connection.authType === "api_key";
     const isApikeyEligible =
       isApikeyAuth && USAGE_APIKEY_PROVIDERS.includes(connection.provider);
+    const isCustomQuota = customQuotaNode?.quotaEnabled === true;
 
-    if (!isOAuth && !isApikeyEligible) {
+    if (!isOAuth && !isApikeyEligible && !isCustomQuota) {
       return Response.json({ message: "Usage not available for this connection" });
     }
 

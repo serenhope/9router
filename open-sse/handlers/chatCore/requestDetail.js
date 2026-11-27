@@ -27,7 +27,7 @@ export function extractUsageFromResponse(responseBody) {
   // Claude format
   // Note: OpenAI Responses usage ({input_tokens, input_tokens_details:{cached_tokens}})
   // also matches this branch. Its prompt is cache-INCLUSIVE and its cache rides in
-  // input_tokens_details, so emit it as cached_tokens — the convention
+  // input_tokens_details, so emit it as cached_tokens - the convention
   // canonicalizeUsage() passes through without folding. Reading it here keeps
   // cache accounting correct for /v1/responses and codex traffic.
   if (responseBody.usage?.input_tokens !== undefined) {
@@ -58,6 +58,21 @@ export function extractUsageFromResponse(responseBody) {
       completion_tokens: usageMetadata.candidatesTokenCount || 0,
       cached_tokens: usageMetadata.cachedContentTokenCount || 0,
       reasoning_tokens: usageMetadata.thoughtsTokenCount || 0
+    };
+  }
+
+  // Ollama format: prompt_eval_count/eval_count at top level (not nested under usage).
+  // prompt_eval_cached_count is a cache-read subset of prompt_eval_count (cache-INCLUSIVE).
+  if (responseBody.done === true &&
+      (responseBody.prompt_eval_count !== undefined || responseBody.eval_count !== undefined)) {
+    const prompt = responseBody.prompt_eval_count || 0;
+    const completion = responseBody.eval_count || 0;
+    const cached = responseBody.prompt_eval_cached_count || 0;
+    return {
+      prompt_tokens: prompt,
+      completion_tokens: completion,
+      total_tokens: prompt + completion,
+      cached_tokens: cached
     };
   }
 

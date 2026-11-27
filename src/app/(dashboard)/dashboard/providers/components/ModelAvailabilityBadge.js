@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * ModelAvailabilityBadge — compact inline status indicator
+ * ModelAvailabilityBadge - compact inline status indicator
  *
  * Shows green when all models are operational, or amber/red when there are
  * issues, with a hover popover for details and cooldown clearing.
@@ -12,10 +12,10 @@ import { Button } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
 
 const STATUS_CONFIG = {
-  available: { icon: "check_circle", color: "#22c55e", label: "Available" },
-  cooldown: { icon: "schedule", color: "#f59e0b", label: "Cooldown" },
-  unavailable: { icon: "error", color: "#ef4444", label: "Unavailable" },
-  unknown: { icon: "help", color: "#6b7280", label: "Unknown" },
+  available: { icon: "task_alt", color: "#22c55e", label: "Available" },
+  cooldown: { icon: "event_upcoming", color: "#f59e0b", label: "Cooldown" },
+  unavailable: { icon: "error_outline", color: "#ef4444", label: "Unavailable" },
+  unknown: { icon: "help_outline", color: "#6b7280", label: "Unknown" },
 };
 
 export default function ModelAvailabilityBadge() {
@@ -34,7 +34,7 @@ export default function ModelAvailabilityBadge() {
         setData(json);
       }
     } catch {
-      // silent fail — will retry
+      // silent fail - will retry
     } finally {
       setLoading(false);
     }
@@ -115,7 +115,7 @@ export default function ModelAvailabilityBadge() {
             <div className="flex items-center gap-2">
               <span
                 className="material-symbols-outlined text-[16px]"
-                style={{ color: isHealthy ? "#22c55e" : "#f59e0b" }}
+                style={{ color: isHealthy ? "var(--color-success)" : "var(--color-warning)" }}
               >
                 {isHealthy ? "verified" : "warning"}
               </span>
@@ -126,7 +126,7 @@ export default function ModelAvailabilityBadge() {
               className="p-1 rounded-lg hover:bg-surface text-text-muted hover:text-text-main transition-colors"
               title="Refresh"
             >
-              <span className="material-symbols-outlined text-[14px]">refresh</span>
+              <span className="material-symbols-outlined text-[14px]">autorenew</span>
             </button>
           </div>
 

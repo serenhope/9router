@@ -1,6 +1,6 @@
 ---
 name: 9router
-description: Entry point for 9Router — local/remote AI gateway with OpenAI-compatible REST for chat, image, TTS, embeddings, web search, web fetch. Use when the user mentions 9Router, NINEROUTER_URL, or wants AI without writing provider boilerplate. This skill covers setup + indexes capability skills; fetch the relevant capability SKILL.md from the URLs below when needed.
+description: Entry point for 9Router - local/remote AI gateway with OpenAI-compatible REST for chat, image, TTS, embeddings, web search, web fetch. Use when the user mentions 9Router, NINEROUTER_URL, or wants AI without writing provider boilerplate. This skill covers setup + indexes capability skills; fetch the relevant capability SKILL.md from the URLs below when needed.
 ---
 
 # 9Router
@@ -46,13 +46,13 @@ When the user needs a specific capability, fetch that skill's `SKILL.md` from it
 
 | Capability | Raw URL |
 |---|---|
-| Chat / code-gen | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-chat/SKILL.md |
-| Image generation | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-image/SKILL.md |
-| Text-to-speech | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-tts/SKILL.md |
-| Speech-to-text | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-stt/SKILL.md |
-| Embeddings | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-embeddings/SKILL.md |
-| Web search | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-web-search/SKILL.md |
-| Web fetch (URL → markdown) | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-web-fetch/SKILL.md |
+| Chat / code-gen | https://raw.githubusercontent.com/alvin-revoers/9router/refs/heads/master/skills/9router-chat/SKILL.md |
+| Image generation | https://raw.githubusercontent.com/alvin-revoers/9router/refs/heads/master/skills/9router-image/SKILL.md |
+| Text-to-speech | https://raw.githubusercontent.com/alvin-revoers/9router/refs/heads/master/skills/9router-tts/SKILL.md |
+| Speech-to-text | https://raw.githubusercontent.com/alvin-revoers/9router/refs/heads/master/skills/9router-stt/SKILL.md |
+| Embeddings | https://raw.githubusercontent.com/alvin-revoers/9router/refs/heads/master/skills/9router-embeddings/SKILL.md |
+| Web search | https://raw.githubusercontent.com/alvin-revoers/9router/refs/heads/master/skills/9router-web-search/SKILL.md |
+| Web fetch (URL → markdown) | https://raw.githubusercontent.com/alvin-revoers/9router/refs/heads/master/skills/9router-web-fetch/SKILL.md |
 
 ## Errors
 

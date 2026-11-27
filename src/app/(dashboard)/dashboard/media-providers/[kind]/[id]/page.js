@@ -70,25 +70,25 @@ export default function MediaProviderDetailPage() {
   if (!isCustom && !kinds.includes(kind)) return notFound();
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-2">
       {/* Back */}
-      <div>
+      <div className="xl:col-span-2">
         <Link
           href={`/dashboard/media-providers/${kind}`}
           className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4"
         >
-          <span className="material-symbols-outlined text-lg">arrow_back</span>
+          <span className="material-symbols-outlined text-lg">west</span>
           {kindConfig.label}
         </Link>
 
         {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-          <div className="size-12 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${provider.color}15` }}>
+          <div className="size-12 flex items-center justify-center shrink-0 bg-transparent">
             <ProviderIcon
               src={getCustomLogo(provider) || `/providers/${provider.id}.png`}
               alt={provider.name}
               size={48}
-              className="object-contain rounded-lg max-w-[48px] max-h-[48px]"
+              className="object-contain max-w-[48px] max-h-[48px]"
               fallbackText={provider.textIcon || provider.id.slice(0, 2).toUpperCase()}
               fallbackColor={provider.color}
             />
@@ -103,7 +103,7 @@ export default function MediaProviderDetailPage() {
                   rel="noopener noreferrer"
                   className="text-xs text-primary hover:underline inline-flex items-center gap-1"
                 >
-                  <span className="material-symbols-outlined text-sm">open_in_new</span>
+                  <span className="material-symbols-outlined text-sm">launch</span>
                   Get API Key
                 </a>
               )}
@@ -119,10 +119,10 @@ export default function MediaProviderDetailPage() {
           </div>
           {isCustom && (
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-              <Button size="sm" variant="secondary" icon="edit" onClick={() => setShowEditModal(true)}>
+              <Button size="sm" variant="secondary" icon="edit_note" onClick={() => setShowEditModal(true)}>
                 Edit
               </Button>
-              <Button size="sm" variant="secondary" icon="delete" onClick={handleDeleteCustom}>
+              <Button size="sm" variant="secondary" icon="delete_forever" onClick={handleDeleteCustom}>
                 Delete
               </Button>
             </div>
@@ -132,17 +132,17 @@ export default function MediaProviderDetailPage() {
 
       {/* Kind-specific notice (e.g. codex/image requires Plus) */}
       {!isCustom && provider.kindNotice?.[kind] && (
-        <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400">
-          <span className="material-symbols-outlined text-[20px] mt-0.5">warning</span>
+        <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-warning xl:col-span-2">
+          <span className="material-symbols-outlined text-[20px] mt-0.5">priority_high</span>
           <p className="text-sm">{provider.kindNotice[kind]}</p>
         </div>
       )}
 
       {/* Provider notice text (only when there's actual text content) */}
       {!isCustom && provider.notice?.text && !provider.deprecated && (
-        <div className="flex flex-col gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 sm:flex-row sm:items-center">
-          <span className="material-symbols-outlined text-[16px] text-blue-500 shrink-0">info</span>
-          <p className="min-w-0 flex-1 text-xs leading-relaxed text-blue-600 dark:text-blue-400">{provider.notice.text}</p>
+        <div className="flex flex-col gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 sm:flex-row sm:items-center xl:col-span-2">
+          <span className="material-symbols-outlined text-[16px] text-blue-500 shrink-0">help</span>
+          <p className="min-w-0 flex-1 text-xs leading-relaxed text-info">{provider.notice.text}</p>
           {provider.notice.apiKeyUrl && (
             <a
               href={provider.notice.apiKeyUrl}
@@ -172,7 +172,7 @@ export default function MediaProviderDetailPage() {
         />
       )}
 
-      {/* Provider Info — config-driven, supports searchConfig, fetchConfig, ttsConfig, embeddingConfig, systemoneConfig, searchViaChat */}
+      {/* Provider Info - config-driven, supports searchConfig, fetchConfig, ttsConfig, embeddingConfig, systemoneConfig, searchViaChat */}
       {!isCustom && (provider.searchConfig || provider.fetchConfig || provider.ttsConfig || provider.sttConfig || provider.embeddingConfig || provider.systemoneConfig || provider.searchViaChat) && (
         <ProviderInfoCard
           config={
@@ -188,7 +188,7 @@ export default function MediaProviderDetailPage() {
         />
       )}
 
-      {/* Example — per kind */}
+      {/* Example - per kind */}
       {kind === "embedding" && (
         <EmbeddingExampleCard providerId={id} customAlias={customNode?.prefix} />
       )}

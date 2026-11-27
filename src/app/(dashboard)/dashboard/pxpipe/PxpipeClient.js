@@ -19,7 +19,7 @@ const fmtTokens = (n) => {
 };
 
 const fmtUptime = (ms) => {
-  if (!ms || ms <= 0) return "—";
+  if (!ms || ms <= 0) return "-";
   const m = Math.floor(ms / 60000);
   const h = Math.floor(m / 60);
   return h > 0 ? `${h}h${String(m % 60).padStart(2, "0")}m` : `${m}m`;
@@ -92,7 +92,7 @@ export default function PxpipeClient() {
 
   const w = stats?.windows?.[windowId];
   const statusLabel = !status
-    ? "—"
+    ? "-"
     : !status.installed
       ? "Not installed"
       : health?.healthy
@@ -102,10 +102,10 @@ export default function PxpipeClient() {
           : "Stopped";
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 px-3 py-4 sm:px-5 sm:py-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary">image</span>
+          <span className="material-symbols-outlined text-primary">polyline</span>
           PXPIPE Dashboard
         </h2>
         <div className="flex items-center gap-2">
@@ -125,11 +125,11 @@ export default function PxpipeClient() {
           tone={health?.healthy ? "text-success" : status?.installed ? "text-warning" : "text-text-muted"}
           sub={status?.enabled ? "Enabled in pipeline" : "Disabled in pipeline"}
         />
-        <SummaryCard label="Version" value={status?.version ? `v${status.version}` : "—"} sub="pxpipe-proxy" />
+        <SummaryCard label="Version" value={status?.version ? `v${status.version}` : "-"} sub="pxpipe-proxy" />
         <SummaryCard label="Uptime" value={fmtUptime(status?.uptimeMs)} sub="module loaded" />
-        <SummaryCard label="Requests" value={w ? w.requests.toLocaleString() : "—"} />
-        <SummaryCard label="Compressed" value={w ? w.compressed.toLocaleString() : "—"} tone="text-success" />
-        <SummaryCard label="Bypassed" value={w ? w.bypassed.toLocaleString() : "—"} />
+        <SummaryCard label="Requests" value={w ? w.requests.toLocaleString() : "-"} />
+        <SummaryCard label="Compressed" value={w ? w.compressed.toLocaleString() : "-"} tone="text-success" />
+        <SummaryCard label="Bypassed" value={w ? w.bypassed.toLocaleString() : "-"} />
       </div>
 
       <Card className="p-4">
@@ -154,31 +154,31 @@ export default function PxpipeClient() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
           <div>
             <p className="text-xs text-text-muted">Original tokens</p>
-            <p className="text-lg font-semibold">{w ? fmtTokens(w.tokensBeforeEst) : "—"}</p>
+            <p className="text-lg font-semibold">{w ? fmtTokens(w.tokensBeforeEst) : "-"}</p>
           </div>
           <div>
             <p className="text-xs text-text-muted">After PXPIPE</p>
-            <p className="text-lg font-semibold">{w ? fmtTokens(w.tokensAfterEst) : "—"}</p>
+            <p className="text-lg font-semibold">{w ? fmtTokens(w.tokensAfterEst) : "-"}</p>
           </div>
           <div>
             <p className="text-xs text-text-muted">Saved</p>
-            <p className="text-lg font-semibold text-success">{w ? fmtTokens(w.tokensSavedEst) : "—"}</p>
+            <p className="text-lg font-semibold text-success">{w ? fmtTokens(w.tokensSavedEst) : "-"}</p>
           </div>
           <div>
             <p className="text-xs text-text-muted">Reduction</p>
-            <p className="text-lg font-semibold text-success">{w ? `${w.savedPct}%` : "—"}</p>
+            <p className="text-lg font-semibold text-success">{w ? `${w.savedPct}%` : "-"}</p>
           </div>
         </div>
         <p className="text-xs text-text-muted mt-3">
           Estimates from body size before/after imaging; billed usage per request
           (recorded on the Usage page) remains the ground truth. Images generated:{" "}
-          {w ? w.imagesGenerated.toLocaleString() : "—"} · avg compression time:{" "}
-          {w ? `${w.avgCompressionMs}ms` : "—"} · errors: {w ? w.errors : "—"}
+          {w ? w.imagesGenerated.toLocaleString() : "-"} · avg compression time:{" "}
+          {w ? `${w.avgCompressionMs}ms` : "-"} · errors: {w ? w.errors : "-"}
         </p>
       </Card>
 
       <Card className="p-4">
-        <h3 className="font-medium mb-3">Tokens saved — last 30 days</h3>
+        <h3 className="font-medium mb-3">Tokens saved - last 30 days</h3>
         {stats?.timeline?.some((d) => d.tokensSavedEst > 0) ? (
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={stats.timeline} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
@@ -197,7 +197,7 @@ export default function PxpipeClient() {
           </ResponsiveContainer>
         ) : (
           <div className="h-32 flex items-center justify-center text-text-muted text-sm">
-            No savings recorded yet — enable PXPIPE in the Token Saver and route a large Claude-format request.
+            No savings recorded yet - enable PXPIPE in the Token Saver and route a large Claude-format request.
           </div>
         )}
       </Card>
@@ -224,21 +224,21 @@ export default function PxpipeClient() {
                   <td className="py-1.5 pr-3 whitespace-nowrap text-text-muted">
                     {new Date(ev.ts).toLocaleString()}
                   </td>
-                  <td className="py-1.5 pr-3 font-mono text-xs">{ev.provider ? `${ev.provider}/${ev.model}` : ev.model || "—"}</td>
+                  <td className="py-1.5 pr-3 font-mono text-xs">{ev.provider ? `${ev.provider}/${ev.model}` : ev.model || "-"}</td>
                   <td className="py-1.5 pr-3 text-right font-mono text-xs">
-                    {ev.applied ? fmtTokens(ev.tokensBeforeEst) : "—"}
+                    {ev.applied ? fmtTokens(ev.tokensBeforeEst) : "-"}
                   </td>
                   <td className="py-1.5 pr-3 text-right font-mono text-xs">
-                    {ev.applied ? fmtTokens(ev.tokensAfterEst) : "—"}
+                    {ev.applied ? fmtTokens(ev.tokensAfterEst) : "-"}
                   </td>
                   <td className="py-1.5 pr-3 text-right font-mono text-xs text-success">
-                    {ev.applied ? fmtTokens(ev.tokensSavedEst) : "—"}
+                    {ev.applied ? fmtTokens(ev.tokensSavedEst) : "-"}
                   </td>
                   <td className="py-1.5 pr-3 text-right font-mono text-xs">
-                    {ev.applied ? `${ev.savedPct}%` : "—"}
+                    {ev.applied ? `${ev.savedPct}%` : "-"}
                   </td>
                   <td className="py-1.5 pr-3 text-right font-mono text-xs">
-                    {ev.durationMs != null ? `${ev.durationMs}ms` : "—"}
+                    {ev.durationMs != null ? `${ev.durationMs}ms` : "-"}
                   </td>
                   <td className="py-1.5">
                     <span
@@ -271,7 +271,7 @@ export default function PxpipeClient() {
       <Card className="p-4" id="logs">
         <h3 className="font-medium mb-3">PXPIPE Logs</h3>
         {logs?.installLog ? (
-          <pre className="rounded bg-black/5 dark:bg-white/5 p-3 text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap">
+          <pre className="rounded-lg bg-surface-2 border border-border-subtle p-3 text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap">
             {logs.installLog}
           </pre>
         ) : (

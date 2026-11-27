@@ -4,7 +4,7 @@ const fs = require("fs");
 
 const IS_DEV = process.env.NODE_ENV === "development";
 
-// Resolve lsof absolute path — packaged apps / sudo secure_path may strip /usr/sbin from PATH
+// Resolve lsof absolute path - packaged apps / sudo secure_path may strip /usr/sbin from PATH
 const LSOF_BIN = (() => {
   if (process.platform === "win32") return null;
   for (const p of ["/usr/sbin/lsof", "/usr/bin/lsof", "/sbin/lsof"]) {
@@ -26,7 +26,7 @@ const TARGET_HOSTS = [
 const URL_PATTERNS = {
   antigravity: [":generateContent", ":streamGenerateContent"],
   copilot: ["/chat/completions", "/v1/messages", "/responses"],
-  // Legacy path form. Kiro IDE 1.0.228+ posts to `/` with x-amz-target instead —
+  // Legacy path form. Kiro IDE 1.0.228+ posts to `/` with x-amz-target instead -
   // see isChatRequest() for the header-based match.
   kiro: ["/generateAssistantResponse"],
   cursor: ["/BidiAppend", "/RunSSE", "/RunPoll", "/Run"],
@@ -51,10 +51,11 @@ function isChatRequest(tool, req) {
 // Synonym map: rawModel from request → canonical alias key in mitmAlias DB
 const MODEL_SYNONYMS = {
   antigravity: {
-    "gemini-default": "gemini-3.5-flash-low",
-    "gemini-3.5-flash-high": "gemini-3-flash-agent",
-    "gemini-3.5-flash-medium": "gemini-3.5-flash-low",
-    "gemini-3.5-flash-extra-low": "gemini-3.5-flash-extra-low",
+    "gemini-default": "gemini-3.8-flash-medium",
+    "gemini-3.5-flash-high": "gemini-3.8-flash-high",
+    "gemini-3.5-flash-medium": "gemini-3.8-flash-medium",
+    "gemini-3.5-flash-low": "gemini-3.8-flash-low",
+    "gemini-3.5-flash-extra-low": "gemini-3.8-flash-low",
     "gemini-3.8-flash": "gemini-3.8-flash-medium",
     "gemini-3.8-flash-high": "gemini-3.8-flash-high",
     "gemini-3.8-flash-medium": "gemini-3.8-flash-medium",
@@ -62,9 +63,35 @@ const MODEL_SYNONYMS = {
     "gemini-3.7-flash-high": "gemini-3.7-flash-high",
     "gemini-3.7-flash-medium": "gemini-3.7-flash-medium",
     "gemini-3.7-flash-low": "gemini-3.7-flash-low",
+    "gemini-3.6-flash-high": "gemini-3.6-flash-high",
+    "gemini-3.6-flash-medium": "gemini-3.6-flash-medium",
+    "gemini-3.6-flash-low": "gemini-3.6-flash-low",
     "gemini-3.1-pro-high": "gemini-pro-agent",
     "gemini-3-pro-high": "gemini-pro-agent",
     "gemini-3-pro-low": "gemini-3.1-pro-low",
+    "claude-sonnet-5-5-high": "claude-sonnet-5-5-high",
+    "claude-sonnet-5-5-medium": "claude-sonnet-5-5-medium",
+    "claude-sonnet-5-5-low": "claude-sonnet-5-5-low",
+    "claude-sonnet-5-5": "claude-sonnet-5-5",
+    "claude-sonnet-5.5": "claude-sonnet-5-5",
+    "claude-sonnet-5.5-high": "claude-sonnet-5-5-high",
+    "claude-sonnet-5.5-medium": "claude-sonnet-5-5-medium",
+    "claude-sonnet-5.5-low": "claude-sonnet-5-5-low",
+    "claude-sonnet-5-5-thinking": "claude-sonnet-5-5",
+    "claude-sonnet-5.5-thinking": "claude-sonnet-5-5",
+    "claude-opus-5-5-high": "claude-opus-5-5-high",
+    "claude-opus-5-5-medium": "claude-opus-5-5-medium",
+    "claude-opus-5-5-low": "claude-opus-5-5-low",
+    "claude-opus-5-5": "claude-opus-5-5",
+    "claude-opus-5.5": "claude-opus-5-5",
+    "claude-opus-5.5-high": "claude-opus-5-5-high",
+    "claude-opus-5.5-medium": "claude-opus-5-5-medium",
+    "claude-opus-5.5-low": "claude-opus-5-5-low",
+    "claude-opus-5-5-thinking": "claude-opus-5-5",
+    "claude-opus-5.5-thinking": "claude-opus-5-5",
+    "claude-sonnet-4.6": "claude-sonnet-4-6",
+    "claude-opus-4.6": "claude-opus-4-6-thinking",
+    "claude-opus-4.6-thinking": "claude-opus-4-6-thinking",
   },
 };
 
@@ -72,18 +99,26 @@ const MODEL_SYNONYMS = {
 // Order matters: more specific patterns first. Catches AG renamed variants (e.g. gemini-pro-agent)
 const MODEL_PATTERNS = {
   antigravity: [
-    { match: /flash.*extra.*low|extra.*low.*flash|flash.*low|low.*flash/i, alias: "gemini-3.5-flash-extra-low" },
-    { match: /flash.*medium|medium.*flash/i,                       alias: "gemini-3.5-flash-low" },
-    { match: /flash.*agent|agent.*flash|flash/i,                   alias: "gemini-3-flash-agent" },
+    { match: /flash.*extra.*low|extra.*low.*flash|flash.*low|low.*flash/i, alias: "gemini-3.8-flash-low" },
+    { match: /flash.*medium|medium.*flash/i,                       alias: "gemini-3.8-flash-medium" },
+    { match: /flash.*agent|agent.*flash|flash/i,                   alias: "gemini-3.8-flash-high" },
     { match: /pro.*low|low.*pro/i,                                 alias: "gemini-3.1-pro-low" },
     { match: /gemini.*pro|pro.*gemini/i,                           alias: "gemini-pro-agent" },
+    { match: /opus.*5[.-]5.*high|5[.-]5.*opus.*high/i,             alias: "claude-opus-5-5-high" },
+    { match: /opus.*5[.-]5.*medium|5[.-]5.*opus.*medium/i,         alias: "claude-opus-5-5-medium" },
+    { match: /opus.*5[.-]5.*low|5[.-]5.*opus.*low/i,               alias: "claude-opus-5-5-low" },
+    { match: /sonnet.*5[.-]5.*high|5[.-]5.*sonnet.*high/i,         alias: "claude-sonnet-5-5-high" },
+    { match: /sonnet.*5[.-]5.*medium|5[.-]5.*sonnet.*medium/i,     alias: "claude-sonnet-5-5-medium" },
+    { match: /sonnet.*5[.-]5.*low|5[.-]5.*sonnet.*low/i,           alias: "claude-sonnet-5-5-low" },
+    { match: /opus.*5[.-]5|5[.-]5.*opus/i,                         alias: "claude-opus-5-5" },
+    { match: /sonnet.*5[.-]5|5[.-]5.*sonnet/i,                     alias: "claude-sonnet-5-5" },
     { match: /opus/i,                                              alias: "claude-opus-4-6-thinking" },
     { match: /sonnet|claude/i,                                     alias: "claude-sonnet-4-6" },
     { match: /gpt.*oss|oss/i,                                      alias: "gpt-oss-120b-medium" },
   ],
 };
 
-// Models that must NEVER be re-routed — always passthrough to the real upstream, even when
+// Models that must NEVER be re-routed - always passthrough to the real upstream, even when
 // the tool's other models are mapped. Antigravity's tab-autocomplete (`tab_jump_flash_lite_preview`,
 // `tab_flash_lite_preview`, requestType tab/tab_jump) is latency-critical inline completion; routing
 // it through 9Router to an external chat model makes typing laggy and burns provider quota per

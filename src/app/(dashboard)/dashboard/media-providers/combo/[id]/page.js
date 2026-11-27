@@ -77,7 +77,7 @@ export default function ComboDetailPage() {
         const k = await keysRes.json();
         setApiKey((k.keys || []).find((x) => x.isActive !== false)?.key || "");
       }
-      if (connsRes.ok) setConnections((await connsRes.json()).connections || []);
+      if (connsRes.ok) setConnections(((await connsRes.json()).connections || []).filter((x) => x.isActive !== false));
       if (!comboRes.ok) { setCombo(null); setLoading(false); return; }
       const c = await comboRes.json();
       setCombo(c);
@@ -202,7 +202,7 @@ export default function ComboDetailPage() {
         setTestResult({ audioUrl: URL.createObjectURL(blob), latencyMs });
         return;
       }
-      // JSON — could be image (data[0].b64_json/url) or generic
+      // JSON - could be image (data[0].b64_json/url) or generic
       const data = await res.json();
       const first = data?.data?.[0];
       const imageUrl = first?.b64_json
@@ -240,22 +240,22 @@ export default function ComboDetailPage() {
   const backHref = getListingHref(combo.kind);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between xl:col-span-2">
         <div className="flex items-center gap-3 min-w-0">
           <Link href={backHref} className="text-text-muted hover:text-primary">
-            <span className="material-symbols-outlined">arrow_back</span>
+            <span className="material-symbols-outlined">west</span>
           </Link>
           <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <span className="material-symbols-outlined text-primary">layers</span>
+            <span className="material-symbols-outlined text-primary">view_module</span>
           </div>
           <div className="min-w-0">
             <p className="text-xs text-text-muted">{kindLabel} Combo</p>
             <code className="text-lg font-semibold font-mono">{combo.name}</code>
           </div>
         </div>
-        <Button variant="outline" icon="delete" onClick={handleDelete} className="text-red-500 border-red-200 hover:bg-red-50">
+        <Button variant="outline" icon="delete_forever" onClick={handleDelete} className="text-danger border-danger/30 hover:bg-danger/10">
           Delete
         </Button>
       </div>
@@ -285,7 +285,7 @@ export default function ComboDetailPage() {
             <h2 className="text-lg font-semibold">Providers</h2>
             <p className="text-xs text-text-muted">Tried in order (top-down) or rotated when round-robin is on.</p>
           </div>
-          <Button size="sm" icon="add" onClick={() => setShowPicker(true)}>Add Provider</Button>
+          <Button size="sm" icon="add_circle" onClick={() => setShowPicker(true)}>Add Provider</Button>
         </div>
         {providers.length === 0 ? (
           <div className="text-center py-6 border border-dashed border-border rounded-lg text-text-muted text-sm">
@@ -297,7 +297,7 @@ export default function ComboDetailPage() {
               const { providerId, model } = parseModelEntry(entry);
               const p = AI_PROVIDERS[providerId];
               return (
-                <div key={`${entry}-${idx}`} className="flex items-center gap-3 p-2 rounded-lg bg-black/[0.02] dark:bg-white/[0.02]">
+                <div key={`${entry}-${idx}`} className="flex items-center gap-3 p-2 rounded-lg bg-surface-2 border border-border-subtle">
                   <span className="text-xs text-text-muted w-5 text-center">{idx + 1}</span>
                   <ProviderIcon
                     src={`/providers/${providerId}.png`}
@@ -312,14 +312,14 @@ export default function ComboDetailPage() {
                     {model && <code className="text-[10px] text-text-muted font-mono truncate block">{model}</code>}
                   </div>
                   <div className="flex items-center gap-0.5">
-                    <button onClick={() => handleMove(idx, -1)} disabled={idx === 0} className={`p-1 rounded ${idx === 0 ? "text-text-muted/20" : "text-text-muted hover:text-primary hover:bg-black/5"}`} title="Move up">
-                      <span className="material-symbols-outlined text-[16px]">arrow_upward</span>
+                    <button onClick={() => handleMove(idx, -1)} disabled={idx === 0} className={`p-1 rounded ${idx === 0 ? "text-text-muted/20" : "text-text-muted hover:text-primary hover:bg-surface-3"}`} title="Move up">
+                      <span className="material-symbols-outlined text-[16px]">north</span>
                     </button>
-                    <button onClick={() => handleMove(idx, 1)} disabled={idx === providers.length - 1} className={`p-1 rounded ${idx === providers.length - 1 ? "text-text-muted/20" : "text-text-muted hover:text-primary hover:bg-black/5"}`} title="Move down">
-                      <span className="material-symbols-outlined text-[16px]">arrow_downward</span>
+                    <button onClick={() => handleMove(idx, 1)} disabled={idx === providers.length - 1} className={`p-1 rounded ${idx === providers.length - 1 ? "text-text-muted/20" : "text-text-muted hover:text-primary hover:bg-surface-3"}`} title="Move down">
+                      <span className="material-symbols-outlined text-[16px]">south</span>
                     </button>
                     <button onClick={() => handleRemoveProvider(idx)} className="p-1 rounded text-text-muted hover:text-red-500 hover:bg-red-500/10" title="Remove">
-                      <span className="material-symbols-outlined text-[16px]">close</span>
+                      <span className="material-symbols-outlined text-[16px]">cancel</span>
                     </button>
                   </div>
                 </div>
@@ -331,14 +331,14 @@ export default function ComboDetailPage() {
 
       {/* Test Example Card */}
       {combo.kind && examplePath && (
-        <Card>
+        <Card className="xl:col-span-2">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
             <h2 className="text-lg font-semibold">Test Example</h2>
-            <Button size="sm" icon="play_arrow" onClick={handleTest} disabled={testing || providers.length === 0}>
+            <Button size="sm" icon="play_circle" onClick={handleTest} disabled={testing || providers.length === 0}>
               {testing ? "Running..." : "Run"}
             </Button>
           </div>
-          <pre className="text-xs font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
+          <pre className="text-xs font-mono bg-surface-2 border border-border-subtle p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
             {curlExample}
           </pre>
           {testError && (
@@ -347,13 +347,16 @@ export default function ComboDetailPage() {
           {testResult && (
             <div className="mt-3 flex flex-col gap-3">
               {testResult.latencyMs != null && (
-                <span className="text-[11px] text-text-muted">⚡ {testResult.latencyMs}ms</span>
+                <span className="inline-flex items-center gap-1 text-[11px] text-text-muted">
+                  <span className="material-symbols-outlined text-[12px] leading-none">speed</span>
+                  {testResult.latencyMs}ms
+                </span>
               )}
               {testResult.imageUrl && (
                 <div>
                   <div className="flex items-center justify-end mb-1.5">
                     <a href={testResult.imageUrl} download="image.png" className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors">
-                      <span className="material-symbols-outlined text-[14px]">download</span>
+                      <span className="material-symbols-outlined text-[14px]">file_download</span>
                       Download
                     </a>
                   </div>
@@ -364,7 +367,7 @@ export default function ComboDetailPage() {
                 <div>
                   <div className="flex items-center justify-end mb-1.5">
                     <a href={testResult.audioUrl} download="speech.mp3" className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors">
-                      <span className="material-symbols-outlined text-[14px]">download</span>
+                      <span className="material-symbols-outlined text-[14px]">file_download</span>
                       Download
                     </a>
                   </div>
@@ -372,7 +375,7 @@ export default function ComboDetailPage() {
                 </div>
               )}
               {testResult.json && (
-                <pre className="text-xs font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 rounded-lg overflow-auto max-h-[300px] whitespace-pre-wrap break-all">
+                <pre className="text-xs font-mono bg-surface-2 border border-border-subtle p-3 rounded-lg overflow-auto max-h-[300px] whitespace-pre-wrap break-all">
                   {testResult.json}
                 </pre>
               )}
@@ -382,12 +385,12 @@ export default function ComboDetailPage() {
       )}
 
       {/* Usage Logs Card */}
-      <Card>
+      <Card className="xl:col-span-2">
         <h2 className="text-lg font-semibold mb-3">Usage Logs</h2>
         {logs.length === 0 ? (
           <p className="text-xs text-text-muted italic">No usage yet.</p>
         ) : (
-          <pre className="text-[11px] font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 rounded-lg overflow-auto max-h-[400px] whitespace-pre-wrap">
+          <pre className="text-[11px] font-mono bg-surface-2 border border-border-subtle p-3 rounded-lg overflow-auto max-h-[400px] whitespace-pre-wrap">
             {logs.join("\n")}
           </pre>
         )}

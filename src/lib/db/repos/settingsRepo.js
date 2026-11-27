@@ -1,4 +1,5 @@
 import { getAdapter } from "../driver.js";
+import { CUSTOM_PLUGIN_KEYS } from "@/shared/constants/pluginKeys";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
@@ -23,14 +24,23 @@ const DEFAULT_SETTINGS = {
     audioInput: { enabled: true, roundRobin: false, models: [] },
     videoInput: { enabled: false, roundRobin: false, models: [] },
   },
-  customPlugins: {
-    imageVision: { enabled: false, models: [] },
-    thinkDeeper: { enabled: false, models: [] },
-    unrestrictedMode: { enabled: false, models: [] },
-    speedMode: { enabled: false, models: [] },
-  },
+  // Keys come from CUSTOM_PLUGIN_KEYS so a new plugin cannot be missing here;
+  // this literal had five entries while six plugins existed.
+  customPlugins: Object.fromEntries(
+    CUSTOM_PLUGIN_KEYS.map((key) => [key, { enabled: false, models: [] }])
+  ),
   requireLogin: true,
+  // Custom-model editor: warn about name/owned_by that claim a vendor the
+  // target model does not match. Persisted so every administrator sees the
+  // same editor rather than each browser deciding for itself.
+  antiProbeMetadata: true,
   requireApiKey: true,
+  // Prefix minted in front of every newly created API key ("sk-" by default).
+  // Validation is an exact database lookup, so changing this affects keys
+  // generated from now on; keys already issued keep working.
+  apiKeyPrefix: "sk-",
+  // Site-wide theme is locked to neobrutalism across the entire UI.
+  theme: "neobrutalism",
   tunnelDashboardAccess: true,
   authMode: "password",
   ssoType: "oidc",
@@ -61,6 +71,9 @@ const DEFAULT_SETTINGS = {
   headroomCompressUserMessages: false,
   headroomTimeoutMs: 3000,
   cavemanEnabled: false,
+  contextPruningLevel: "full",
+  semanticCacheTtlHours: 3,
+  semanticCacheMaxEntries: 1000,
   cavemanLevel: "full",
   ponytailEnabled: false,
   ponytailLevel: "full",
@@ -68,6 +81,17 @@ const DEFAULT_SETTINGS = {
   pxpipeAutoInstall: true,
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,
+  hideError: false,
+  // OpenCode Free ships one card with two lanes; this flag picks the lane the
+  // `opencode` executor uses (false = direct TLS request, true = local CLI).
+  opencodeCliMode: false,
+  // Per-provider web-cookie tool calling enablement: { [providerId]: boolean }
+  webCookieToolCalling: {
+    "gemini-web": true,
+    "deepseek-web": true,
+  },
+  // Per-provider user header overrides applied at dispatch: { [providerId]: { headers: {..} } }
+  providerOverrides: {},
 };
 
 async function readRaw() {
@@ -78,7 +102,7 @@ async function readRaw() {
 
 // Merge raw settings with defaults; backward-compat for missing keys
 export function mergeWithDefaults(raw) {
-  const merged = { ...DEFAULT_SETTINGS, ...(raw || {}) };
+  const merged = { ...DEFAULT_SETTINGS, ...(raw || {}), theme: "neobrutalism" };
   for (const [key, defVal] of Object.entries(DEFAULT_SETTINGS)) {
     if (merged[key] === undefined) {
       if (

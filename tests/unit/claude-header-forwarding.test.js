@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ─── DefaultExecutor.buildHeaders() ──────────────────────────────────────────
 
-describe("DefaultExecutor.buildHeaders() — claude provider", () => {
+describe("DefaultExecutor.buildHeaders() - claude provider", () => {
   let DefaultExecutor;
 
   beforeEach(async () => {
@@ -29,7 +29,7 @@ describe("DefaultExecutor.buildHeaders() — claude provider", () => {
       headers["Anthropic-Version"] === "2023-06-01" ||
       headers["anthropic-version"] === "2023-06-01";
     expect(hasVersion).toBe(true);
-    expect(headers["User-Agent"]).toBe("claude-cli/2.1.258 (external, sdk-cli)");
+    expect(headers["User-Agent"]).toBe("claude-cli/2.1.280 (external, sdk-cli)");
   });
 
   it("includes heavy-agent beta flags for claude-opus-5", () => {
@@ -95,11 +95,43 @@ describe("DefaultExecutor.buildHeaders() — claude provider", () => {
     const executor = new DefaultExecutor("claude");
     expect(() => executor.buildHeaders({ apiKey: "sk" }, false)).not.toThrow();
   });
+
+  it("sets x-claude-code-session-id from metadata.user_id on Claude OAuth", () => {
+    const executor = new DefaultExecutor("claude");
+    const headers = executor.buildHeaders(
+      { accessToken: "sk-ant-oat-test-token" },
+      true,
+      undefined,
+      "claude-opus-5",
+      {
+        metadata: {
+          user_id: '{"device_id":"d","account_uuid":"a","session_id":"sess-abc"}',
+        },
+      }
+    );
+    expect(headers["x-claude-code-session-id"]).toBe("sess-abc");
+  });
+
+  it("omits x-claude-code-session-id for non-OAuth API keys", () => {
+    const executor = new DefaultExecutor("claude");
+    const headers = executor.buildHeaders(
+      { apiKey: "sk-ant-api03-xxx" },
+      true,
+      undefined,
+      "claude-opus-5",
+      {
+        metadata: {
+          user_id: '{"device_id":"d","account_uuid":"a","session_id":"sess-abc"}',
+        },
+      }
+    );
+    expect(headers["x-claude-code-session-id"]).toBeUndefined();
+  });
 });
 
 // ─── anthropic-compatible header stripping ────────────────────────────────────
 
-describe("DefaultExecutor.buildHeaders() — anthropic-compatible stripping", () => {
+describe("DefaultExecutor.buildHeaders() - anthropic-compatible stripping", () => {
   let DefaultExecutor;
 
   beforeEach(async () => {
@@ -141,7 +173,7 @@ describe("DefaultExecutor.buildHeaders() — anthropic-compatible stripping", ()
   it("keeps other beta flags intact after stripping", () => {
     const executor = new DefaultExecutor("anthropic-compatible-custom");
     // The static CLAUDE_API_HEADERS used by anthropic-compatible providers include
-    // 'interleaved-thinking-2025-05-14' — check it survives stripping
+    // 'interleaved-thinking-2025-05-14' - check it survives stripping
     const headers = executor.buildHeaders(
       {
         apiKey: "key",
@@ -167,7 +199,7 @@ describe("DefaultExecutor.buildHeaders() — anthropic-compatible stripping", ()
       true
     );
 
-    // No stripping — anthropic-version should survive
+    // No stripping - anthropic-version should survive
     const hasVersion =
       headers["Anthropic-Version"] || headers["anthropic-version"];
     expect(hasVersion).toBeDefined();
@@ -231,7 +263,7 @@ describe("DefaultExecutor.buildHeaders() — anthropic-compatible stripping", ()
 
 // ─── proxyFetch anthropicFetch routing ────────────────────────────────────────
 
-describe("proxyAwareFetch — api.anthropic.com routing", () => {
+describe("proxyAwareFetch - api.anthropic.com routing", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });

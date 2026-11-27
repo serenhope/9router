@@ -6,13 +6,13 @@ export const dynamic = "force-dynamic";
 
 const OFFICIAL_URL = "https://raw.githubusercontent.com/decolua/9router/refs/heads/master/CHANGELOG.md";
 
-// This repo's own CHANGELOG.md is the fork's (Serenhope) changelog; the official one lives upstream.
+// This repo's own CHANGELOG.md is the fork's (A-Revoers) changelog; the official one lives upstream.
 function readLocalChangelog() {
   try {
     const text = fs.readFileSync(path.join(process.cwd(), "CHANGELOG.md"), "utf8");
     return text.trim() ? text : null;
   } catch {
-    // Missing in bundled/standalone runtimes — not an error, the caller falls back.
+    // Missing in bundled/standalone runtimes - not an error, the caller falls back.
     return null;
   }
 }

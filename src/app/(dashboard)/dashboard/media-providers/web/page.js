@@ -38,7 +38,7 @@ function ProviderCard({ provider, kind, connections }) {
 
   return (
     <Link href={`/dashboard/media-providers/${kind}/${provider.id}`} className="group">
-      <Card padding="xs" className={`h-full hover:bg-black/[0.01] dark:hover:bg-white/[0.01] transition-colors cursor-pointer ${allDisabled ? "opacity-50" : ""}`}>
+      <Card padding="xs" className={`h-full hover:bg-surface-2 transition-colors cursor-pointer ${allDisabled ? "opacity-50" : ""}`}>
         <div className="flex min-w-0 items-center gap-3">
           <div
             className="size-8 rounded-lg flex items-center justify-center shrink-0"
@@ -71,9 +71,9 @@ function ComboList({ combos }) {
     <div className="flex flex-col gap-2">
       {combos.map((combo) => (
         <Link key={combo.id} href={`/dashboard/media-providers/combo/${combo.id}`}>
-          <Card padding="xs" className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors cursor-pointer">
+          <Card padding="xs" className="hover:bg-surface-2 transition-colors cursor-pointer">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="material-symbols-outlined text-primary text-[18px]">layers</span>
+              <span className="material-symbols-outlined text-primary text-[18px]">view_module</span>
               <code className="text-sm font-mono font-medium flex-1 truncate">{combo.name}</code>
               {/* Provider icons preview */}
               <div className="flex flex-wrap items-center gap-1 sm:shrink-0">
@@ -98,7 +98,7 @@ function ComboList({ combos }) {
                 )}
               </div>
               <span className="text-[11px] text-text-muted shrink-0">{combo.models.length}</span>
-              <span className="material-symbols-outlined text-text-muted text-[16px]">chevron_right</span>
+              <span className="material-symbols-outlined text-text-muted text-[16px]">navigate_next</span>
             </div>
           </Card>
         </Link>
@@ -109,31 +109,31 @@ function ComboList({ combos }) {
 
 function Section({ title, icon, kind, providers, connections, combos, onCreateCombo }) {
   return (
-    <div>
-      {/* Header — title left, Create Combo right */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+      {/* Header - title left, Create Combo right */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3 lg:col-span-12">
         <div className="flex flex-wrap items-center gap-2">
           <span className="material-symbols-outlined text-primary">{icon}</span>
           <h2 className="text-base font-semibold">{title}</h2>
           <span className="text-xs text-text-muted">({providers.length} providers · {combos.length} combos)</span>
         </div>
-        <Button size="sm" icon="add" onClick={onCreateCombo}>Create Combo</Button>
+        <Button size="sm" icon="add_circle" onClick={onCreateCombo}>Create Combo</Button>
       </div>
 
-      {/* Combos — top */}
+      {/* Combos - top */}
       {combos.length > 0 && (
-        <div className="mb-4">
+        <div className="mb-4 lg:col-span-3">
           <ComboList combos={combos} />
         </div>
       )}
 
-      {/* Providers grid — bottom */}
+      {/* Providers grid - bottom */}
       {providers.length === 0 ? (
-        <div className="text-center py-8 border border-dashed border-border rounded-xl text-text-muted text-sm">
+        <div className={`text-center py-8 border border-dashed border-border rounded-xl text-text-muted text-sm ${combos.length > 0 ? "lg:col-span-9" : "lg:col-span-12"}`}>
           No providers.
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 ${combos.length > 0 ? "lg:col-span-9" : "lg:col-span-12 xl:grid-cols-4"}`}>
           {providers.map((p) => (
             <ProviderCard key={p.id} provider={p} kind={kind} connections={connections} />
           ))}
@@ -191,7 +191,7 @@ export default function WebProvidersPage() {
   return (
     <div className="flex flex-col gap-8">
       <Section
-        title="Web Search" icon="search" kind="webSearch"
+        title="Web Search" icon="manage_search" kind="webSearch"
         providers={searchProviders} connections={connections} combos={searchCombos}
         onCreateCombo={() => handleCreateCombo("webSearch")}
       />
@@ -200,7 +200,7 @@ export default function WebProvidersPage() {
       <div className="border-t border-border" />
 
       <Section
-        title="Web Fetch" icon="travel_explore" kind="webFetch"
+        title="Web Fetch" icon="explore" kind="webFetch"
         providers={fetchProviders} connections={connections} combos={fetchCombos}
         onCreateCombo={() => handleCreateCombo("webFetch")}
       />

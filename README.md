@@ -8,7 +8,7 @@ A fork of [Decolua/9router](https://github.com/Decolua/9router) with extra featu
 
 One gateway, one API key, any model: an OpenAI-compatible endpoint that routes to Claude, GPT, Gemini, Kimi, Qwen, GLM, DeepSeek, Grok and many more, with OAuth or your own accounts. This is still that router, with the parts I use daily changed and the rough edges fixed, free for anyone to use.
 
-![License](https://img.shields.io/badge/license-MIT-green) ![Upstream](https://img.shields.io/badge/upstream-Decolua%2F9router-blue) ![Release](https://img.shields.io/badge/releases-v0.5.x--Custom-orange)
+![License](https://img.shields.io/badge/license-MIT-green) ![Upstream](https://img.shields.io/badge/upstream-Decolua%2F9router-blue) ![Edition](https://img.shields.io/badge/edition-fork--custom-orange)
 
 </div>
 
@@ -22,42 +22,33 @@ One gateway, one API key, any model: an OpenAI-compatible endpoint that routes t
 
 </div>
 
-## What it routes
+## Routing & Capabilities
 
-The gateway accepts a request in OpenAI, Claude or Gemini shape, translates it to whatever the target provider speaks, and streams the answer back. Providers are grouped by how you sign in:
+9Router accepts requests in standard client formats (OpenAI Chat Completions, Anthropic Messages, or Gemini generateContent), translates them on-the-fly, and routes them to upstream providers through multiple connection tiers:
 
-| Sign-in | Providers |
-| --- | --- |
-| OAuth | Claude, OpenAI Codex, Gemini CLI, Antigravity, Kiro, Kimi (Moonshot), Grok CLI, xAI, Cursor, GitHub Copilot, GitLab, Windsurf, Trae, Zed, iFlow, Qoder, Cline, KiloCode, CodeBuddy, Xiaomi MIMO |
-| API key | OpenAI, Anthropic, DeepSeek, GLM (Z.ai / Zhipu), MiniMax, Mistral, Perplexity, Groq, Together, Fireworks, Cerebras, SambaNova, SiliconFlow, Nebius, Hugging Face, Venice, Voyage and dozens more |
-| Free tier | OpenRouter, OpenCode, Kiro, Gemini, Cloudflare AI, NVIDIA, Morph, Poolside, Kimchi, LLM7, api-airforce |
-| Web cookie | DeepSeek Web, Gemini Web, Kimi Web |
-| Local | Ollama, LM Studio style self-hosted nodes, self-hosted TTS/STT/embeddings |
+- **OAuth & Device Auth** - Connect official account sessions with automatic token refresh.
+- **Direct API Keys** - Standard API key integration for enterprise and public AI cloud providers.
+- **Free Tier Relay** - Zero-configuration routing for free developer and community AI gateways.
+- **Web Cookie Sessions** - Reverse-engineered browser session adapters for direct consumer web platforms.
+- **Local & Self-Hosted** - Connect local engines (Ollama, vLLM, LM Studio) and self-hosted instances.
 
-It is not only chat. The same gateway also serves text to image, image to text, video generation, text to speech, speech to text, embeddings, web search and web fetch, each with its own `/v1`-style endpoint.
+Beyond text chat, the router natively exposes specialized endpoints for multimodal tasks: Text-to-Image, Image-to-Text, Video Generation, Text-to-Speech (TTS), Speech-to-Text (STT), Embeddings, and Web Search/Fetch.
 
-## What this fork adds
+## Architecture & Core Design
 
-Everything below lives alongside upstream's features and is documented in the [changelog](./CHANGELOG.md).
+9Router functions as a unified gateway layer between AI client applications and model providers. It abstracts protocol differences, authentication mechanisms, and request lifecycle management so downstream tools only need to speak one standard interface.
 
-**Per-key control.** Every generated key can carry its own token limit, auto-reset interval, expiry, model allow-list (with wildcards) and on/off switch. Limits are enforced on every endpoint, not just chat.
+- **Universal Protocol Adapter**: Ingests requests in OpenAI, Anthropic Claude, or Google Gemini format, translates them on-the-fly to the target provider's native schema, and transparently streams standardized responses back.
+- **Unified Credential & Key Management**: Single interface for managing OAuth sessions, direct API keys, reverse-engineered web sessions, and custom local models.
+- **Failover & Traffic Routing**: Dynamic routing policies including intelligent fallback chains, load balancing, model aliases, and latency-optimized dispatching.
+- **Enterprise Controls**: Granular token quotas, rate limiting (RPM/TPM), budget caps, IP allowlisting, and automated state backups.
 
-**Custom Models.** Define a model with your own name that answers as itself; the target behind it never leaks into responses or listings. Custom providers can carry their own logo.
-
-**Custom Plugins.** Four per-model plugins: Image Vision (text extraction for models without vision), Think Deeper (forced deep reasoning), Speed Mode (skips thinking for faster answers) and Uncensored Output (direct technical answers). Selected models show a badge.
-
-**Compare Models.** Send one prompt to up to four models and compare speed, cost and output side by side, streaming live.
-
-**Token Saver.** Compresses request context before it goes upstream, so long agent sessions spend fewer tokens.
-
-**Automatic Backup.** The database can back itself up on a schedule (24 hours, 7 days, 30 days or custom) to a Telegram bot or a GitHub repository, with a live countdown. Manual Download Backup lets you pick which sections to include and shows each section's size.
-
-**Update checks.** The dashboard compares your checkout against this repository and tells you when new commits are available, with a one-click auto updater on CLI installs.
+For granular version updates, newly added providers, and ongoing improvements, refer directly to the [CHANGELOG.md](./CHANGELOG.md).
 
 ## Getting started
 
 ```bash
-git clone https://github.com/serenhope/9router.git
+git clone https://github.com/alvin-revoers/9router.git
 cd 9router
 npm install
 npm run dev          # dashboard on http://localhost:20127
@@ -104,7 +95,7 @@ The app reads a few environment variables with sensible defaults; see [.env.exam
 
 ## Credits
 
-- Built on **[Decolua/9router](https://github.com/Decolua/9router)** — full credit to upstream for the router, the providers and the translators.
+- Built on **[Decolua/9router](https://github.com/Decolua/9router)** - full credit to upstream for the router, the providers and the translators.
 - Fork releases are tagged in [CHANGELOG.md](./CHANGELOG.md).
 - License: **MIT**, same as upstream. See [LICENSE](./LICENSE).
 
@@ -114,7 +105,7 @@ The app reads a few environment variables with sensible defaults; see [.env.exam
 
 If this fork helped you, a star is appreciated.
 
-[![Stars](https://img.shields.io/github/stars/serenhope/9router?style=social)](https://github.com/serenhope/9router/stargazers)
+[![Stars](https://img.shields.io/github/stars/alvin-revoers/9router?style=social)](https://github.com/alvin-revoers/9router/stargazers)
 
 </div>
 

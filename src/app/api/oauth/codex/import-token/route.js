@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
 
+export const dynamic = "force-dynamic";
+
 /**
  * POST /api/oauth/codex/import-token
  * Import a ChatGPT access token (created from chatgpt.com settings)
@@ -53,7 +55,7 @@ export async function POST(request) {
         }
       }
     } catch {
-      // Not a JWT or malformed — still allow import as raw token
+      // Not a JWT or malformed - still allow import as raw token
     }
 
     // Also try extractCodexAccountInfo via id_token-style extraction

@@ -27,6 +27,7 @@ export default {
     thinkingFormat: "openai",
   },
   models: [
+    { id: "@cf/cloudflare/clef-flash", name: "Clef Flash", kind: "systemone", upstreamModelId: "clef-flash" },
     { id: "@cf/meta/llama-3.2-1b-instruct", name: "Llama 3.2 1B Instruct" },
     { id: "@cf/meta/llama-3.2-3b-instruct", name: "Llama 3.2 3B Instruct" },
     { id: "@cf/meta/llama-3.1-8b-instruct-fp8-fast", name: "Llama 3.1 8B Instruct FP8 Fast" },
@@ -38,6 +39,7 @@ export default {
     { id: "@cf/moonshotai/kimi-k2.5", name: "Kimi K2.5" },
     { id: "@cf/moonshotai/kimi-k2.6", name: "Kimi K2.6" },
     { id: "@cf/zai-org/glm-4.7-flash", name: "GLM 4.7 Flash" },
+    { id: "@cf/zai-org/glm-5.3", name: "GLM 5.3" },
     { id: "@cf/qwen/qwq-32b", name: "QwQ 32B" },
     { id: "@cf/qwen/qwen2.5-coder-32b-instruct", name: "Qwen 2.5 Coder 32B Instruct" },
     { id: "@cf/black-forest-labs/flux-2-klein-9b", name: "FLUX.2 Klein 9B", params: ["size"], kind: "image" },
@@ -52,6 +54,11 @@ export default {
     { id: "@cf/runwayml/stable-diffusion-v1-5-inpainting", name: "Stable Diffusion v1.5 Inpainting", params: ["size"], capabilities: ["edit","mask"], kind: "image" },
     { id: "@cf/stabilityai/stable-diffusion-xl-base-1.0", name: "SDXL Base 1.0", params: ["size"], kind: "image" },
   ],
-  serviceKinds: ["llm","image"],
+  serviceKinds: ["llm","image","systemone"],
+  systemoneConfig: {
+    baseUrl: "https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/run/{model}",
+    authType: "apikey",
+    authHeader: "bearer",
+  },
   imageConfig: { baseUrl: "https://api.cloudflare.com/client/v4/accounts" },
 };
